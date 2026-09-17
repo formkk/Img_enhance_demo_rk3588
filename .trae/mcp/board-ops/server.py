@@ -131,15 +131,27 @@ def t_list_video_nodes(_args: dict) -> str:
 
 
 def t_probe_rknn_stack(_args: dict) -> str:
+    # 版本纪律（厂家资料核实）：toolkit2 与 librknnrt 必须同版本号；
+    # rknpu 内核驱动只需 ≥ 下限（Rockchip RKNPU User Guide V2.3.0：建议 >= 0.9.2）。
     cmd = (
-        "echo '--- librknnrt ---'; "
-        "ls -l /usr/lib/librknnrt.so /usr/lib/aarch64-linux-gnu/librknnrt.so 2>/dev/null; "
-        "strings /usr/lib/librknnrt.so 2>/dev/null | grep -m1 -i 'librknnrt version'; "
-        "echo '--- rknpu driver ---'; cat /sys/kernel/debug/rknpu/version 2>/dev/null || echo '(不可读)'; "
-        "echo '--- rknn-toolkit2 ---'; "
-        "python3 -c \"import rknn,os;print(getattr(rknn,'__version__','?'))\" 2>/dev/null || echo '(未安装)'; "
+        "echo '--- librknnrt（板端 runtime，须与 PC 端 rknn-toolkit2 同版）---'; "
+        "ls -l /usr/lib/librknnrt.so /usr/lib/aarch64-linux-gnu/librknnrt.so /vendor/lib64/librknnrt.so 2>/dev/null; "
+        "strings /usr/lib/librknnrt.so 2>/dev/null | grep -i 'librknnrt version' | head -2; "
+        "echo '--- rknpu 内核驱动版本 ---'; "
+        "cat /sys/kernel/debug/rknpu/driver_version 2>/dev/null "
+        "|| cat /proc/debug/rknpu/driver_version 2>/dev/null "
+        "|| dmesg 2>/dev/null | grep -i rknpu | head -3 "
+        "|| echo '(不可读：第三方固件可能未装 rknpu 驱动)'; "
+        "echo '--- 板端 python（决定 rknn_toolkit_lite2 wheel 与 pybind11 扩展 ABI）---'; "
+        "python3 -V 2>&1; "
+        "python3 -c \"import rknnlite, os; print('rknnlite:', os.path.dirname(rknnlite.__file__))\" 2>/dev/null "
+        "|| echo 'rknnlite(板端 Python NPU 接口): 未安装'; "
+        "python3 -c \"import rknnlite; from rknnlite.api import RKNNLite; print('RKNNLite: ok')\" 2>/dev/null "
+        "|| echo 'RKNNLite: 不可用'; "
+        "echo '--- rknn_server（仅 PC 联板调试需要，本项目非必需）---'; "
+        "ls -l /usr/bin/rknn_server /usr/bin/restart_rknn.sh 2>/dev/null || echo '(未安装)'; "
         "echo '--- librga ---'; ls -l /usr/lib/librga.so /usr/lib/aarch64-linux-gnu/librga.so 2>/dev/null; "
-        "echo '--- npu 调度 ---'; cat /sys/kernel/debug/rknpu/load 2>/dev/null || echo '(不可读)'"
+        "echo '--- NPU 负载 ---'; cat /sys/kernel/debug/rknpu/load 2>/dev/null || echo '(不可读)'"
     )
     return ssh_read(cmd)
 
