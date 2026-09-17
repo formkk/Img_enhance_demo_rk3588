@@ -98,6 +98,12 @@
 
 （以上均在 `docs/evidence/reports/M0-reg-align/`）
 
+> **原始张量不入库（既有约定）**：`.npy` / `.f32` 中间产物按 `.gitignore` 的既有条目
+> （`docs/evidence/reports/**/*.npy` / `*.f32`：「可由 docs/evidence 记录的复现命令重生成，不入库」）
+> **不纳入版本控制**；**入库的是本档引用的报告 JSON**（含全部判定数值：张量 max_abs、图像域 PSNR、
+> 阈值与 pass）。张量的重生成方式见 §5；`split2_verify.json` 已把 2 条带拼接输出的核验结果
+> （对齐 1.9625e-2、与 M0-2 dump 逐位一致 max_abs = 0、布局 [3][272][480]）固化入库。
+
 ---
 
 ## 4. 生产估计口径（2 条带）与可复现性
