@@ -188,3 +188,23 @@ ssh board 'echo "name=$(cat /sys/block/mmcblk0/device/name)"; echo "manfid=$(cat
 ### 6.5 对 §3 判定的影响
 
 §2.4 的"未满足"项 → **已满足**：`camera.video_node` / `camera.rkisp_node` 的实测值可取（ISP 主路径 `/dev/video11`、media 设备 `/dev/media1` = `rkisp0-vir0`、`/dev/media0` = `rkcif-mipi-lvds`）；CAM0 = 4 lane 已核。**遗留（不阻塞 M0）**：30 fps 锁定（M1）、HDMI 侧尚未接显示器（M0-9 需接）。
+
+## 7. 补测（v3.28，2026-09-18）：DRM connector / mode timing 只读探测（服务 §11.1-1 与 §11.1-9）
+
+> **目的**：§11.1-1 的"屏插件 / 横竖屏确认"与 §10.4 显示域 M0 键（`dsi_connector` / `hdmi_connector` / `panel_refresh_hz` / `mode_htotal` / `mode_vtotal` / `dsi_lane_rate`）此前均为未核项。本轮以**只读探测**（`board-ops` 的 `probe_drm` + `ssh` 读 sysfs/debugfs/DT，**未做任何写操作**）补齐。
+> **原始输出与复现命令见 `docs/evidence/reports/M0-1/drm_probe.txt`**；本档只留判定。
+
+| 判定项 | 实测 | 结论 |
+|---|---|---|
+| MIPI 屏连接状态 | `card0-DSI-1`：status=**connected**、enabled=enabled、modes=`1080x1920` | ✅ 屏已接入且正在扫描出图（VOP2 `Video Port2: ACTIVE`，Esmart2-win0 src/dst = 1080×1920） |
+| 屏插件 / 横竖屏 | overlay `rk3588-lubancat-5-v2-dsi0-vp2-1080x1920-5.5inch-ebf410125-overlay.dtbo`（第 44 行）；panel `size,width/height` = 74 × 133 mm；原生 mode **1080×1920 = 竖屏** | ✅ 竖屏 1080×1920，与 §3.4 画布口径一致 |
+| mode timing | `Display mode: 1080x1920p60`；`clk/real_clk = 131376 kHz`；**H: 1080 1090 1100 1120**；**V: 1920 1930 1935 1955** | ✅ htotal **1120** / vtotal **1955** |
+| 面板实际刷新率 | `131376000 ÷ (1120 × 1955)` = **60.00 Hz**（与 mode 名 `p60` 自洽） | ✅ 实测 60 Hz（**非** 30 Hz；§6.1 的 pageflip 行与 §6.3 的扫描带宽须按此口径） |
+| DSI 物理层 | `bus_format[100a]: RGB888_1X24`；DT `dsi,lanes = 4`、`dsi,format = 0` | ⇒ 由实测派生的**最低线速率** = `131376000 × 24 ÷ 4` ≈ **788 Mbit/s/lane**（**推导值，非回读**；见下"缺口"） |
+| HDMI 侧 | `card0-HDMI-A-1`：status=**disconnected**、enabled=disabled、modes 为空；`Video Port0/1/3 = DISABLED` | ⚠️ 显示器未接、无 EDID ⇒ 只能确认 connector 名；`display.hdmi_mode_selection`（定稿时点 M2）不受影响 |
+| connector 命名 | `DSI-1` / `HDMI-A-1` / `Writeback-1`；`/dev/dri` 共 `card0|card1|renderD128|D129` | ✅ 二者入 config 仅作**自检比对**；CRTC/plane 一律运行时解析（**禁止写死 crtc id**） |
+
+**缺口（如实登记，不阻塞 M0 出口的判定在 `M0-reg-config.md` §2.4）**：
+
+1. **`display.dsi_lane_rate` 无回读口**——DT 的 `dsi@fde20000` 节点**无** `rockchip,lane-rate` 属性（驱动按 mode 自动计算），`/sys/kernel/debug/dri/0/DSI-1` 为目录且未暴露该项；`clk_dsihost0 = 351 MHz` 是 DSI host 时钟、**不是** lane rate ⇒ 本档只给**推导值 788 Mbit/s/lane**（推导输入全部为实测），须在 **M0-9** 实现期由驱动侧/PHY 回读复核。
+2. **HDMI 无 mode list**——显示器未接；`M0-9` 需接显示器后复采。

@@ -51,7 +51,7 @@
 | 软件版本三元组 | ✅ **已定版**（v3.22）：librknnrt **2.3.2** / toolkit2 **2.3.2**（同版本号）/ driver **0.9.8**（≥0.9.2 下限）；确认门 = M0-4 的 HQ 编译结果 |
 | overlay / `/dev/videoX` / rkisp 节点 | ✅ **已满足（v3.23）**：`uEnvLubanCat5-V2.txt` 第 63 行启用 cam0 的 imx415 overlay；`/dev/video0…19+`、`/dev/v4l-subdev*`、`/dev/media0|1` 齐备；ISP 主路径 = **`/dev/video11`**（rkisp_mainpath，NV12 1920×1080）；`camera.video_node` / `camera.rkisp_node` 取值以此为准（详见 §7） |
 | 丝印 CAM 口 lane 数 | ✅ **CAM0 = 4 lane**（驱动 `detect imx415 lane 4`；原理图 J8 走 D0~D3+CLK）——与 R12"Cat-5 仅 CAM0/CAM1 为 4-lane"一致 |
-| 屏插件 / 横竖屏 / connector | ⬜ 未核（待补 `probe_drm`，服务 M0-9） |
+| 屏插件 / 横竖屏 / connector | ✅ **已核（v3.28，只读探测）**：`card0-DSI-1` status=**connected** / enabled=enabled / 原生 mode **1080×1920（竖屏 5.5"）**；overlay 第 44 行 `rk3588-lubancat-5-v2-dsi0-vp2-1080x1920-5.5inch-ebf410125-overlay.dtbo`；**mode timing = 1080x1920p60**（`clk 131376 kHz`、**htotal 1120 / vtotal 1955** ⇒ 实测 **60.00 Hz**）；DSI 物理层 `RGB888_1X24` / `dsi,lanes=4`。HDMI 侧 `card0-HDMI-A-1` = **disconnected**（显示器未接、无 EDID）。原始输出见 `docs/evidence/reports/M0-1/drm_probe.txt` |
 
 ## 5. 待办与阻塞
 
@@ -61,7 +61,7 @@
 | B1-b | **板端 lite2 的正式安装**（`rknn_toolkit_lite2` **cp39**，随定版 2.3.2） | 本轮 A/B 用 `pip3 install --target ~/rknn_ab/site/*` 临时隔离；正式部署时再决定装用户级还是系统级（受 B4 授权约束） |
 | B1-c | 临时区清理 | 板 `~/rknn_ab/`（约 100 MB）与 `~/rknn_ab/lib/*/librknnrt.so` 可随时 `rm -rf` 完全回退 |
 | B2 | 摄像头链路排查（IMX415 接入 / overlay / 设备树插件） | ✅ **已解除（v3.23，2026-09-17 22:05）**：根因 = cam0 overlay 未启用（已启用）+ **排线接触/方位**（重插后传感器 ID 读取成功）；链路与 ISP 出帧已验证（§7）。**遗留（不阻塞 M0）**：① 当前 overlay 为 1080p@60，实测 ≈50.6 fps，**30 fps 锁定**按 §3.2 三步实验在 M1 落定；② 当次画面极暗+强红偏+离焦，画质结论待正常光照场景复采 |
-| B3 | 补探 DRM connector 与屏参数（`board-ops` 的 `probe_drm`） | 服务 §11.1-1 / §11.1-9 |
+| ~~B3~~ | ~~补探 DRM connector 与屏参数（`board-ops` 的 `probe_drm`）~~ → ✅ **已完成（v3.28，只读）**：DSI-1 connected/enabled + mode 1080x1920p60（htotal 1120 / vtotal 1955 / 131376 kHz ⇒ 60.00 Hz）+ `dsi,lanes=4`；HDMI-A-1 disconnected。原始输出 `docs/evidence/reports/M0-1/drm_probe.txt`，判定见 `docs/evidence/M0-1-hardware-baseline.md` §7 | 服务 §11.1-1 / §11.1-9。**遗留**：① `display.dsi_lane_rate` **无回读口**（DT 无 `rockchip,lane-rate`），本档只给推导值 **788 Mbit/s/lane**，须在 M0-9 由驱动侧复核；② HDMI 显示器未接 ⇒ **M0-9 需接显示器**后复采 mode list |
 | B4 | 有副作用操作（换板上 `librknnrt`、装 apt 组件、停流/复位）**均需用户授权**并先记录恢复步骤（规则 `30-board-safety.md` §4） | — |
 
 ## 6. 待配置（板端）

@@ -33,6 +33,18 @@ static int cmp_double(const void* a, const void* b) {
     return (x > y) - (x < y);
 }
 
+/* v3.28：输入/输出张量属性（fmt / n_dims / dims）——主基准 §10.4 的
+ * `model.zde_output_layout` 与 `model.zde_output_dims` 的**唯一合法来源**是 rknn_query，
+ * 因此本探针把这两项回读并打印，禁止在 config 里预设 NCHW/NHWC。 */
+static const char* fmt_str(rknn_tensor_format f) {
+    switch (f) {
+        case RKNN_TENSOR_NCHW:    return "NCHW";
+        case RKNN_TENSOR_NHWC:    return "NHWC";
+        case RKNN_TENSOR_NC1HWC2: return "NC1HWC2";
+        default:                  return "UNDEFINED";
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc < 4) {
         fprintf(stderr, "usage: %s <model.rknn> <input.f32> <runs> [nhwc|nchw] [float|nofloat] [sram|nosram] "
@@ -84,6 +96,14 @@ int main(int argc, char** argv) {
     rknn_query(ctx, RKNN_QUERY_OUTPUT_ATTR, &out_attr, sizeof(out_attr));
     printf("\"in_elems\":%u,\"out_elems\":%u,\"n_input\":%u,\"n_output\":%u,\n",
            in_attr.n_elems, out_attr.n_elems, io_num.n_input, io_num.n_output);
+
+    /* v3.28：张量属性实测（§10.4 `model.zde_output_layout` / `model.zde_output_dims`） */
+    printf("\"in_attr\":{\"fmt\":\"%s\",\"n_dims\":%u,\"dims\":[", fmt_str(in_attr.fmt), in_attr.n_dims);
+    for (uint32_t i = 0; i < in_attr.n_dims; i++) printf("%s%u", i ? "," : "", in_attr.dims[i]);
+    printf("],\"type\":%d},\n", (int)in_attr.type);
+    printf("\"out_attr\":{\"fmt\":\"%s\",\"n_dims\":%u,\"dims\":[", fmt_str(out_attr.fmt), out_attr.n_dims);
+    for (uint32_t i = 0; i < out_attr.n_dims; i++) printf("%s%u", i ? "," : "", out_attr.dims[i]);
+    printf("],\"type\":%d},\n", (int)out_attr.type);
 
     rknn_mem_size mem_size;
     if (rknn_query(ctx, RKNN_QUERY_MEM_SIZE, &mem_size, sizeof(mem_size)) == 0)
