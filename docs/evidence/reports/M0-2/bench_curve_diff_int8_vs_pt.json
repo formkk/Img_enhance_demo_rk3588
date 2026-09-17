@@ -1,0 +1,62 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "curve-diff-fp16",
+  "scope": "offline",
+  "started_utc": "2026-09-17T12:20:46+00:00",
+  "host": "jenkolux-All-Series",
+  "runtime": {
+    "librknnrt": null,
+    "python": "3.8.20",
+    "host": "jenkolux-All-Series",
+    "machine": "x86_64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": null,
+    "precision": null,
+    "config_snapshot_hash": null
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      0.3,
+      0.15,
+      0.12
+    ]
+  },
+  "soc_temp_c": 27.8,
+  "notes": [
+    "本场景只覆盖 O23 闸口的「逐像素 diff」部分；「盲评（≥2 人）」须另行执行",
+    "阈值是参数：未给 --tol 时只报数不判定（阈值口径须先在 §15 登记）"
+  ],
+  "status": "ok",
+  "ref": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-2/pt_ref_480x272.npy",
+  "cand": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-2/curve_board_int8_480x272.npy",
+  "shape": [
+    1,
+    3,
+    272,
+    480
+  ],
+  "diff": {
+    "max_abs": 0.017161443829536438,
+    "mean_abs": 0.003733449848368764,
+    "tol": 0.01,
+    "gt_tol_ratio": 0.0008910334967320261
+  }
+}

@@ -1,0 +1,208 @@
+[1;33mW[0m [1;33m__init__: rknn-toolkit2 version: 1.5.0+1fa95b5c[0m
+Loading :   0%|                                                              | 0/28 [00:00<?, ?it/s]Loading : 100%|██████████████████████████████████████████████████| 28/28 [00:00<00:00, 46309.35it/s]
+I base_optimize ...
+I base_optimize done.
+I 
+I fold_constant ...
+I fold_constant done.
+I 
+I correct_ops ...
+I correct_ops done.
+I 
+I fuse_ops ...
+I fuse_ops done.
+I 
+I sparse_weight ...
+I sparse_weight done.
+I 
+I rknn building ...
+I RKNN: [18:51:38.037] compress = 0, conv_eltwise_activation_fuse = 1, global_fuse = 1, multi-core-model-mode = 7, output_optimize = 1,enable_argb_group=0
+I RKNN: librknnc version: 1.5.0 (e6fe0c678@2023-05-25T16:15:03)
+D RKNN: [18:51:38.039] RKNN is invoked
+D RKNN: [18:51:38.044] >>>>>> start: N4rknn19RKNNSetOpTargetPassE
+D RKNN: [18:51:38.044] <<<<<<<< end: N4rknn19RKNNSetOpTargetPassE
+D RKNN: [18:51:38.044] >>>>>> start: N4rknn16RKNNAddFirstConvE
+D RKNN: [18:51:38.044] <<<<<<<< end: N4rknn16RKNNAddFirstConvE
+D RKNN: [18:51:38.044] >>>>>> start: N4rknn27RKNNEliminateQATDataConvertE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn27RKNNEliminateQATDataConvertE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn17RKNNTileGroupConvE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn17RKNNTileGroupConvE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn15RKNNAddConvBiasE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn15RKNNAddConvBiasE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn15RKNNTileChannelE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn15RKNNTileChannelE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn18RKNNPerChannelPrepE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn18RKNNPerChannelPrepE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn11RKNNBnQuantE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn11RKNNBnQuantE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn21RKNNFuseOptimizerPassE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn21RKNNFuseOptimizerPassE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn15RKNNTurnAutoPadE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn15RKNNTurnAutoPadE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn16RKNNInitRNNConstE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn16RKNNInitRNNConstE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn17RKNNInitCastConstE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn17RKNNInitCastConstE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn20RKNNMultiSurfacePassE
+D RKNN: [18:51:38.045] <<<<<<<< end: N4rknn20RKNNMultiSurfacePassE
+D RKNN: [18:51:38.045] >>>>>> start: N4rknn14RKNNTilingPassE
+D RKNN: [18:51:38.048] <<<<<<<< end: N4rknn14RKNNTilingPassE
+D RKNN: [18:51:38.048] >>>>>> start: OpEmit
+D RKNN: [18:51:38.048] <<<<<<<< end: OpEmit
+D RKNN: [18:51:38.048] >>>>>> start: N4rknn19RKNNLayoutMatchPassE
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[New_input_input]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/e_conv1/depth_conv/Conv_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/relu/Relu_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/e_conv2/depth_conv/Conv_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/relu_1/Relu_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/e_conv3/depth_conv/Conv_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/relu_2/Relu_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/e_conv4/depth_conv/Conv_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/relu_3/Relu_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/Concat_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/e_conv5/depth_conv/Conv_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/relu_4/Relu_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/Concat_1_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/e_conv6/depth_conv/Conv_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/relu_5/Relu_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/Concat_2_output_0]
+I RKNN: [18:51:38.048] AppointLayout: t->setNativeLayout(64), tname:[/e_conv7/depth_conv/Conv_output_0]
+D RKNN: [18:51:38.048] <<<<<<<< end: N4rknn19RKNNLayoutMatchPassE
+D RKNN: [18:51:38.048] >>>>>> start: N4rknn20RKNNAddSecondaryNodeE
+D RKNN: [18:51:38.048] <<<<<<<< end: N4rknn20RKNNAddSecondaryNodeE
+D RKNN: [18:51:38.048] >>>>>> start: OpEmit
+D RKNN: [18:51:38.078] <<<<<<<< end: OpEmit
+D RKNN: [18:51:38.078] >>>>>> start: N4rknn23RKNNProfileAnalysisPassE
+D RKNN: [18:51:38.078] <<<<<<<< end: N4rknn23RKNNProfileAnalysisPassE
+D RKNN: [18:51:38.078] >>>>>> start: N4rknn21RKNNOperatorIdGenPassE
+D RKNN: [18:51:38.078] <<<<<<<< end: N4rknn21RKNNOperatorIdGenPassE
+D RKNN: [18:51:38.078] >>>>>> start: N4rknn23RKNNWeightTransposePassE
+D RKNN: [18:51:38.079] <<<<<<<< end: N4rknn23RKNNWeightTransposePassE
+D RKNN: [18:51:38.079] >>>>>> start: N4rknn26RKNNCPUWeightTransposePassE
+D RKNN: [18:51:38.079] <<<<<<<< end: N4rknn26RKNNCPUWeightTransposePassE
+D RKNN: [18:51:38.079] >>>>>> start: N4rknn18RKNNModelBuildPassE
+D RKNN: [18:51:38.105] RKNNModelBuildPass: [Statistics]
+D RKNN: [18:51:38.105] total_regcfg_size     :         0
+D RKNN: [18:51:38.105] total_diff_regcfg_size:         0
+D RKNN: [18:51:38.106] ID   OpType           DataType Target InputShape                                   OutputShape            DDR Cycles     NPU Cycles     Total Cycles   Time(us)       MacUsage(%)    Task Number    Task Size      Regcmd Size    RW(KB)         FullName        
+D RKNN: [18:51:38.106] 0    InputOperator    FLOAT16  CPU    \                                            (1,3,272,480)          0              0              0              0              \              0              0              0              765.00         InputOperator:input
+D RKNN: [18:51:38.106] 1    Conv             FLOAT16  NPU    (1,3,272,480),(3,3,1,1)                      (1,3,272,480)          0              0              0              0              \              36             30528          32256          2805.05                        
+D RKNN: [18:51:38.106] 2    Conv             FLOAT16  NPU    (1,3,272,480),(1,3,3,3),(3)                  (1,3,272,480)          0              0              0              0              \              24             23808          24576          4080.18        Conv:/e_conv1/depth_conv/Conv
+D RKNN: [18:51:38.106] 3    ConvRelu         FLOAT16  NPU    (1,3,272,480),(32,3,1,1),(32)                (1,32,272,480)         0              0              0              0              \              24             23808          24576          10200.62       Conv:/e_conv1/point_conv/Conv
+D RKNN: [18:51:38.106] 4    Conv             FLOAT16  NPU    (1,32,272,480),(1,32,3,3),(32)               (1,32,272,480)         0              0              0              0              \              96             95232          98304          16320.69       Conv:/e_conv2/depth_conv/Conv
+D RKNN: [18:51:38.106] 5    ConvRelu         FLOAT16  NPU    (1,32,272,480),(32,32,1,1),(32)              (1,32,272,480)         0              0              0              0              \              102            101184         104448         16322.12       Conv:/e_conv2/point_conv/Conv
+D RKNN: [18:51:38.106] 6    Conv             FLOAT16  NPU    (1,32,272,480),(1,32,3,3),(32)               (1,32,272,480)         0              0              0              0              \              96             95232          98304          16320.69       Conv:/e_conv3/depth_conv/Conv
+D RKNN: [18:51:38.106] 7    ConvRelu         FLOAT16  NPU    (1,32,272,480),(32,32,1,1),(32)              (1,32,272,480)         0              0              0              0              \              102            101184         104448         16322.12       Conv:/e_conv3/point_conv/Conv
+D RKNN: [18:51:38.106] 8    Conv             FLOAT16  NPU    (1,32,272,480),(1,32,3,3),(32)               (1,32,272,480)         0              0              0              0              \              96             95232          98304          16320.69       Conv:/e_conv4/depth_conv/Conv
+D RKNN: [18:51:38.106] 9    ConvRelu         FLOAT16  NPU    (1,32,272,480),(32,32,1,1),(32)              (1,32,272,480)         0              0              0              0              \              107            102224         105728         16322.12       Conv:/e_conv4/point_conv/Conv
+D RKNN: [18:51:38.106] 10   Concat           FLOAT16  NPU    (1,32,272,480),(1,32,272,480)                (1,64,272,480)         0              0              0              0              \              17             7664           8960           32640.00       Concat:/Concat  
+D RKNN: [18:51:38.106] 11   Conv             FLOAT16  NPU    (1,64,272,480),(1,64,3,3),(64)               (1,64,272,480)         0              0              0              0              \              247            245024         252928         32641.38       Conv:/e_conv5/depth_conv/Conv
+D RKNN: [18:51:38.106] 12   ConvRelu         FLOAT16  NPU    (1,64,272,480),(32,64,1,1),(32)              (1,32,272,480)         0              0              0              0              \              227            221264         228608         24484.12       Conv:/e_conv5/point_conv/Conv
+D RKNN: [18:51:38.106] 13   Concat           FLOAT16  NPU    (1,32,272,480),(1,32,272,480)                (1,64,272,480)         0              0              0              0              \              17             7664           8960           32640.00       Concat:/Concat_1
+D RKNN: [18:51:38.106] 14   Conv             FLOAT16  NPU    (1,64,272,480),(1,64,3,3),(64)               (1,64,272,480)         0              0              0              0              \              247            245024         252928         32641.38       Conv:/e_conv6/depth_conv/Conv
+D RKNN: [18:51:38.106] 15   ConvRelu         FLOAT16  NPU    (1,64,272,480),(32,64,1,1),(32)              (1,32,272,480)         0              0              0              0              \              227            221264         228608         24484.12       Conv:/e_conv6/point_conv/Conv
+D RKNN: [18:51:38.106] 16   Concat           FLOAT16  NPU    (1,32,272,480),(1,32,272,480)                (1,64,272,480)         0              0              0              0              \              17             7664           8960           32640.00       Concat:/Concat_2
+D RKNN: [18:51:38.106] 17   Conv             FLOAT16  NPU    (1,64,272,480),(1,64,3,3),(64)               (1,64,272,480)         0              0              0              0              \              247            245024         252928         32641.38       Conv:/e_conv7/depth_conv/Conv
+D RKNN: [18:51:38.106] 18   Conv             FLOAT16  NPU    (1,64,272,480),(3,64,1,1),(3)                (1,3,272,480)          0              0              0              0              \              173            167696         173312         18360.44       Conv:/e_conv7/point_conv/Conv
+D RKNN: [18:51:38.106] 19   Tanh             FLOAT16  NPU    (1,3,272,480)                                (1,3,272,480)          0              0              0              0              \              2              9328           9689344        4080.00        Tanh:/Tanh      
+D RKNN: [18:51:38.106] 20   OutputOperator   FLOAT16  CPU    (1,3,272,480)                                \                      0              0              0              0              \              0              0              0              2040.00        OutputOperator:curve
+D RKNN: [18:51:38.106] <<<<<<<< end: N4rknn18RKNNModelBuildPassE
+D RKNN: [18:51:38.106] >>>>>> start: N4rknn21RKNNMemStatisticsPassE
+D RKNN: [18:51:38.106] ----------------------------------------------------------------------------------------------+---------------------------------
+D RKNN: [18:51:38.106] ID  User           Tensor                            DataType  OrigShape      NativeShape     |     [Start       End)       Size
+D RKNN: [18:51:38.106] ----------------------------------------------------------------------------------------------+---------------------------------
+D RKNN: [18:51:38.106] 1   Conv           input                             FLOAT16   (1,3,272,480)  (1,1,272,480,3) | 0x00000000 0x000bf400 0x000bf400
+D RKNN: [18:51:38.106] 2   Conv           New_input_input                   FLOAT16   (1,3,272,480)  (1,2,272,480,8) | 0x000bf400 0x004bb400 0x003fc000
+D RKNN: [18:51:38.106] 3   ConvRelu       /e_conv1/depth_conv/Conv_output_0 FLOAT16   (1,3,272,480)  (1,4,272,480,8) | 0x004bb400 0x00cb3400 0x007f8000
+D RKNN: [18:51:38.106] 4   Conv           /relu/Relu_output_0               FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x00cb3400 0x014ab400 0x007f8000
+D RKNN: [18:51:38.106] 5   ConvRelu       /e_conv2/depth_conv/Conv_output_0 FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [18:51:38.106] 6   Conv           /relu_1/Relu_output_0             FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x014ab400 0x01ca3400 0x007f8000
+D RKNN: [18:51:38.106] 7   ConvRelu       /e_conv3/depth_conv/Conv_output_0 FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [18:51:38.106] 8   Conv           /relu_2/Relu_output_0             FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x01ca3400 0x0249b400 0x007f8000
+D RKNN: [18:51:38.106] 9   ConvRelu       /e_conv4/depth_conv/Conv_output_0 FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [18:51:38.106] 10  Concat         /relu_2/Relu_output_0             FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x01ca3400 0x0249b400 0x007f8000
+D RKNN: [18:51:38.106] 10  Concat         /relu_3/Relu_output_0             FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x0249b400 0x02c93400 0x007f8000
+D RKNN: [18:51:38.106] 11  Conv           /Concat_output_0                  FLOAT16   (1,64,272,480) (1,8,272,480,8) | 0x02c93400*0x03c83400 0x00ff0000
+D RKNN: [18:51:38.106] 12  ConvRelu       /e_conv5/depth_conv/Conv_output_0 FLOAT16   (1,64,272,480) (1,8,272,480,8) | 0x01ca3400 0x02c93400 0x00ff0000
+D RKNN: [18:51:38.106] 13  Concat         /relu_1/Relu_output_0             FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x014ab400 0x01ca3400 0x007f8000
+D RKNN: [18:51:38.106] 13  Concat         /relu_4/Relu_output_0             FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [18:51:38.106] 14  Conv           /Concat_1_output_0                FLOAT16   (1,64,272,480) (1,8,272,480,8) | 0x01ca3400 0x02c93400 0x00ff0000
+D RKNN: [18:51:38.106] 15  ConvRelu       /e_conv6/depth_conv/Conv_output_0 FLOAT16   (1,64,272,480) (1,8,272,480,8) | 0x02c93400*0x03c83400 0x00ff0000
+D RKNN: [18:51:38.106] 16  Concat         /relu/Relu_output_0               FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x00cb3400 0x014ab400 0x007f8000
+D RKNN: [18:51:38.106] 16  Concat         /relu_5/Relu_output_0             FLOAT16   (1,32,272,480) (1,4,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [18:51:38.106] 17  Conv           /Concat_2_output_0                FLOAT16   (1,64,272,480) (1,8,272,480,8) | 0x014ab400 0x0249b400 0x00ff0000
+D RKNN: [18:51:38.106] 18  Conv           /e_conv7/depth_conv/Conv_output_0 FLOAT16   (1,64,272,480) (1,8,272,480,8) | 0x00000000 0x00ff0000 0x00ff0000
+D RKNN: [18:51:38.106] 19  Tanh           /e_conv7/point_conv/Conv_output_0 FLOAT16   (1,3,272,480)  (1,2,272,480,8) | 0x00ff0000 0x013ec000 0x003fc000
+D RKNN: [18:51:38.106] 20  OutputOperator curve                             FLOAT16   (1,3,272,480)  (1,2,272,480,8) | 0x00000000 0x003fc000 0x003fc000
+D RKNN: [18:51:38.106] ----------------------------------------------------------------------------------------------+---------------------------------
+D RKNN: [18:51:38.106] --------------------------------------------------------------+---------------------------------
+D RKNN: [18:51:38.106] ID  User     Tensor                    DataType  OrigShape    |     [Start       End)       Size
+D RKNN: [18:51:38.106] --------------------------------------------------------------+---------------------------------
+D RKNN: [18:51:38.106] 1   Conv     Pre_weightinput           FLOAT16   (3,3,1,1)    | 0x000058c0 0x000058f0 0x00000030
+D RKNN: [18:51:38.106] 2   Conv     e_conv1.depth_conv.weight FLOAT16   (1,3,3,3)    | 0x00000000 0x00000090 0x00000090
+D RKNN: [18:51:38.106] 2   Conv     e_conv1.depth_conv.bias   FLOAT     (3)          | 0x000000c0 0x00000140 0x00000080
+D RKNN: [18:51:38.106] 3   ConvRelu e_conv1.point_conv.weight FLOAT16   (32,3,1,1)   | 0x00000140 0x00000340 0x00000200
+D RKNN: [18:I rknn buiding done.
+{
+  "stage": "build",
+  "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/zde_curve_480x272.onnx",
+  "onnx_sha256": "6fef7434ec7f04d349e94f5af9d810ced5425a7b90cc983697b21314b42b4174",
+  "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/zde_curve_480x272_fp16_tk150.rknn",
+  "target_platform": "rk3588",
+  "quant": "fp16",
+  "input_normalization": {
+    "rgb2bgr": false,
+    "mean": [
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "std": [
+      [
+        255,
+        255,
+        255
+      ]
+    ]
+  },
+  "env": {
+    "python": "3.8.20",
+    "rknn_toolkit2": "unknown"
+  }
+}
+[report] docs/evidence/reports/M0-2/build_A_tk150.json
+51:38.106] 3   ConvRelu e_conv1.point_conv.bias   FLOAT     (32)         | 0x00000340 0x000003c0 0x00000080
+D RKNN: [18:51:38.106] 4   Conv     e_conv2.depth_conv.weight FLOAT16   (1,32,3,3)   | 0x000003c0 0x00000600 0x00000240
+D RKNN: [18:51:38.106] 4   Conv     e_conv2.depth_conv.bias   FLOAT     (32)         | 0x00000600 0x00000680 0x00000080
+D RKNN: [18:51:38.106] 5   ConvRelu e_conv2.point_conv.weight FLOAT16   (32,32,1,1)  | 0x00000680 0x00000e80 0x00000800
+D RKNN: [18:51:38.106] 5   ConvRelu e_conv2.point_conv.bias   FLOAT     (32)         | 0x00000e80 0x00000f00 0x00000080
+D RKNN: [18:51:38.106] 6   Conv     e_conv3.depth_conv.weight FLOAT16   (1,32,3,3)   | 0x00000f00 0x00001140 0x00000240
+D RKNN: [18:51:38.106] 6   Conv     e_conv3.depth_conv.bias   FLOAT     (32)         | 0x00001140 0x000011c0 0x00000080
+D RKNN: [18:51:38.106] 7   ConvRelu e_conv3.point_conv.weight FLOAT16   (32,32,1,1)  | 0x000011c0 0x000019c0 0x00000800
+D RKNN: [18:51:38.106] 7   ConvRelu e_conv3.point_conv.bias   FLOAT     (32)         | 0x000019c0 0x00001a40 0x00000080
+D RKNN: [18:51:38.106] 8   Conv     e_conv4.depth_conv.weight FLOAT16   (1,32,3,3)   | 0x00001a40 0x00001c80 0x00000240
+D RKNN: [18:51:38.106] 8   Conv     e_conv4.depth_conv.bias   FLOAT     (32)         | 0x00001c80 0x00001d00 0x00000080
+D RKNN: [18:51:38.106] 9   ConvRelu e_conv4.point_conv.weight FLOAT16   (32,32,1,1)  | 0x00001d00 0x00002500 0x00000800
+D RKNN: [18:51:38.106] 9   ConvRelu e_conv4.point_conv.bias   FLOAT     (32)         | 0x00002500 0x00002580 0x00000080
+D RKNN: [18:51:38.106] 11  Conv     e_conv5.depth_conv.weight FLOAT16   (1,64,3,3)   | 0x00002580 0x00002a00 0x00000480
+D RKNN: [18:51:38.106] 11  Conv     e_conv5.depth_conv.bias   FLOAT     (64)         | 0x00002a00 0x00002b00 0x00000100
+D RKNN: [18:51:38.106] 12  ConvRelu e_conv5.point_conv.weight FLOAT16   (32,64,1,1)  | 0x00002b00 0x00003b00 0x00001000
+D RKNN: [18:51:38.106] 12  ConvRelu e_conv5.point_conv.bias   FLOAT     (32)         | 0x00003b00 0x00003b80 0x00000080
+D RKNN: [18:51:38.106] 14  Conv     e_conv6.depth_conv.weight FLOAT16   (1,64,3,3)   | 0x00003b80 0x00004000 0x00000480
+D RKNN: [18:51:38.106] 14  Conv     e_conv6.depth_conv.bias   FLOAT     (64)         | 0x00004000 0x00004100 0x00000100
+D RKNN: [18:51:38.106] 15  ConvRelu e_conv6.point_conv.weight FLOAT16   (32,64,1,1)  | 0x00004100 0x00005100 0x00001000
+D RKNN: [18:51:38.106] 15  ConvRelu e_conv6.point_conv.bias   FLOAT     (32)         | 0x00005100 0x00005180 0x00000080
+D RKNN: [18:51:38.106] 17  Conv     e_conv7.depth_conv.weight FLOAT16   (1,64,3,3)   | 0x00005180 0x00005600 0x00000480
+D RKNN: [18:51:38.106] 17  Conv     e_conv7.depth_conv.bias   FLOAT     (64)         | 0x00005600 0x00005700 0x00000100
+D RKNN: [18:51:38.106] 18  Conv     e_conv7.point_conv.weight FLOAT16   (3,64,1,1)   | 0x00005700 0x00005880 0x00000180
+D RKNN: [18:51:38.106] 18  Conv     e_conv7.point_conv.bias   FLOAT     (3)          | 0x00005880 0x000058c0 0x00000040
+D RKNN: [18:51:38.106] --------------------------------------------------------------+---------------------------------
+D RKNN: [18:51:38.106] ----------------------------------------
+D RKNN: [18:51:38.106] Total Weight Memory Size: 24832
+D RKNN: [18:51:38.106] Total Internal Memory Size: 63452160
+D RKNN: [18:51:38.106] Predict Internal Memory RW Amount: 414397440
+D RKNN: [18:51:38.106] Predict Weight Memory RW Amount: 22720
+D RKNN: [18:51:38.106] ----------------------------------------
+D RKNN: [18:51:38.106] <<<<<<<< end: N4rknn21RKNNMemStatisticsPassE

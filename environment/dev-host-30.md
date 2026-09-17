@@ -313,3 +313,50 @@ apt-cache policy nvidia-utils-535
 lspci -k | grep -A2 -iE "ethernet|sata"        # 网卡/存储驱动
 sudo -n true || echo "sudo 需密码"
 ```
+## 8. 转换环境与隔离纪律（v3.22 追加，实测）
+
+### 8.1 用户级 site-packages 污染（**必须隔离**）
+
+| 项 | 实测 |
+|---|---|
+| 用户级 site | `~/.local/lib/python3.8/site-packages`，**244 个包**（含 `torch 2.0.1`（CUDA 版，带 `nvidia-*`）、`transformers`、`jupyter`、`accelerate` 等） |
+| 影响 1 | 任何 py3.8 环境（含新建 conda 环境）执行 `pip list` 都会**列出不属于该环境**的包——曾据此误判"环境已有 torch/transformers" |
+| 影响 2 | `pip install -r requirements.txt` 会把这些包判为**已满足**并跳过安装 ⇒ 该环境的实际依赖**不可复现**（依赖用户目录，换用户/换机即失效） |
+| 处置（铁律） | **所有转换 / 探测 / 校验命令一律加 `PYTHONNOUSERSITE=1`**（pip 与 python 均生效）；环境自检用 `python -c "import site;print(site.ENABLE_USER_SITE)"` 应为 `True`（该值由解释器默认给出，**不能靠它判断是否被污染**，只能靠命令级环境变量） |
+
+### 8.2 三套转换环境（M0-2 A/B 用，py3.8.20，均建在 `/home/jenkolux/.conda/envs/`）
+
+| 环境 | toolkit2 | 依赖要点 | 用途 / 状态 |
+|---|---|---|---|
+| `rknn232` | **2.3.2**（PyPI 正式版） | `torch 2.0.1+cpu`、`onnx 1.17.0`、`onnxruntime 1.19.2`、`onnxsim 0.5.0`、`numpy 1.24.4`、`protobuf 4.25.4`、`opencv-python 5.0.0.93`、`scipy 1.10.1`、`setuptools 75.1.0` | **ONNX 导出 + B 臂转换（现行基线）**；`from rknn.api import RKNN` 实测 OK |
+| `rknn242` | 2.4.2a12（预研归档离线 wheel） | 同上（依赖 pin 与 2.3.2 一致，`onnxruntime ≥1.17.0`） | C 臂转换；**待 M0-4 需要时启用** |
+| `rknn150` | 1.5.0+1fa95b5c（官方仓库树 wheel） | **精确旧 pin**：`torch 1.10.1+cpu`、`numpy 1.19.5`、`onnx 1.10.0`、`protobuf 3.12.2`、`tensorflow 2.6.2`、`scipy 1.5.4`、`onnxruntime 1.10.0` | A 臂转换（已判定不采用）；环境体积与脆弱性显著高于 B/C |
+
+> `torch` 一律取 **CPU 版**（`--index-url https://download.pytorch.org/whl/cpu`，在 pin 允许区间内）——避免三套环境各装一份 CUDA 版（约 2 GiB/环境）。
+
+### 8.3 工具链离线缓存与板端包
+
+| 项 | 位置 / 说明 |
+|---|---|
+| 转换 wheel 与官方 requirements | `refs/pre-research/toolchain/`（`rknn_toolkit2-1.5.0+…whl`、`requirements_cp38-2.3.2.txt`；2.4.2a12 在 `refs/pre-research/2.4.2/`） |
+| 板端 lite2（cp39，匹配板上 py3.9.2） | `rknn_toolkit_lite2-1.5.0-cp39-cp39-linux_aarch64.whl`（官方仓库树）、`rknn_toolkit_lite2-2.3.2-cp39-…manylinux…whl`（PyPI） |
+| 板端 `librknnrt` 目标版本 | `2.3.2`（预研归档 `m0_results/librknnrt_v232.so`）、`2.4.2a2`（其 `2.4.2/a12/runtime/…`）；1.5.0 = 板上现装 |
+| 板端无 sudo 加载指定版本 | `unshare -Ur -m sh -c 'mount --bind <so> /usr/lib/librknnrt.so && …'`（lite2 扩展按绝对路径加载，`LD_LIBRARY_PATH`/`LD_PRELOAD`/`LIBRKNNRT_PATH` 均无效）；详见 `docs/evidence/M0-2-ab-toolkit-version.md` §5.2 |
+
+### 8.4 复现命令
+
+```bash
+# 单档转换（在 rknn232 环境）
+PYTHONNOUSERSITE=1 /home/jenkolux/.conda/envs/rknn232/bin/python tools/convert_models.py export \
+  --weights models/zde/Epoch99.pth --h 272 --w 480 --out models/zde/zde_curve_480x272.onnx \
+  --input-png docs/evidence/reports/M0-2/input_18_1080x720.png \
+  --dump-input docs/evidence/reports/M0-2/input_480x272.npy \
+  --dump-pt-ref docs/evidence/reports/M0-2/pt_ref_480x272.npy \
+  --report docs/evidence/reports/M0-2/export_onnx.json
+PYTHONNOUSERSITE=1 /home/jenkolux/.conda/envs/rknn232/bin/python tools/convert_models.py build \
+  --onnx models/zde/zde_curve_480x272.onnx --out models/zde/zde_curve_480x272_fp16_tk232.rknn \
+  --quant fp16 --target rk3588 --report docs/evidence/reports/M0-2/build_B_tk232.json
+
+# 板上探测（板端脚本在 ~/rknn_ab/，可一键删除回退）
+ssh board 'cd ~/rknn_ab && ./run_arm.sh arm232 232 zde_curve_480x272_fp16_tk232.rknn B_tk232'
+```

@@ -1,0 +1,29 @@
+{
+  "stage": "build",
+  "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/zde_curve_480x272.onnx",
+  "onnx_sha256": "6fef7434ec7f04d349e94f5af9d810ced5425a7b90cc983697b21314b42b4174",
+  "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/zde_curve_480x272_fp16_tk150.rknn",
+  "target_platform": "rk3588",
+  "quant": "fp16",
+  "input_normalization": {
+    "rgb2bgr": false,
+    "mean": [
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "std": [
+      [
+        255,
+        255,
+        255
+      ]
+    ]
+  },
+  "env": {
+    "python": "3.8.20",
+    "rknn_toolkit2": "unknown"
+  }
+}

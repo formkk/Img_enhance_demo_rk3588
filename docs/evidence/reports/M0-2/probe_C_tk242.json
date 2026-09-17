@@ -1,0 +1,42 @@
+{
+  "rknn": "/home/cat/rknn_ab/models/zde_curve_480x272_fp16_tk242.rknn",
+  "rknn_size_bytes": 1908280,
+  "backend": "lite",
+  "input": "/home/cat/rknn_ab/data/input_480x272.npy",
+  "fed_shape": [
+    1,
+    272,
+    480,
+    3
+  ],
+  "output_shape": [
+    1,
+    3,
+    272,
+    480
+  ],
+  "output_dtype": "float32",
+  "curve_min": -0.35205078125,
+  "curve_max": -0.057586669921875,
+  "curve_mean": -0.3128313720226288,
+  "latency": {
+    "n": 20,
+    "min_ms": 50.4898070003037,
+    "median_ms": 63.758412500646955,
+    "p90_ms": 80.5085619995225,
+    "max_ms": 96.8673530005617
+  },
+  "load_plus_first_ms": 721.9791509978677,
+  "librknnrt": "2.4.2a2 (047a9211e0@2026-07-31T11:20:44)",
+  "librknnrt_loaded": [
+    {
+      "path": "/usr/lib/librknnrt.so",
+      "size_bytes": 7964088,
+      "version": "2.4.2a2 (047a9211e0@2026-07-31T11:20:44)"
+    }
+  ],
+  "dump": "/home/cat/rknn_ab/data/out_C_tk242.npy",
+  "ref": "/home/cat/rknn_ab/data/pt_ref_480x272.npy",
+  "align_max_abs": 0.000491023063659668,
+  "align_pass": false
+}

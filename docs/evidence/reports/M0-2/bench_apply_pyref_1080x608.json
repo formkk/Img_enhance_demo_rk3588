@@ -1,0 +1,56 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "apply-micro",
+  "scope": "model",
+  "started_utc": "2026-09-17T12:21:17+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": null,
+    "precision": null,
+    "config_snapshot_hash": null
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      0.05,
+      0.01,
+      0.0
+    ]
+  },
+  "soc_temp_c": 43.461,
+  "notes": [
+    "结果来自 numpy 参考实现，**不代表交付路径（C/NEON 单遍融合）**，不得用于 §6.1「曲线应用 ≤2 ms」的达标判定"
+  ],
+  "status": "ok",
+  "impl": "py-ref(numpy)",
+  "apply_domain": "1080x608",
+  "apply": {
+    "n": 5,
+    "p50_ms": 38.748994,
+    "p95_ms": 104.452413,
+    "max_ms": 104.452413,
+    "mean_ms": 60.3796188
+  }
+}

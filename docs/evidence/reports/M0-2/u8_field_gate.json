@@ -1,0 +1,30 @@
+{
+  "curve_field_fp16_range": [
+    -0.35205078125,
+    -0.057586669921875
+  ],
+  "encodings": {
+    "E1_fullrange_-1_1": {
+      "quant_step": 0.00784313725490196,
+      "clipped_values": 0,
+      "curve_max_abs_vs_fp16": 0.003920614719390869,
+      "curve_mean_abs_vs_fp16": 0.0019056303426623344,
+      "image_psnr_db": 54.56280864683067,
+      "image_max_abs_lsb": 1.9430485367774963,
+      "image_mean_abs_lsb": 0.31514051312115043,
+      "gt_1lsb_ratio": 0.06778237336601307,
+      "gt_2lsb_ratio": 0.0
+    },
+    "E2_tuned_-0.5_0": {
+      "quant_step": 0.00196078431372549,
+      "clipped_values": 0,
+      "curve_max_abs_vs_fp16": 0.0009804069995880127,
+      "curve_mean_abs_vs_fp16": 0.0004954811884090304,
+      "image_psnr_db": 66.5671612009854,
+      "image_max_abs_lsb": 0.49234718084335327,
+      "image_mean_abs_lsb": 0.07994713116204366,
+      "gt_1lsb_ratio": 0.0,
+      "gt_2lsb_ratio": 0.0
+    }
+  }
+}

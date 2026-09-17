@@ -114,7 +114,10 @@ def t_board_info(_args: dict) -> str:
         "echo \"kernel: $(uname -r)\"; echo \"arch: $(uname -m)\"; "
         "echo '--- os-release ---'; cat /etc/os-release 2>/dev/null; "
         "echo '--- cpu ---'; nproc; "
-        "cat /proc/cpuinfo 2>/dev/null | grep -m2 -E 'Hardware|Revision|model name'"
+        # aarch64 的 /proc/cpuinfo 通常没有 Hardware/model name 行，grep 无匹配会返回 1，
+        # 使整条只读命令被标成 [exit=1]（误报失败）——故补 fallback 兜底
+        "cat /proc/cpuinfo 2>/dev/null | grep -m2 -E 'Hardware|Revision|model name' "
+        "|| echo '(cpuinfo 无 Hardware/Revision/model name 行)'"
     )
     return ssh_read(cmd)
 

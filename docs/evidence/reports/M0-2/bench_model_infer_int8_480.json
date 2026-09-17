@@ -1,0 +1,94 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "model-infer",
+  "scope": "model",
+  "started_utc": "2026-09-17T12:21:41+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": null,
+    "precision": null,
+    "config_snapshot_hash": null
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      0.03,
+      0.01,
+      0.0
+    ]
+  },
+  "soc_temp_c": 40.692,
+  "notes": [
+    "scope=model：不满足 §6.5 帧级字段要求，不得作为 §13 验收依据"
+  ],
+  "status": "ok",
+  "cmd": [
+    "/home/cat/rknn_ab/probe/rknn_c_probe",
+    "/home/cat/rknn_ab/models/zde_curve_480x272_int8_tk232.rknn",
+    "/home/cat/rknn_ab/data/in_480x272_nhwc.f32",
+    "40",
+    "nhwc",
+    "nofloat",
+    "nosram",
+    "u8",
+    "noperf"
+  ],
+  "probe": {
+    "api": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "drv": "0.9.8",
+    "in_elems": 391680,
+    "out_elems": 391680,
+    "n_input": 1,
+    "n_output": 1,
+    "mem": {
+      "weight": 18432,
+      "internal": 25067520,
+      "dma": 25825280,
+      "sram": 0,
+      "sram_free": 0
+    },
+    "n": 40,
+    "wall_ms": {
+      "min": 30.61,
+      "median": 34.14,
+      "p90": 49.96,
+      "max": 51.88
+    },
+    "npu_run_ms": {
+      "min": 29.03,
+      "median": 30.27,
+      "p90": 47.11,
+      "max": 47.74
+    },
+    "overhead_ms_median": 3.87,
+    "cfg": {
+      "fmt": "nhwc",
+      "want_float": 0,
+      "sram": 0,
+      "in_type": "uint8",
+      "perf_collect": 0
+    }
+  }
+}

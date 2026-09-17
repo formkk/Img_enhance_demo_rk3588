@@ -11,11 +11,27 @@ models/*.rknn
 models/*.onnx
 models/*.pt
 models/*.pth
+models/**/*.rknn
+models/**/*.onnx
+models/**/*.pt
+models/**/*.pth
+
+# 证据报告中的大张量中间产物（可由 docs/evidence 记录的复现命令重生成，不入库）
+docs/evidence/reports/**/*.npy
+
+# rknn-toolkit2 在**当前工作目录**留下的内部 onnx 优化中间文件（实测：每次 build 都会生成）
+*_optimize.onnx
+
+# 量化校准集图像（代用集由 M0-8/M1 的采集流程生成，不入库；清单与复现命令见证据文档）
+models/**/calib*/
 
 # 日志与临时文件（日志规格见 docs/logging.md；板上 storage.dir 与 logging.dir 均不在本仓库）
 *.log
 *.tmp
 .DS_Store
+
+# 例外：证据目录下的构建/探测原始日志属证据，必须入库（规则 10-evidence §4）
+!docs/evidence/reports/**/*.log
 
 # IDE 私有配置（工程级纪律与工具在 .trae/，必须入库，不在此列）
 .vscode/
