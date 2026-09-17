@@ -1,0 +1,7 @@
+{"slice_w_in":256,"slice_w_out":240,"slices":2,"halo":7,"full_w":480,"starts":[0,224],
+"init_ret":[0,0],"core_mask_ret":[0,0],"cores":[0,1],
+"frame_wall_ms":{"min":21.28,"median":21.66,"p90":24.66,"max":24.80},
+"per_slice_ms":[{"s":{"min":21.28,"median":21.61,"p90":24.50,"max":24.52}},{"s":{"min":21.27,"median":21.66,"p90":24.66,"max":24.80}}],
+"dump":"/home/cat/rknn_ab/data/reg_align/split2__stitched.f32",
+"cfg":{"want_float":1}
+}

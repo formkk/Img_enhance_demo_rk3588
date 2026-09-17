@@ -1,0 +1,32 @@
+{
+  "frame": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-reg-align/input_960x544.npy",
+  "shape": [
+    1,
+    3,
+    544,
+    960
+  ],
+  "ref_curve": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-reg-align/pt_ref_960x544.npy",
+  "ref_curve_range": [
+    -0.3522792458534241,
+    -0.04289054498076439
+  ],
+  "candidates": {
+    "FP16": {
+      "path": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-reg-align/out_fp16_960x544.npy",
+      "curve_range": [
+        -0.35205078125,
+        -0.042724609375
+      ],
+      "curve_max_abs": 0.0005481541156768799,
+      "curve_mean_abs": 0.00014879829541314393,
+      "image": {
+        "psnr_db": 76.90410451560524,
+        "max_abs_lsb": 0.2330946922302246,
+        "mean_abs_lsb": 0.024598532982054166,
+        "gt_1lsb_ratio": 0.0,
+        "gt_2lsb_ratio": 0.0
+      }
+    }
+  }
+}

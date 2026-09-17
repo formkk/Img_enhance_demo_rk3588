@@ -3,14 +3,16 @@
 
 用途（主基准 §11.1-2 测速、§11.2-① ONNX↔RKNN 对齐回归）：
   - 板上（默认 backend=lite，经 rknn_toolkit_lite2 → librknnrt）或 PC 模拟器（backend=sim）
-  - 输出张量与参考 `.npy`（PyTorch 侧）逐元素比对，阈 <1e-4
+  - 输出张量与参考 `.npy`（PyTorch 侧）逐元素比对；**阈值是参数**（`--tol`）——
+    §11.2-① 按 v3.22 裁定 O27 拆两层：①a FP32 链路 <1e-4；①b 按精度档给阈
+    （FP16 ≤1e-3 / INT8 ≤3e-2）。默认仍为 1e-4，不静默放宽。
   - 计时只报推理调用耗时中位数/分位数，不换算端到端（规则 10-evidence §2）
 
 输入约定：`.npy` float32，shape [1,3,H,W]，值域 [0,255]，RGB（与 convert_models.py 的归一化一致）。
 
 用法：
   python3 tools/rknn_probe.py --rknn m.rknn --input in.npy --ref pt.npy --runs 20
-      [--dump board.npy] [--report r.json] [--backend lite|sim]
+      [--tol 1e-3] [--dump board.npy] [--report r.json] [--backend lite|sim]
       [--librknnrt /usr/lib/librknnrt.so]
 """
 
@@ -113,6 +115,9 @@ def main():
     p.add_argument('--rknn', required=True)
     p.add_argument('--input', required=True, help='输入 .npy，float32 [1,3,H,W]，[0,255] RGB')
     p.add_argument('--ref', default='', help='参考输出 .npy（PyTorch 侧），用于对齐判定')
+    p.add_argument('--tol', type=float, default=ALIGN_TOL,
+                   help='对齐阈值（默认 1e-4 = v3.22 裁定 O27 的 ①a FP32 链路口径；'
+                        '①b 按精度档取：FP16 1e-3 / INT8 3e-2）')
     p.add_argument('--dump', default='', help='落盘本次输出 .npy')
     p.add_argument('--runs', type=int, default=20)
     p.add_argument('--report', default='')
@@ -161,7 +166,8 @@ def main():
             diff = float(np.abs(ref.astype('float32') - np.asarray(out).astype('float32')).max())
             report['ref'] = os.path.abspath(args.ref)
             report['align_max_abs'] = diff
-            report['align_pass'] = diff < ALIGN_TOL
+            report['align_tol'] = args.tol
+            report['align_pass'] = diff < args.tol
 
     text = json.dumps(report, indent=2, ensure_ascii=False)
     print(text)

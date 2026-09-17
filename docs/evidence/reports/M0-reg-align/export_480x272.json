@@ -1,0 +1,52 @@
+{
+  "stage": "export",
+  "arch": "zde",
+  "weights": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/Epoch99.pth",
+  "weights_sha256": "ca8855b90df9a80fa4195a831f33d3476b1964f787eb70602797c773067f3b84",
+  "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/zde_curve_480x272.onnx",
+  "onnx_sha256": "6fef7434ec7f04d349e94f5af9d810ced5425a7b90cc983697b21314b42b4174",
+  "input_shape": [
+    1,
+    3,
+    272,
+    480
+  ],
+  "opset": 12,
+  "onnx_normalization": {
+    "rgb2bgr": false,
+    "mean": [
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "std": [
+      [
+        255,
+        255,
+        255
+      ]
+    ]
+  },
+  "pt_params": 10561,
+  "weights_missing_keys": [],
+  "weights_unexpected_keys": [],
+  "pt_estimator_vs_full_max_abs": 0.0,
+  "onnx_vs_pt_max_abs": 1.9371509552001953e-07,
+  "align_pass": true,
+  "env": {
+    "python": "3.8.20",
+    "torch": "2.0.1+cpu",
+    "onnx": "1.17.0",
+    "onnxruntime": "1.19.2"
+  },
+  "input_png": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-2/input_18_1080x720.png",
+  "input_png_sha256": "6156690b5bd46cc0b5c421890cc4f9d43d9f6e6956d925f1093d36d58876efc9",
+  "dump_input": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-reg-align/input_480x272.npy",
+  "dump_pt_ref": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-reg-align/pt_ref_480x272.npy",
+  "pt_ref_range": [
+    -0.3522389233112335,
+    -0.057605572044849396
+  ]
+}

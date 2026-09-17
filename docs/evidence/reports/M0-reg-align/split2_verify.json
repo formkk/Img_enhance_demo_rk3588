@@ -1,0 +1,20 @@
+{
+  "artifact": "docs/evidence/reports/M0-reg-align/split2__stitched.f32",
+  "layout_check": {
+    "assumed": "[3][272][480] float32 (NCHW [1,3,272,480])",
+    "floats": 391680,
+    "expected": 391680
+  },
+  "vs_pt_ref_480x272": {
+    "max_abs": 0.01962500810623169
+  },
+  "reproducibility_vs_M0_2_dump": {
+    "m0_2_dump": "docs/evidence/reports/M0-2/curve_board_int8_split2_480x272.npy",
+    "max_abs": 0.0
+  },
+  "verdict_vs_O27_1b_int8": {
+    "tol": 0.03,
+    "pass": true
+  },
+  "note": "2 条带空间切分（core0+core1，2×256×272 切片模型，HALO=7）的拼接输出；生产估计口径（§4.3/§7）。"
+}
