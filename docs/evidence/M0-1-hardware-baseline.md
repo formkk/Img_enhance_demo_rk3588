@@ -146,3 +146,45 @@ ssh board 'echo "name=$(cat /sys/block/mmcblk0/device/name)"; echo "manfid=$(cat
 - 主基准 §10.4：`board.model` / `board.cam_lanes`（后者待补）等 M0 键
 - 主基准 §11.1-1 出口判定；§2.2 补注"本项目板实测 = librknnrt 1.5.0"
 - `docs/measurements.md` §2（O21）三列回填：介质 eMMC / 可用 51 G / 依据本档
+## 6. 补测（v3.23，2026-09-17 21:0x–22:06）：摄像头链路 bring-up（**只读探测 + 一次已授权的配置变更/重启**）
+
+> 本节把 §2.4「采集节点未满足」这一项的**补测过程与原始输出**补齐。**当次结论 = 已打通**；完整档案与复现命令见 `environment/board-lubancat5.md` §7（本档只留原始行与判定）。
+
+### 6.1 变更前后的原始输出对照
+
+| 阶段 | 原始行（`sudo dmesg`） | 判定 |
+|---|---|---|
+| 变更前 | （无任何 `imx415` / `rkisp` / `rkcif` 行）；`/sys/class/video4linux/` 为空 | overlay 未启用（设备树 `dcphy0-imx415@1a` / `csi2-dcphy0` / `mipi0-csi2` 全 `disabled`） |
+| 启用 overlay + 重启后（首轮） | `imx415 1-001a: driver version: 00.01.08` / `Get data lanes failed! 4 lanes default` / `detect imx415 lane 4` / `Failed to get power-gpios` / `no pinctrl` / **`Unexpected sensor id(000000), ret(-5)`** | 驱动已绑定，**传感器无 I2C 应答** |
+| **重插排线 + 重启后** | **`imx415 1-001a: Detected imx415 id 0000e0`** / `rockchip-csi2-dphy csi2-dcphy0: dphy0 matches m00_b_imx415 1-001a:bus type 5` / `set fmt: cur_mode: 1944x1096, hdr: 0, bpp: 10` / **`capture_mode is 1920x1080`** | ✅ **打通** |
+
+### 6.2 判为"物理侧"的依据（首轮失败时的排除项）
+
+| 检查 | 原始值 |
+|---|---|
+| 同总线其它器件 | `i2cdetect -y -r 1`：`20: -- -- UU ...`（0x22 `fusb302`）、`40: -- -- UU ...`（0x42 `rk8602`）、0x5d `gt911` **均正常应答** ⇒ 总线/上拉无问题 |
+| 供电轨 | `regulator_summary`：`cam_dvdd 1200 mV` / `cam_dovdd 1800 mV` / `cam_avdd 2800 mV` 均 enabled；`vdd_cam_5v 3300 mV`（4 users） |
+| GPIO（DT ↔ 原理图） | `pwdn-gpios = <gpio4 8 0>`（GPIO4_B0，高有效）、`reset-gpios = <gpio4 9 1>`（GPIO4_B1，低有效） 原理图 J8：AK26 = `CAM0_PWDN`、AL24 = `CAM0_nRST`，**逐条一致** |
+| 屏 | `card0-DSI-1` = connected + enabled（DSI 绑 `inno-dsidphy`，未与 cam0 的 `dcphy0` 抢资源） |
+
+### 6.3 出图验证（重插后）
+
+| 项 | 原始值 |
+|---|---|
+| ISP 主路径 | `rkisp_mainpath` = **`/dev/video11`**（Multiplanar；`rkisp-isp-subdev` pad0 sink `SGBRG10_1X10/1920x1080` ← `rkcif-mipi-lvds:0 [ENABLED]`，pad2 source → `rkisp_mainpath [ENABLED]`） |
+| 可选格式 | UYVY / NV16 / NV61 / NV21 / **NV12** / NM21 / NM12，Stepwise 32×32–1920×1080 step 8 |
+| 3A / IQ | `rkaiq_3A_server`（PID 387）常驻；`/etc/iqfiles/imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json`（与 DT module-name 匹配） |
+| 取流命令 | `sudo v4l2-ctl -d /dev/video11 --set-fmt-video=width=1920,height=1080,pixelformat=NV12 --stream-mmap=4 --stream-count=90 --stream-to=/tmp/cam_long.raw` |
+| 帧完整性 | 30 帧 = 93,312,000 B = 30 × 1920×1080×1.5（**逐帧对齐**）；90 帧同理 |
+| 帧率 | 90 帧 / 1.778 s ≈ **50.6 fps** ⇒ 当前 overlay 为 **1080p@60** 变体，**非 §3.1/§3.2 的 30 fps**（30 fps 锁定按 §3.2 三步实验在 M1 落定） |
+| 图像观感 | f0 近全黑（gray mean 0.45）→ 稳态 f60/f89 gray mean ≈37–39、std ≈12.8、max ≈101；B/G/R ≈16–22 / 15–17 / 85–88（**强红偏**）且离焦 ⇒ 经用户确认为**场景本身暗/红**，**不作画质结论** |
+| 证据帧 | `docs/evidence/reports/M0-1/cam0_1080p_frame0.png`（AE 收敛前）/ `cam0_1080p_f60.png` / `cam0_1080p_f89.png` |
+
+### 6.4 变更记录（有副作用，已获授权）
+
+- `/boot/uEnv/uEnvLubanCat5-V2.txt` 第 63 行取消注释（cam0 的 IMX415 1080p@60 overlay）；备份 `…bak.20260917_cam0`，sha256 `dd5facae…` → 改后 `d00c7e76…`；`sudo reboot` 生效。
+- **恢复步骤**：`sudo cp /boot/uEnv/uEnvLubanCat5-V2.txt.bak.20260917_cam0 /boot/uEnv/uEnvLubanCat5-V2.txt && sudo reboot`。
+
+### 6.5 对 §3 判定的影响
+
+§2.4 的"未满足"项 → **已满足**：`camera.video_node` / `camera.rkisp_node` 的实测值可取（ISP 主路径 `/dev/video11`、media 设备 `/dev/media1` = `rkisp0-vir0`、`/dev/media0` = `rkcif-mipi-lvds`）；CAM0 = 4 lane 已核。**遗留（不阻塞 M0）**：30 fps 锁定（M1）、HDMI 侧尚未接显示器（M0-9 需接）。

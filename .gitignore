@@ -21,6 +21,8 @@ docs/evidence/reports/**/*.npy
 
 # rknn-toolkit2 在**当前工作目录**留下的内部 onnx 优化中间文件（实测：每次 build 都会生成）
 *_optimize.onnx
+# 同理：2.3.2 还会留下 check*_ops.onnx（本目录 build 时实测）
+check*_ops.onnx
 
 # 量化校准集图像（代用集由 M0-8/M1 的采集流程生成，不入库；清单与复现命令见证据文档）
 models/**/calib*/

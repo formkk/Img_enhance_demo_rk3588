@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Zero-DCE++ 转换工具：PyTorch → ONNX → RKNN。
+"""模型转换工具（Zero-DCE++ / Retinexformer）：PyTorch → ONNX → RKNN。
 
 契约来源（主基准 §10.2「模型转换流程」）：
   步骤 1  torch.onnx.export，opset 12，固定输入（禁动态 shape）
   步骤 2  onnxsim → 与 PyTorch 对齐（阈 <1e-4）
   步骤 3  rknn.config(target_platform='rk3588')
   步骤 4  rknn.build(do_quantization=False)   # FP16 为正式路线
-导出范围：只导出 `CurveEstimator`（3ch `x_r` 曲线场）；8 次迭代在板端后处理（§4.1、§3.3）
+导出范围（--arch）：
+  zde（默认） 只导出 `CurveEstimator`（3ch `x_r` 曲线场）；8 次迭代在板端后处理（§4.1、§3.3）
+  hq          导出完整 Retinexformer（3ch 增强图，§6.2 关键帧路径）；架构用 importlib 直载
+              `refs/pre-research/basicsr/models/archs/RetinexFormer_arch.py`，绕开 basicsr 包初始化链
 
 输入归一化约定（与训练一致，随报告登记）：
   RGB 顺序、输入值域 [0,255] float32、mean=[0,0,0]、std=[255,255,255]、quant_img_RGB2BGR=False
@@ -16,6 +19,8 @@
   # 导出 ONNX（在含 torch/onnx/onnxsim 的转换环境执行）
   python3 tools/convert_models.py export --weights models/zde/Epoch99.pth \
       --h 272 --w 480 --out models/zde/zde_curve_480x272.onnx [--report out.json]
+  python3 tools/convert_models.py export --arch hq --weights <LOL_v2_real>.pth \
+      --h 544 --w 960 --out models/hq/hq_960x544.onnx [--report out.json]
   # ONNX → RKNN（在目标 toolkit2 版本的环境执行）
   python3 tools/convert_models.py build --onnx models/zde/zde_curve_480x272.onnx \
       --out models/zde/zde_curve_480x272_fp16.rknn [--quant fp16|int8 --calib calib.txt]
@@ -36,6 +41,10 @@ STD = [[255, 255, 255]]
 OPSET = 12
 ALIGN_TOL = 1e-4
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HQ_ARCH_DEFAULT = os.path.join(ROOT, 'refs', 'pre-research', 'basicsr',
+                               'models', 'archs', 'RetinexFormer_arch.py')
+
 
 def sha256(path):
     h = hashlib.sha256()
@@ -54,37 +63,76 @@ def write_report(report, path):
         print(f'[report] {path}')
 
 
+def build_hq(weights, arch_path, n_feat, stage, num_blocks):
+    """Retinexformer：importlib 直载架构文件（绕开 basicsr/__init__ 全量导入），载入上游权重。"""
+    import importlib.util
+    import torch
+
+    spec = importlib.util.spec_from_file_location('RetinexFormer_arch', arch_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    model = mod.RetinexFormer(in_channels=3, out_channels=3,
+                              n_feat=n_feat, stage=stage, num_blocks=list(num_blocks))
+    sd = torch.load(weights, map_location='cpu')
+    if isinstance(sd, dict):
+        for key in ('params', 'state_dict'):
+            if isinstance(sd.get(key), dict):
+                sd = sd[key]
+                break
+    sd = {k.replace('module.', ''): v for k, v in sd.items()}
+    missing, unexpected = model.load_state_dict(sd, strict=False)
+    model.eval()
+    return model, missing, unexpected
+
+
 def do_export(args):
     import numpy as np
     import torch
     import onnx
     import onnxruntime as ort
     from onnxsim import simplify
-    from zde_model import enhance_net_nopool, CurveEstimator
 
-    base = enhance_net_nopool(scale_factor=1)
-    base.load_state_dict(torch.load(args.weights, map_location='cpu'))
-    base.eval()
-    model = CurveEstimator(base).eval()
+    extra = {}
+    torch.manual_seed(0)
+    if args.arch == 'zde':
+        from zde_model import enhance_net_nopool, CurveEstimator
+        base = enhance_net_nopool(scale_factor=1)
+        base.load_state_dict(torch.load(args.weights, map_location='cpu'))
+        base.eval()
+        model = CurveEstimator(base).eval()
+        missing, unexpected = [], []
+    else:
+        model, missing, unexpected = build_hq(
+            args.weights, args.arch_path, args.n_feat, args.stage, args.num_blocks)
+        base = None
+        extra = {
+            'hq_arch': os.path.abspath(args.arch_path),
+            'hq_arch_sha256': sha256(args.arch_path),
+            'hq_model_kwargs': {'n_feat': args.n_feat, 'stage': args.stage,
+                                'num_blocks': list(args.num_blocks)},
+        }
 
     dummy = torch.rand(1, 3, args.h, args.w)
     with torch.no_grad():
-        _, x_r_full = base(dummy)
-        x_r_est = model(dummy)
-    diff_est = (x_r_full - x_r_est).abs().max().item()
-    assert diff_est < 1e-6, f'CurveEstimator 与完整模型不一致：{diff_est}'
+        ref_pt = model(dummy)
+    diff_est = None
+    if args.arch == 'zde':
+        with torch.no_grad():
+            _, x_r_full = base(dummy)
+        diff_est = (x_r_full - ref_pt).abs().max().item()
+        assert diff_est < 1e-6, f'CurveEstimator 与完整模型不一致：{diff_est}'
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     torch.onnx.export(
         model, dummy, args.out,
-        input_names=['input'], output_names=['curve'],
+        input_names=['input'], output_names=['curve' if args.arch == 'zde' else 'output'],
         opset_version=OPSET, dynamic_axes={}, do_constant_folding=True,
     )
     onnx.save(simplify(onnx.load(args.out))[0], args.out)
 
     sess = ort.InferenceSession(args.out, providers=['CPUExecutionProvider'])
     ort_out = sess.run(None, {'input': dummy.numpy()})[0]
-    diff_onnx = float(np.abs(x_r_est.numpy() - ort_out).max())
+    diff_onnx = float(np.abs(ref_pt.numpy() - ort_out).max())
 
     if args.input_png:
         # 固定代用输入帧：RGB，缩放到目标档位后转 float32 [0,255]，与板端喂入约定一致
@@ -111,6 +159,7 @@ def do_export(args):
 
     report = {
         'stage': 'export',
+        'arch': args.arch,
         'weights': os.path.abspath(args.weights),
         'weights_sha256': sha256(args.weights),
         'onnx': os.path.abspath(args.out),
@@ -118,6 +167,9 @@ def do_export(args):
         'input_shape': [1, 3, args.h, args.w],
         'opset': OPSET,
         'onnx_normalization': {'rgb2bgr': False, 'mean': MEAN, 'std': STD},
+        'pt_params': sum(p.numel() for p in model.parameters()),
+        'weights_missing_keys': list(missing),
+        'weights_unexpected_keys': list(unexpected),
         'pt_estimator_vs_full_max_abs': diff_est,
         'onnx_vs_pt_max_abs': diff_onnx,
         'align_pass': diff_onnx < ALIGN_TOL,
@@ -128,6 +180,7 @@ def do_export(args):
             'onnxruntime': ort.__version__,
         },
     }
+    report.update(extra)
     report.update(report_inputs)
     write_report(report, args.report)
     return 0 if report['align_pass'] else 1
@@ -189,6 +242,11 @@ def main():
     pe.add_argument('--input-png', default='', help='固定代用输入帧；给定则落盘 .npy 输入与 PyTorch 参考输出')
     pe.add_argument('--dump-input', default='')
     pe.add_argument('--dump-pt-ref', default='')
+    pe.add_argument('--arch', choices=['zde', 'hq'], default='zde')
+    pe.add_argument('--arch-path', default=HQ_ARCH_DEFAULT, help='hq 架构文件路径（importlib 直载）')
+    pe.add_argument('--n-feat', type=int, default=40, help='hq：Retinexformer n_feat')
+    pe.add_argument('--stage', type=int, default=1, help='hq：Retinexformer stage 数')
+    pe.add_argument('--num-blocks', type=int, nargs=3, default=[1, 2, 2], help='hq：Retinexformer num_blocks')
     pe.set_defaults(func=do_export)
 
     pb = sub.add_parser('build', help='ONNX → RKNN')

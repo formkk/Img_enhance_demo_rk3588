@@ -161,3 +161,18 @@ I RKNN: RKNN Runtime Information: librknnrt version: 1.5.0
 - **不得用本文的耗时数字做预算**（§7.1 预算与 O28 的判定改以 C-API 数字为准）；
 - **仍然有效的结论**：三臂的**加载能力 / 输出对齐值 / 运行时版本实证**（这些与测量路径无关）；
 - 三档的**相对关系**仍成立（近似线性、256×144 显著更快），但绝对值的参考基准应为 C-API 口径。
+
+## 11. 确认门结论（v3.23 补记，2026-09-17）
+
+本文 §6 把 **toolkit2 2.3.2 的定版**挂了一个**确认门**："若 2.3.2 无法编译 HQ（注意力算子），则回退 2.4.2a12"。该门在 **M0-4 的首个 HQ 编译**中打开并**已通过**：
+
+| 项 | 实测 |
+|---|---|
+| 模型 | Retinexformer（`refs/pre-research/basicsr/models/archs/RetinexFormer_arch.py` importlib 直载；`n_feat=40` / `stage=1` / `num_blocks=[1,2,2]`），**1,605,701 参数**，权重 `LOL_v1.pth`（零 missing / unexpected） |
+| ONNX | opset 12、固定输入 512×288；**ONNX↔PyTorch（FP32）对齐 3.16e-6 < 1e-4 ✓**（报告 `docs/evidence/reports/M0-4/export_hq_512x288_lolv1.json`） |
+| 编译 | `rknn-toolkit2 2.3.2`，`target_platform=rk3588`，`do_quantization=False` → **成功**，产物 `models/hq/hq_512x288_fp16_tk232.rknn`（21,132,982 B） |
+| 算子落点 | 构建日志含 **`exMatMul` / `exNorm` / `exSoftmax`**（注意力路径未被拒） |
+| 内存 | 内部内存 **366,048 KB** / 权重 **3,209.94 KB**（日志 `Total Internal Memory Size`） |
+| 判定 | **2.3.2 通过确认门 ⇒ 不启用 2.4.2a12 回退路径**（§2.2 已回写） |
+
+⚠️ **该结论只覆盖"能否编译"**：M0-4 的其余交付（三档 R9 机械闸口、三档耗时、保底 CNN 上板）**本轮未完成**，按用户 2026-09-17 指示转为"占位"（见 `docs/plans/M0.md` §3-4/-12 与主基准 §4.1 的 v3.23 补注）。**不得由本节推断 HQ 的数值精度或耗时已达标。**

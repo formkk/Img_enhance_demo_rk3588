@@ -8,7 +8,9 @@
  *
  * 用法：
  *   ./rknn_c_probe <model.rknn> <input.f32> <runs> [nhwc|nchw] [float|nofloat] [sram|nosram]
+ *                  [u8|f32] [perf|noperf] [dump.f32] [core_mask]
  *   input.f32 = 原始 float32 数据，NHWC 或 NCHW 由第 4 参数决定，值域 [0,255]（与转换时的 mean/std 约定一致）
+ *   core_mask = 0 AUTO / 1 core0 / 2 core1 / 4 core2 / 3 core0+1 / 6 core1+2 / 7 三核（§4.1 分核契约）
  *
  * 输出：JSON（wall 统计、run_duration 统计、逐层明细字符串、内存统计）
  */
@@ -33,7 +35,8 @@ static int cmp_double(const void* a, const void* b) {
 
 int main(int argc, char** argv) {
     if (argc < 4) {
-        fprintf(stderr, "usage: %s <model.rknn> <input.f32> <runs> [nhwc|nchw] [float|nofloat] [sram|nosram] [u8|f32] [perf|noperf]\n", argv[0]);
+        fprintf(stderr, "usage: %s <model.rknn> <input.f32> <runs> [nhwc|nchw] [float|nofloat] [sram|nosram] "
+                        "[u8|f32] [perf|noperf] [dump.f32] [core_mask]\n", argv[0]);
         return 2;
     }
     const char* model_path = argv[1];
@@ -44,6 +47,7 @@ int main(int argc, char** argv) {
     int use_sram = (argc > 6 && strcmp(argv[6], "sram") == 0);
     int use_u8 = (argc > 7 && strcmp(argv[7], "u8") == 0);   /* 输入按 uint8 提供（4× 少数据） */
     int noperf = (argc > 8 && strcmp(argv[8], "noperf") == 0);
+    int core_mask = (argc > 10) ? atoi(argv[10]) : 0;        /* 0 = AUTO */
 
     FILE* fp = fopen(model_path, "rb");
     if (!fp) { perror("open model"); return 3; }
@@ -65,6 +69,11 @@ int main(int argc, char** argv) {
     rknn_sdk_version ver;
     if (rknn_query(ctx, RKNN_QUERY_SDK_VERSION, &ver, sizeof(ver)) == 0)
         printf("{\"api\":\"%s\",\"drv\":\"%s\",\n", ver.api_version, ver.drv_version);
+
+    int mask_ret = 0;
+    if (core_mask)
+        mask_ret = rknn_set_core_mask(ctx, (rknn_core_mask)core_mask);
+    printf("\"core_mask\":%d,\"core_mask_ret\":%d,\n", core_mask, mask_ret);
 
     rknn_input_output_num io_num;
     rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));

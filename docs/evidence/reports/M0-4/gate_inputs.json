@@ -1,0 +1,46 @@
+{
+  "mode": "prep-input",
+  "src": "/home/jenkolux/PKU_WH/Img_enhance_demo/refs/pre-research/m0_results/18.png",
+  "src_shape_hw": [
+    720,
+    1080
+  ],
+  "crop_wh": "1080x608",
+  "interpolation": "INTER_AREA",
+  "pad_fill": "zero（全黑）",
+  "shapes": {
+    "960x544": {
+      "png": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/gate_input_960x544.png",
+      "pad_rows_each_side": 2,
+      "content_wh": [
+        960,
+        540
+      ],
+      "rgb_mean_255": 9.526841163635254,
+      "rgb_std_255": 25.91472816467285,
+      "gray_mean_255": 9.21760493259804
+    },
+    "768x432": {
+      "png": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/gate_input_768x432.png",
+      "pad_rows_each_side": 0,
+      "content_wh": [
+        768,
+        432
+      ],
+      "rgb_mean_255": 9.595016479492188,
+      "rgb_std_255": 25.783781051635742,
+      "gray_mean_255": 9.283516589506172
+    },
+    "512x288": {
+      "png": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/gate_input_512x288.png",
+      "pad_rows_each_side": 0,
+      "content_wh": [
+        512,
+        288
+      ],
+      "rgb_mean_255": 9.593253135681152,
+      "rgb_std_255": 25.231578826904297,
+      "gray_mean_255": 9.279656304253471
+    }
+  }
+}

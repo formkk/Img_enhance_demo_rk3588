@@ -30,7 +30,7 @@
 | NPU | `fdab0000.npu`；devfreq 节点存在；驱动 **rknpu 0.9.8**（2024-08-28 构建） |
 | 内存 | total **7.7 GiB**（available 7.1 GiB） |
 | eMMC | `mmcblk0` **58.7 G**（`name=11S000`、`manfid=0x2f`；厂商标识字段未得）；根分区 `/dev/mmcblk0p3` 58 G，**可用 51 G** |
-| 摄像头 | ❌ **未接入/未使能**：`/sys/class/video4linux/` 空、无 `/dev/video0…N` 与 `/dev/v4l-subdev*` / `/dev/media*`、dmesg 无 `imx415`/`rkisp`/`rkcif`（对应风险 R12） |
+| 摄像头 | ✅ **（v3.23）CAM0 + 野火 IMX415 已打通**：`imx415 1-001a` 检测到 `id 0000e0`、`csi2-dcphy0` link 完成、`rkisp_mainpath` = `/dev/video11` 出 NV12 1920×1080，帧逐帧对齐；首轮失败系排线接触/方位问题（详见 **§7**）。⚠️ 当前 overlay 为 **1080p@60** 变体，实测 ≈50.6 fps，**非 §3.1/§3.2 的 30 fps** |
 
 ## 3. 软件栈（**M0-1 定案项**）
 
@@ -49,8 +49,8 @@
 | 板型（Cat-4/5） | ✅ **LubanCat-5 V2** |
 | 内核 / 发行版 | ✅ 5.10.160 / Debian 11 |
 | 软件版本三元组 | ✅ **已定版**（v3.22）：librknnrt **2.3.2** / toolkit2 **2.3.2**（同版本号）/ driver **0.9.8**（≥0.9.2 下限）；确认门 = M0-4 的 HQ 编译结果 |
-| overlay / `/dev/videoX` / rkisp 节点 |  **未满足**（摄像头未接入，见 §2） |
-| 丝印 CAM 口 lane 数 |  待摄像头接入后核（Cat-5 仅 CAM0/CAM1 为 4-lane，R12） |
+| overlay / `/dev/videoX` / rkisp 节点 | ✅ **已满足（v3.23）**：`uEnvLubanCat5-V2.txt` 第 63 行启用 cam0 的 imx415 overlay；`/dev/video0…19+`、`/dev/v4l-subdev*`、`/dev/media0|1` 齐备；ISP 主路径 = **`/dev/video11`**（rkisp_mainpath，NV12 1920×1080）；`camera.video_node` / `camera.rkisp_node` 取值以此为准（详见 §7） |
+| 丝印 CAM 口 lane 数 | ✅ **CAM0 = 4 lane**（驱动 `detect imx415 lane 4`；原理图 J8 走 D0~D3+CLK）——与 R12"Cat-5 仅 CAM0/CAM1 为 4-lane"一致 |
 | 屏插件 / 横竖屏 / connector | ⬜ 未核（待补 `probe_drm`，服务 M0-9） |
 
 ## 5. 待办与阻塞
@@ -60,7 +60,7 @@
 | ~~B1~~ | ~~**librknnrt 1.5.0 vs 2.3.2 的 A/B 实测**~~ → **已完成定版**（2026-09-17 19:0x）：三臂（1.5.0 / 2.3.2 / 2.4.2a12）均可转、可加载、可推理，耗时差异落在噪声内；**定版 = 板上 `librknnrt 2.3.2` + PC `rknn-toolkit2 2.3.2`**（同版本号），确认门 = M0-4 的 HQ 编译结果。证据见 `docs/evidence/M0-2-ab-toolkit-version.md` | **剩余动作：板上 `librknnrt` 升级（1.5.0 → 2.3.2）尚未执行**——有副作用，须先备份 `/usr/lib/librknnrt.so`、记录恢复步骤并取得授权（规则 `30-board-safety.md` §4）；A/B 全程以 `unshare -Ur -m` 挂载命名空间隔离，系统文件未改动 |
 | B1-b | **板端 lite2 的正式安装**（`rknn_toolkit_lite2` **cp39**，随定版 2.3.2） | 本轮 A/B 用 `pip3 install --target ~/rknn_ab/site/*` 临时隔离；正式部署时再决定装用户级还是系统级（受 B4 授权约束） |
 | B1-c | 临时区清理 | 板 `~/rknn_ab/`（约 100 MB）与 `~/rknn_ab/lib/*/librknnrt.so` 可随时 `rm -rf` 完全回退 |
-| B2 | 摄像头链路排查（IMX415 接入 / overlay / 设备树插件） | 阻塞 M1（不阻塞 M0） |
+| B2 | 摄像头链路排查（IMX415 接入 / overlay / 设备树插件） | ✅ **已解除（v3.23，2026-09-17 22:05）**：根因 = cam0 overlay 未启用（已启用）+ **排线接触/方位**（重插后传感器 ID 读取成功）；链路与 ISP 出帧已验证（§7）。**遗留（不阻塞 M0）**：① 当前 overlay 为 1080p@60，实测 ≈50.6 fps，**30 fps 锁定**按 §3.2 三步实验在 M1 落定；② 当次画面极暗+强红偏+离焦，画质结论待正常光照场景复采 |
 | B3 | 补探 DRM connector 与屏参数（`board-ops` 的 `probe_drm`） | 服务 §11.1-1 / §11.1-9 |
 | B4 | 有副作用操作（换板上 `librknnrt`、装 apt 组件、停流/复位）**均需用户授权**并先记录恢复步骤（规则 `30-board-safety.md` §4） | — |
 
@@ -83,3 +83,81 @@
 | 功能核验（**系统路径，不再用命名空间**） | FP16 480×272：加载 OK、对齐 **4.91e-4**、中位 74.0 ms；INT8 480×272：加载 OK、对齐 1.72e-2；FP16 256×144：加载 OK、对齐 4.60e-4、中位 27.0 ms；**1.5.0 编译的模型亦可加载**（对齐 5.42e-4） |
 | **恢复步骤** | `sudo install -m 644 -o root -g root /usr/lib/librknnrt.so.bak.1.5.0_20260917 /usr/lib/librknnrt.so`，随后 `strings ... | grep -m1 librknnrt.version` 应回到 `1.5.0`；**无需重启**（下一次进程加载即生效） |
 | 遗留 | 备份文件保留在 `/usr/lib/`（不删）；`~/rknn_ab/` 内的隔离用 `.so` 已无必要，可随临时区一并 `rm -rf` |
+
+## 7. 摄像头链路（CAM0 / IMX415）
+
+**结论（2026-09-17 22:05，重插排线 + 重启后复测）**：✅ **链路已打通** —— 传感器 ID 读取成功、media 链路 link 完成、ISP mainpath 出帧（NV12 1920×1080）；先前"无 I2C 应答"系**排线接触/方位问题**，重插后自愈。
+
+### 7.0 bring-up 两阶段对照
+
+| 阶段 | dmesg 关键行 | 判定 |
+|---|---|---|
+| 首轮（21:53，仅启用 overlay + 重启） | `imx415 1-001a: Unexpected sensor id(000000), ret(-5)`；`i2cdetect` 无 `0x1a` | ❌ 传感器无应答（DT/供电/GPIO 均已核到位 ⇒ 疑物理侧） |
+| 复测（22:05，**重插排线 + 重启**） | `imx415 1-001a: Detected imx415 id 0000e0`；`rockchip-csi2-dphy csi2-dcphy0: dphy0 matches m00_b_imx415 1-001a:bus type 5`；`capture_mode is 1920x1080` | ✅ 传感器在线、链路 link、1080p 模式 |
+
+### 7.1 配置变更（有副作用，本次已获用户授权执行）
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `/boot/uEnv/uEnvLubanCat5-V2.txt` **第 63 行**由注释改为 `dtoverlay=/dtb/overlay/rk3588-lubancat-5-cam0-imx415-1920x1080-60fps-overlay.dtbo`（diff 仅此一行） |
+| 备份 | `/boot/uEnv/uEnvLubanCat5-V2.txt.bak.20260917_cam0`，sha256 `dd5facae17149a49dada35e7dbfa118d2a6c60723e163180d446f52e092590aa`；改后 sha256 `d00c7e7642789ca12b89f174e02f7915acacced9b159f9004276d50d121fb88d` |
+| 生效方式 | `sudo reboot`（21:53，SSH 约 18 s 后恢复） |
+| 恢复步骤 | `sudo cp /boot/uEnv/uEnvLubanCat5-V2.txt.bak.20260917_cam0 /boot/uEnv/uEnvLubanCat5-V2.txt && sudo reboot` |
+| 同时生效的其它 overlay（未改动） | 第 39 行 `rk3588-lubancat-5-hdmi0-vp0-overlay.dtbo`；第 44 行 `rk3588-lubancat-5-v2-dsi0-vp2-1080x1920-5.5inch-ebf410125-overlay.dtbo`（5.5" 屏 vp2/dsi0）；`enable_uboot_overlays=1` |
+| 仍为注释 | cam1~cam5 的 imx415 overlay（未启用） |
+
+### 7.2 启用后的实测（只读）
+
+| 项 | 实测 |
+|---|---|
+| DT 节点 | `i2c@fea90000/dcphy0-imx415@1a`（`sony,imx415`）**status=okay**；`csi2-dcphy0`、`mipi0-csi2` = okay（重启前均为 disabled） |
+| 节点文件 | `/dev/media0`、`/dev/media1`、`/dev/video0…19+`、`/dev/v4l-subdev0…2`；`v4l2-ctl --list-devices` 列出 `rkcif-mipi-lvds` / `rkisp_mainpath` / `rkisp-statistics` |
+| 驱动探测 | `imx415 1-001a: driver version 00.01.08`、`Get data lanes failed! 4 lanes default`、`detect imx415 lane 4`、`Failed to get power-gpios`、`no pinctrl`（该 BSP 的该节点本就不带这两项，非致命） |
+| **失败点** | `imx415 1-001a: Unexpected sensor id(000000), ret(-5)`；`rkcif: get remote terminal sensor failed!`（-19）⇒ 传感器无应答 |
+| I2C（`sudo i2cdetect -y -r 1`） | 0x22 `fusb302`、0x42 `rk8602`、0x5d `gt911`（触摸）**正常应答** ⇒ 总线与上拉无问题；**无 0x1a** |
+| 供电轨（`regulator_summary`） | `cam_dvdd 1200 mV`、`cam_dovdd 1800 mV`、`cam_avdd 2800 mV` 均 enabled；`vdd_cam_5v` 3300 mV（4 users） |
+| GPIO（DT 解码 ↔ 原理图） | `pwdn-gpios=<gpio4 8 0>`（= GPIO4_B0，高有效）、`reset-gpios=<gpio4 9 1>`（= GPIO4_B1，低有效）↔ 原理图 J8：AK26=`CAM0_PWDN`、AL24=`CAM0_nRST`，**逐条一致** |
+| 屏未受影响 | `card0-DSI-1` = connected + enabled（加摄像头未抢 DSI 的 `inno-dsidphy`；组合 PHY `samsung-mipi-dcphy` 与屏无关） |
+
+### 7.3 CAM 口 ↔ DT/I2C 映射（读 vendor overlay 取得，供丝印核对）
+
+| 丝印口 | I2C（DT 标签 / Linux 节点） | PHY 路径 | CSI |
+|---|---|---|---|
+| CAM0 | i2c1 / `/dev/i2c-1`（`fea90000`） | `csi2-dcphy0` | `mipi0-csi2` |
+| CAM1 | i2c5 / `/dev/i2c-5`（`fead0000`） | `csi2-dcphy1` | `mipi1-csi2` |
+| CAM2 | i2c3（`feab0000`，**当前 DT disabled**） | `csi2-dphy1`（+ `dphy0_hw`） | `mipi2-csi2` |
+| CAM3 | i2c4（`feac0000`，**当前 DT disabled**） | `csi2-dphy2`（+ `dphy0_hw`） | `mipi3-csi2` |
+| CAM4 | i2c6 / `/dev/i2c-6`（`fec80000`） | `csi2-dphy4`（+ `dphy1_hw`） | `mipi4-csi2` |
+| CAM5 | i2c7 / `/dev/i2c-7`（`fec90000`） | `csi2-dphy5`（+ `dphy1_hw`） | `mipi5-csi2` |
+
+现场已探 i2c-1 / 5 / 6 / 7：**均无 0x1a**；i2c3 / i2c4 因控制器 disabled 不可探（cam2/cam3 若插错口需先启用对应 overlay）。
+
+### 7.4 硬件资料索引（本次核图用）
+
+- 板卡规格书 `…/鲁班猫5/[野火]鲁班猫5开发板硬件规格书_V1.1.4.pdf` **§4.5.15 摄像头（第 33 页）**：6×24Pin FPC，丝印 CAM0~CAM5；**"需搭配排线使用"**，并附**正面(左)/背面(右)连接示意图**
+- 原理图 `…/EBF410149V2R2_20250908/EBF410149V2R2_SCH_20250908.pdf`：`MIPI CSI 0 PORT`（J8）/`MIPI CSI 1 PORT`（J9）；J8 pin5/6 = `I2C1_SDA_M2/SCL_M2`（= i2c1 ✓ 与 cam0 overlay 一致）、pin7~21 = 4 lane MIPI
+- 模组资料 `refs/野火鲁班猫/野火【IMX415摄像头】模块_20260617/`（EBF410358V1R1 原理图/PCB/尺寸 + IMX415 datasheet）
+
+### 7.5 出图验证与取流参数（22:05–22:06，只读 + 取流）
+
+| 项 | 实测 |
+|---|---|
+| ISP 节点 | `rkisp_mainpath` = **`/dev/video11`**（Multiplanar；`rkisp-isp-subdev` pad0 sink = `SGBRG10_1X10/1920x1080` ← `rkcif-mipi-lvds:0 [ENABLED]`；pad2 source = `YUYV8_2X8/1920x1080` → mainpath `[ENABLED]`） |
+| 可选格式 | UYVY / NV16 / NV61 / NV21 / **NV12** / NM21 / NM12，Stepwise 32×32–1920×1080 step 8（⇒ §3.1 的 1920×1080 NV12 可用） |
+| 3A | `rkaiq_3A_server`（PID 387）常驻；IQ 文件 `/etc/iqfiles/imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json` **与 DT 的 module-name 匹配** ✅ |
+| 取流命令 | `sudo v4l2-ctl -d /dev/video11 --set-fmt-video=width=1920,height=1080,pixelformat=NV12 --stream-mmap=4 --stream-count=90 --stream-to=/tmp/cam_long.raw` |
+| 帧完整性 | 30 帧文件 93,312,000 B = 30 × (1920×1080×1.5) **逐帧对齐**；90 帧同理 |
+| 实际帧率 | 90 帧 **1.778 s ⇒ ≈ 50.6 fps**（**注意**：当前 overlay 是 `…-imx415-1920x1080-**60fps**-overlay`，**不是 §3.1/§3.2 要的 30 fps**，30 fps 锁定留 M1 三步实验） |
+| 传感器 ctrl（3A 自动） | `exposure = 1350`（max 2242）、`analogue_gain = 161`（max 240）⇒ AE 已把增益推到 ~67%，与"现场极暗"一致 |
+| 图像观感（当次场景） | f0 近全黑（gray mean 0.45）→ 流稳后 f60/f89 gray mean ≈ 37–39、std ≈ 12.8、max ≈ 101，**B/G/R 均值 ≈ 16–22 / 15–17 / 85–88（强红偏）**、画面**离焦**；属场景/光照待确认项，**不作画质结论** |
+| 证据图 | `docs/evidence/reports/M0-1/cam0_1080p_frame0.png`（AE 收敛前）、`cam0_1080p_f60.png`、`cam0_1080p_f89.png`；原始 NV12 未入库（大文件） |
+
+### 7.6 复测命令（只读，供后续复现）
+
+```
+ssh board 'sudo dmesg | grep -iE "imx415|rkcif.*sensor failed"; \
+  sudo i2cdetect -y -r 1 | tail -8; \
+  v4l2-ctl --list-devices; \
+  sudo v4l2-ctl -d /dev/video11 --list-formats-ext'
+```
+判据（已全部满足）：关闭 `Unexpected sensor id(000000)`、`i2cdetect` 出现 `1a`、`Detected imx415 id` 出现、`--list-formats-ext` 含 NV12 1920×1080。

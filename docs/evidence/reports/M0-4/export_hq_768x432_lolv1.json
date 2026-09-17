@@ -1,0 +1,63 @@
+{
+  "stage": "export",
+  "arch": "hq",
+  "weights": "/home/jenkolux/PKU_WH/Img_enhance_demo/refs/pre-research/pretrain_model/LOL_v1.pth",
+  "weights_sha256": "9b4810dc51322fab70be8658ee0ad1df64a54aa814497b7849767baa2ff32cd1",
+  "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/hq/hq_768x432.onnx",
+  "onnx_sha256": "4c41313495ac8ffbd49499b22651394a5abd06166c33dd25a662b607eac4b3dd",
+  "input_shape": [
+    1,
+    3,
+    432,
+    768
+  ],
+  "opset": 12,
+  "onnx_normalization": {
+    "rgb2bgr": false,
+    "mean": [
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "std": [
+      [
+        255,
+        255,
+        255
+      ]
+    ]
+  },
+  "pt_params": 1605701,
+  "weights_missing_keys": [],
+  "weights_unexpected_keys": [],
+  "pt_estimator_vs_full_max_abs": null,
+  "onnx_vs_pt_max_abs": 1.189112663269043e-05,
+  "align_pass": true,
+  "env": {
+    "python": "3.8.20",
+    "torch": "2.0.1+cpu",
+    "onnx": "1.17.0",
+    "onnxruntime": "1.19.2"
+  },
+  "hq_arch": "/home/jenkolux/PKU_WH/Img_enhance_demo/refs/pre-research/basicsr/models/archs/RetinexFormer_arch.py",
+  "hq_arch_sha256": "1567c89d55285a3c1a4d4ca33f288b1fd98dc6b6bbdf971eda02d745f9087631",
+  "hq_model_kwargs": {
+    "n_feat": 40,
+    "stage": 1,
+    "num_blocks": [
+      1,
+      2,
+      2
+    ]
+  },
+  "input_png": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/gate_input_768x432.png",
+  "input_png_sha256": "a8322c5dfdb6710188cd7702309aeba9a416a7ef017a89adac2358e90f3b7e74",
+  "dump_input": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/gate_input_768x432.npy",
+  "dump_pt_ref": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/pt_ref_768x432.npy",
+  "pt_ref_range": [
+    -0.14678676426410675,
+    1.975276231765747
+  ]
+}
