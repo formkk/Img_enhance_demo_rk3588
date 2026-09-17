@@ -19,7 +19,7 @@
 | 1 | 1920×1080 NV12 → 480×270 RGB888 的 **scale + CSC 由一次 `improcess` 完成**（不需要 `imresize` + `imcvtcolor` 两步） | ✅ |
 | 2 | 生产口径须为 **DMA-BUF（`dma_heap/system-dma32`）+ 偏移基址子视图**：blit 中位 **2.10 ms**；纯 VA（malloc）**4.06 ms**（慢一倍，且 VA 路径在 RGA3 上映射能力受限） | ✅ |
 | 3 | **`drect` 的 y 偏移必须偶对齐**（y=1 → `IM_STATUS_INVALID_PARAM`）⇒「有效区落在第 1..270 行」**只能**用偏移基址子视图实现 | ⚠️ 平台约束 |
-| 4 | **`imfill`（colorfill）对 RGB888 直接失败**（`IM_STATUS_FAILED`，驱动 `RGA_COLORFILL Invalid argument`）⇒ 零填充只能走 `improcess` 从零源块拷入，**不可能"在一次 blit 内完成"** | ⚠️ 偏离 §3.1 G1 → **O32** |
+| 4 | **`imfill`（colorfill）对 RGB888 直接失败**（`IM_STATUS_FAILED`，驱动 `RGA_COLORFILL Invalid argument`）⇒ 零填充只能走 `improcess` 从零源块拷入，**不可能"在一次 blit 内完成"** | ✅ **已于 v3.27 裁定 O32 = 方案 (a)**：修订 §3.1 G1 措辞（删除该表述），改用「缓冲初始化时各填一次 + 每帧一次 blit」；**候选优化点 (b)（通路复探）登记备查、非达标项** |
 | 5 | blit **只写 drect 覆盖的行**（哨兵 0xAA 验证）⇒ pad 行**只在缓冲池初始化时填一次**，**每帧零成本** | ✅ |
 | 6 | 黑带对曲线的影响**严格局限在有效区最外 7 行**（= 感受野半径），第 8 行起逐元素差 **恒为 0**；图像域峰值 **10.5 LSB**（vs 边缘复制）/ **20.0 LSB**（vs 中灰），只发生在窗域最外 16–17 行 | ✅ 零填充可接受 |
 | 7 | `rga.core_mask` 取 **3**（允许 RGA3 CORE0\|CORE1）；单 job 实测 mask 0/1/3 无差（2.10 ms），mask 2（绑 CORE1）略快 2.4%（2.05 ms） | ✅ 已落值 |
@@ -55,7 +55,13 @@ dst  480×272 RGB888（wstride/hstride = 480/272）
 | 约束 | 实测 | 后果 |
 |---|---|---|
 | **`drect` 的 y 偏移必须偶对齐** | `drect={0,1,480,270}` → `-3`「Hardware limitation dst rect, unsupported operation of images smaller than 2 pixels」；`{0,2,…}` → 成功；`{0,4,…}` → 越界报错（因 4+270 > 272）。**VA 与 fd 路径表现完全一致** | 「上下各 1 行 pad」的 dy=1 布局**不能用 drect 表达**，只能用偏移基址子视图（drect dy=0） |
-| **`imfill`（colorfill）对 RGB888 不可用** | `imfill_t(dst, {0,0,480,2}, 0, 1)` 与整块填充**均返回 `IM_STATUS_FAILED`**；驱动侧 `RgaCollorFill: RGA_COLORFILL fail: Invalid argument` + `rga_mm: failed to map buffer` | 零填充只能靠 `improcess` 从零源块拷入；§3.1 G1 的「由 RGA 的 letterbox/背景填充**在一次 blit 内完成，不额外拷贝**」**在本平台不可实现** → 登记 **O32** |
+| **`imfill`（colorfill）对 RGB888 不可用** | `imfill_t(dst, {0,0,480,2}, 0, 1)` 与整块填充**均返回 `IM_STATUS_FAILED`**；驱动侧 `RgaCollorFill: RGA_COLORFILL fail: Invalid argument` + `rga_mm: failed to map buffer` | 零填充只能靠 `improcess` 从零源块拷入；§3.1 G1 原表述「由 RGA 的 letterbox/背景填充**在一次 blit 内完成，不额外拷贝**」**在本平台不可实现** → **已于 v3.27 裁定 O32 = 方案 (a) 修订措辞**（见下方"裁定结果"） |
+
+**⇒ 裁定结果（v3.27，§15 O32 = 方案 (a)「认可替代实现、修订措辞」）**：
+
+1. **§3.1 G1 第 1 条改为**：pad 在**缓冲池初始化时**由 RGA 以 `improcess` 从零源块拷入（每缓冲各一次，实测 **0.45 ms/缓冲**），**每帧只做一次 scale+CSC blit**（实测 **2.10 ms** 中位）；该 blit **不越写 pad 行**（哨兵验证）⇒ **每帧无额外拷贝**。原「在一次 blit 内完成」的**表述删除**——条款**目的**由替代实现**完整满足**。
+2. **§10.4 `pipeline.curve_geometry` 行同步修订。**
+3. **候选优化点 (b)（登记备查、非达标项）**：改用 legacy `c_RkRgaBlit` 的 `rga_info_t` 背景色/**裁剪**字段、C++ `improcess` 的 `im_opt_t.color`（probe 输出中可见 `rga_dump_opt: color[...]`），或**升级 librga 后重探**。**目标是省掉零源缓冲与初始化路径，收益属实现简洁性而非性能**（现状已是每帧零成本），故**不列 M0/M2 达标项**；**复探触发条件 = librga 版本升级**。
 
 **为什么不构成每帧代价**：blit 的写入范围 = drect，实测 pad 行**不被触碰**（`pad_method=none` 时哨兵 0xAA 完整保留）。故 pad 只需在**缓冲池初始化**时按缓冲各填一次；双/三缓冲池 = N 次 0.45 ms，**摊销到每帧为 0**。这一实现选择的净效果与契约条款的目的（避免每帧额外拷贝）一致。
 
