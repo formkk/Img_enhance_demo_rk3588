@@ -1,0 +1,6 @@
+{"slice_w_in":256,"slice_w_out":240,"slices":2,"halo":7,"full_w":480,"starts":[0,224],
+"init_ret":[0,0],"core_mask_ret":[0,0],"cores":[0,1],
+"frame_wall_ms":{"min":17.37,"median":18.05,"p90":19.24,"max":19.41},
+"per_slice_ms":[{"s":{"min":17.29,"median":18.05,"p90":19.24,"max":19.41}},{"s":{"min":17.30,"median":18.00,"p90":19.18,"max":19.31}}],
+"cfg":{"want_float":0}
+}

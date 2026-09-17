@@ -18,6 +18,9 @@ models/**/*.pth
 
 # 证据报告中的大张量中间产物（可由 docs/evidence 记录的复现命令重生成，不入库）
 docs/evidence/reports/**/*.npy
+# 同上：裸张量/裸图中间产物（曲线场 .f32、RGB888 帧 .rgb 等），同属可重生成项
+docs/evidence/reports/**/*.f32
+docs/evidence/reports/**/*.rgb
 
 # rknn-toolkit2 在**当前工作目录**留下的内部 onnx 优化中间文件（实测：每次 build 都会生成）
 *_optimize.onnx

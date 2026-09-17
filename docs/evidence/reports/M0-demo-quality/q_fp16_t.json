@@ -1,0 +1,10 @@
+{"api":"2.3.2 (429f97ae6b@2025-04-09T09:09:27)","drv":"0.9.8",
+"core_mask":0,"core_mask_ret":0,
+"in_elems":391680,"out_elems":391680,"n_input":1,"n_output":1,
+"mem":{"weight":24832,"internal":63452160,"dma":65290240,"sram":0,"sram_free":0},
+"n":40,
+"wall_ms":{"min":67.36,"median":77.44,"p90":94.66,"max":117.98},
+"npu_run_ms":{"min":44.51,"median":49.62,"p90":50.20,"max":79.42},
+"overhead_ms_median":27.82,
+"cfg":{"fmt":"nhwc","want_float":0,"sram":0,"in_type":"uint8","perf_collect":0}
+}

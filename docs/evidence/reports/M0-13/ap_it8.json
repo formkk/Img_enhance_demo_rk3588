@@ -1,0 +1,7 @@
+{"geom":{"out":"1080x608 RGB888","curve":"480x270 x3 f32"},"iters":8,"fused_scalar_ms":{"min":39.122,"median":39.163,"p90":39.187,"max":67.723},
+"fused_neon_ms":{"min":17.781,"median":17.809,"p90":17.829,"max":17.844},
+"neon_vs_scalar":{"mismatch_bytes":0,"max_abs_delta":0,"total":1969920},
+"unfused_ms":31.068,
+"ddr":{"frame_bytes":1969920,"fused_bytes_per_frame":3939840,"fused_MBps_at30":118.2,"unfused_bytes_per_frame":31518720,"unfused_MBps_at30":945.6,"ratio":8.0},
+"dump":"/tmp/ao.rgb",
+"impl":"fused_neon"}

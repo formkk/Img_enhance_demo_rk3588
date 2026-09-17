@@ -162,6 +162,35 @@ ssh board 'sudo dmesg | grep -iE "imx415|rkcif.*sensor failed"; \
 ```
 判据（已全部满足）：关闭 `Unexpected sensor id(000000)`、`i2cdetect` 出现 `1a`、`Detected imx415 id` 出现、`--list-formats-ext` 含 NV12 1920×1080。
 
+### 7.7 采集源比例与传感器读出窗（2026-09-17 23:4x，只读探测）
+
+**结论**：采集源**就是精确 16:9**（1920×1080），且是**链路 1:1 直通**得到的，不是 ISP 裁剪/缩放凑出来的。
+
+| 级 | 实测 | 证据 |
+|---|---|---|
+| 传感器 | 出流 **1944×1096 @10bit**（`SGBRG10_1X10`）；**有效窗 = (12,8)/1920×1080** | dmesg `s_stream: 1. 1944x1096, hdr: 0, bpp: 10`；`media-ctl -p` → `m00_b_imx415 1-001a` 的 `crop.bounds:(12,8)/1920x1080` |
+| rkcif | 1944×1096 → **1920×1080**（裁掉左右各 12 列 / 上下各 8 行读出余量） | `rkcif-mipi-lvds` pad0 source = `SGBRG10_1X10/1920x1080` |
+| ISP | `crop.bounds` = `crop` = **(0,0)/1920×1080** ⇒ **不裁不缩，1:1 直通** | `rkisp-isp-subdev` pad0（`media-ctl -p -d /dev/media1`） |
+| 主路径 | **1920×1080 NV12**（单平面、continuous，Bytes per line 1920） | `v4l2-ctl -d /dev/video11 --get-fmt-video` |
+| 节点能力上限 | Stepwise 32×32–**1920×1080** step 8/8 ⇒ **本节点拿不到 4K** | `v4l2-ctl -d /dev/video11 --list-formats-ext` |
+
+**两点必须留意的实测事实**：
+
+1. **高度 16 对齐陷阱**：进入探测时 `/dev/video11` 残留格式是 **1920×1088 NM12（两平面）**（高度被 16 对齐，疑为前次 GStreamer 协商残留）。显式 `--set-fmt-video=width=1920,height=1080,pixelformat=NV12` 时驱动**接受并返回 1920×1080**（单平面）；而请求 1088 同样被接受 ⇒ **两种高度都可用，不能依赖协商/默认值**。这与主基准 §3.1 警告的 stride 对齐是同源现象（该处警告的是宽度方向"1080 按 16 对齐到 1088"）。⇒ **实现期必须显式 set-fmt 到 1080，并把读回值写入报告**（本项服务 §11.1-1 的采集参数登记）。
+2. **"16:9 成立" ≠ "1080p 怎么来的已定"**：有效窗 1920×1080 表明用的是传感器自身 1080p 读出模式（叠加名 `…-imx415-1920x1080-60fps…`），但**是 2×2 模拟 binning 还是 4K 抽行/裁切，上述探针判不出**——直接决定弱光灵敏度（只有 binning 有 +6 dB）。主基准 §3.2 已将此留给 M1 三步实验，且**禁止预写"+6 dB"**。另：dmesg `vts=2250` 证实为 60 fps 变体，与本文件 §7.5 实测 ≈50.6 fps 的异常同源。
+
+**对本链路几何的意义**（服务 §3.1 G1）：1920×1080 → 480×270 是**精确 4.0× 整数降采样**，两轴一致、无形变；§3.1 的 +0.08% 映射残差只出现在 1080×608（16:9 严格高 607.5，取整 608），与采集端无关。
+
+**复现命令（只读）**：
+
+```
+ssh board 'sudo dmesg | grep -E "s_stream|vts"; \
+  sudo media-ctl -p -d /dev/media0 | grep -A4 "imx415"; \
+  sudo media-ctl -p -d /dev/media1 | grep -A6 "rkisp-isp-subdev"; \
+  v4l2-ctl -d /dev/v4l-subdev2 --get-subdev-fmt pad=0; \
+  v4l2-ctl -d /dev/video11 --get-fmt-video'
+```
+
 ## 8. 摄像头光学与成像现状（v3.24，2026-09-17 22:2x–23:0x）
 
 **结论**：链路（sensor→CSI→ISP→mainpath）完全可用、帧实时前进；**光学侧未定型** —— 镜头换装后仍**未达合焦**，且**安装朝向倾斜约 30–40°**。⇒ **画质类结论一律挂起**；**"镜头定型 + 摆正 + 对焦达标"为 M1 前置闸口（主基准 §15 O31）**，未关闭前不得采 M1 实拍集。

@@ -210,7 +210,9 @@ int main(int argc, char** argv) {
     printf(",\n\"per_slice_ms\":[");
     for (int i = 0; i < n_slices; i++) {
         if (i) printf(",");
+        printf("{");
         print_stats("s", sl[i].run_ms, g_runs);
+        printf("}");
     }
     printf("],\n");
 

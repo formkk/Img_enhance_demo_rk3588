@@ -1,0 +1,63 @@
+{
+  "cr2": "/home/jenkolux/PKU_WH/Img_enhance_demo/refs/pre-research/06.CR2",
+  "cr2_sha256": "bef7d17f0cff6281fbeb791dadf006f19a17fcefe4b995c300b819b519c59c10",
+  "cr2_native": [
+    3670,
+    5496,
+    3
+  ],
+  "src_1080p": [
+    1080,
+    1920
+  ],
+  "geom": {
+    "eff": [
+      270,
+      480
+    ],
+    "est": [
+      272,
+      480
+    ],
+    "pad_rows": [
+      1,
+      1
+    ],
+    "apply_domain": [
+      1080,
+      1920
+    ],
+    "upsample": "bilinear 4x/4x"
+  },
+  "src_stats": {
+    "mean": 30.08,
+    "p50": 23.0,
+    "p90": 47.0,
+    "p99": 156.0,
+    "dark_ratio_lt30": 0.6876,
+    "laplacian_var": 22.68
+  },
+  "est_input_stats": {
+    "mean": 26.68,
+    "pad_row_top_nonzero": 0,
+    "pad_row_bot_nonzero": 0
+  },
+  "files": {
+    "src_1080p.png": {
+      "bytes": 2411813,
+      "sha256": "4946333a097526bc"
+    },
+    "est_in_480x272_u8.raw": {
+      "bytes": 391680,
+      "sha256": "bda707c93c04e268"
+    },
+    "est_in_480x272_nhwc.f32": {
+      "bytes": 1566720,
+      "sha256": "5cc750476061d158"
+    },
+    "frame_1080p_f32.npy": {
+      "bytes": 24883328,
+      "sha256": "450e163c4cc15ee5"
+    }
+  }
+}

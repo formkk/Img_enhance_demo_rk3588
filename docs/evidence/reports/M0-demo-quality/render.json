@@ -1,0 +1,99 @@
+{
+  "apply_domain": [
+    1080,
+    1920
+  ],
+  "iters": 8,
+  "candidates": {
+    "int8_split2": {
+      "curve_src": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-demo-quality/q_int8_split2_stitched.f32",
+      "curve_eff_range": [
+        -0.3452,
+        -0.0471
+      ],
+      "apply_ms_ref_median": 129.0,
+      "stats": {
+        "mean": 103.15,
+        "p50": 103.0,
+        "p90": 142.0,
+        "p99": 195.0,
+        "dark_ratio_lt30": 0.0055,
+        "laplacian_var": 109.09
+      }
+    },
+    "fp16": {
+      "curve_src": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-demo-quality/q_fp16.f32",
+      "curve_eff_range": [
+        -0.3413,
+        -0.051
+      ],
+      "apply_ms_ref_median": 128.2,
+      "stats": {
+        "mean": 102.8,
+        "p50": 103.0,
+        "p90": 142.0,
+        "p99": 195.0,
+        "dark_ratio_lt30": 0.0058,
+        "laplacian_var": 108.23
+      }
+    }
+  },
+  "probe": {
+    "slice_w_in": 256,
+    "slice_w_out": 240,
+    "slices": 2,
+    "halo": 7,
+    "full_w": 480,
+    "starts": [
+      0,
+      224
+    ],
+    "init_ret": [
+      0,
+      0
+    ],
+    "core_mask_ret": [
+      0,
+      0
+    ],
+    "cores": [
+      0,
+      1
+    ],
+    "frame_wall_ms": {
+      "min": 17.37,
+      "median": 18.05,
+      "p90": 19.24,
+      "max": 19.41
+    },
+    "per_slice_ms": [
+      {
+        "s": {
+          "min": 17.29,
+          "median": 18.05,
+          "p90": 19.24,
+          "max": 19.41
+        }
+      },
+      {
+        "s": {
+          "min": 17.3,
+          "median": 18.0,
+          "p90": 19.18,
+          "max": 19.31
+        }
+      }
+    ],
+    "cfg": {
+      "want_float": 0
+    }
+  },
+  "src_stats": {
+    "mean": 30.08,
+    "p50": 23.0,
+    "p90": 47.0,
+    "p99": 156.0,
+    "dark_ratio_lt30": 0.6876,
+    "laplacian_var": 22.68
+  }
+}
