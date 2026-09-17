@@ -27,8 +27,8 @@
 
 | 登记项 | 采集方式 | 判定阈值 | 回填时点 | 结论值 | 依据报告路径 | 复检时点 |
 |---|---|---|---|---|---|---|
-| 介质类型与型号（eMMC / SD / NVMe） | `lsblk -o NAME,SIZE,TYPE,MOUNTPOINT` + `/sys/block/*/device/{model,rev}` | 须明确到具体设备与型号，不得只写"eMMC" | M3 | | | M3 后（更换演示板或存储介质即复检） |
-| `storage.dir` 所在分区可用容量（GB） | `df -B1 <storage.dir>` | — | M3 | | | 同上 |
+| 介质类型与型号（eMMC / SD / NVMe） | `lsblk -o NAME,SIZE,TYPE,MOUNTPOINT` + `/sys/block/*/device/{model,rev}` | 须明确到具体设备与型号，不得只写"eMMC" | M3 | eMMC `mmcblk0` **58.7 G**；`name=11S000` / `manfid=0x2f` —— **厂商标识字段未取得，型号尚不完整**（待补 `/sys/block/mmcblk0/device/{type,cid}` 解释或换查法） | `docs/evidence/M0-1-hardware-baseline.md` §2.5 | M3 后（更换演示板或存储介质即复检） |
+| `storage.dir` 所在分区可用容量（GB） | `df -B1 <storage.dir>` | — | M3 | 根分区 `/dev/mmcblk0p3` **可用 51 G**（已用 4.3 G / 58 G）；`storage.dir` 未定义，暂以根分区为参考 | 同上 | 同上 |
 | 单组集合（A~D，§8.3）实测占用 | 触发一次存图后 `du -sb` 该 `seq_src` 整组 | — | M3 | | | 存图编码或集合定义变更时 |
 | `storage.capacity_limit_gb` 取值 | 由上面两行推算 | **不设独立阈值**：上限须给出推算依据（单组占用 × 保留组数 ≤ 可用容量），且推算过程随行记录 | M3 | | | 同上 |
 
