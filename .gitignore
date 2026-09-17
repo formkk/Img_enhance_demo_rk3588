@@ -1,0 +1,25 @@
+# 构建产物（docs/build.md §2：构建目录 build/）
+build/
+*.o
+*.a
+*.so
+__pycache__/
+*.pyc
+
+# 模型权重本体（不入库；权重哈希与版本以 config.yaml 与主基准 §10.4 `model.*` 为准）
+models/*.rknn
+models/*.onnx
+models/*.pt
+models/*.pth
+
+# 日志与临时文件（日志规格见 docs/logging.md；板上 storage.dir 与 logging.dir 均不在本仓库）
+*.log
+*.tmp
+.DS_Store
+
+# IDE 私有配置（工程级纪律与工具在 .trae/，必须入库，不在此列）
+.vscode/
+.idea/
+
+# 板上运行期产物（存图目录在演示板上，见主基准 §8.3）
+storage/
