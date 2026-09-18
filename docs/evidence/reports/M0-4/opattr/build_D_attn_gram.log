@@ -1,0 +1,42 @@
+I rknn-toolkit2 version: 2.3.2
+D base_optimize ...
+D base_optimize done.
+D 
+D fold_constant ...
+D fold_constant done.
+D fold_constant remove nodes = ['/Pow']
+D 
+D correct_ops ...
+D correct_ops done.
+D 
+D fuse_ops ...
+D fuse_ops results:
+D     unsqueeze_to_4d_transpose: remove node = [], add node = ['/Reshape_output_0_rs', '/Transpose_output_0-rs']
+D     convert_matmul_to_exmatmul: remove node = ['/MatMul'], add node = ['/Reshape_output_0_tp', '/Reshape_output_0_tp_rs', '/Transpose_output_0_rs', '/MatMul#1', '/MatMul_output_0_mm_rs']
+D     convert_div_to_mul: remove node = ['/Div'], add node = ['/Div_2mul']
+D     convert_softmax_to_exsoftmax13: remove node = ['/Softmax'], add node = ['/Softmax']
+D     convert_matmul_to_exmatmul: remove node = ['/MatMul_1'], add node = ['/Softmax_output_0_tp', '/Softmax_output_0_tp_rs', '/Reshape_output_0_rs#1', '/MatMul_1#1', '/MatMul_1_output_0_mm_rs']
+D     unsqueeze_to_4d_transpose: remove node = [], add node = ['/Reshape_output_0_rs#2', '/Reshape_output_0_tp-rs']
+D     unsqueeze_to_4d_mul: remove node = [], add node = ['/MatMul_output_0_rs', '/Div_output_0-rs']
+D     unsqueeze_to_4d_exsoftmax13: remove node = [], add node = ['/Div_output_0_rs', '/Softmax_output_0-rs']
+D     unsqueeze_to_4d_transpose: remove node = [], add node = ['/Softmax_output_0_rs', '/Softmax_output_0_tp-rs']
+D     remove_top_reshape: remove node = ['/Reshape']
+D     remove_parallel_reshape: remove node = ['/Reshape_output_0_rs#2', '/Reshape_output_0_rs#1', '/Reshape_output_0_rs'], add node = ['/Reshape_output_0_rs#2']
+D     remove_parallel_transpose: remove node = ['/Transpose', '/Reshape_output_0_tp'], add node = ['/Transpose']
+D     bypass_two_reshape: remove node = ['/Transpose_output_0_rs', '/Transpose_output_0-rs', '/MatMul_output_0_rs', '/MatMul_output_0_mm_rs', '/Div_output_0_rs', '/Div_output_0-rs', '/Softmax_output_0_rs', '/Softmax_output_0-rs', '/Softmax_output_0_tp_rs', '/Softmax_output_0_tp-rs']
+D     fuse_two_reshape: remove node = ['/MatMul_1_output_0_mm_rs']
+D     bypass_two_reshape: remove node = ['/Reshape_output_0_tp_rs', '/Reshape_output_0_tp-rs']
+D     fuse_exmatmul_mul: remove node = ['/Div_2mul', '/MatMul#1'], add node = ['/MatMul#1']
+D     swap_exsoftmax13_transpose: remove node = ['/Softmax', '/Softmax_output_0_tp'], add node = ['/Softmax_output_0_tp', '/Softmax']
+I Loading :   0%|                                                             | 0/3 [00:00<?, ?it/s]I Loading : 100%|██████████████████████████████████████████████████| 3/3 [00:00<00:00, 41255.45it/s]
+D     fuse_exmatmul_transpose: remove node = ['/MatMul#1', '/Softmax_output_0_tp'], add node = ['/MatMul#1']
+D     p_tiling_exmatmul_channel: remove node = ['/MatMul#1'], add node = ['/Transpose_output_0-rs_split', '/Transpose_output_0-rs_split#1', '/Softmax_output_0-rs_sw_tile0', '/Softmax_output_0-rs_sw_tile1', '/Softmax_output_0-rs_sw_tile2', '/Softmax_output_0-rs_sw_tile3', '/Softmax_output_0-rs_sw_tile4', '/Softmax_output_0-rs_sw_tile5', '/Softmax_output_0-rs_sw_tile6', '/Softmax_output_0-rs_sw_tile7', '/Softmax_output_0-rs_sw_tile8', '/Softmax_output_0-rs_sw_tile9', '/Softmax_output_0-rs_sw_tile10', '/Softmax_output_0-rs_sw_tile11', '/Softmax_output_0-rs_sw_tile12', '/Softmax_output_0-rs_sw_tile13', '/Softmax_output_0-rs_sw_tile14', '/Softmax_output_0-rs_sw_tile15', '/Softmax_output_0-rs_sw_tile16', '/Softmax_output_0-rs_sw_tile17', '/Softmax_output_0-rs_sw_mm_add', '/Softmax_output_0-rs_sw_mm#2_add', '/Softmax_output_0-rs_sw_mm#3_add', '/Softmax_output_0-rs_sw_mm#4_add', '/Softmax_output_0-rs_sw_mm#5_add', '/Softmax_output_0-rs_sw_mm#6_add', '/Softmax_output_0-rs_sw_mm#7_add', '/Softmax_output_0-rs_sw_mm#8_add', '/Softmax_output_0-rs_sw_mm#9_add', '/Softmax_output_0-rs_sw_mm#10_add', '/Softmax_output_0-rs_sw_mm#11_add', '/Softmax_output_0-rs_sw_mm#12_add', '/Softmax_output_0-rs_sw_mm#13_add', '/Softmax_output_0-rs_sw_mm#14_add', '/Softmax_output_0-rs_sw_mm#15_add', '/Softmax_output_0-rs_sw_mm#16_add', '/Softmax_output_0-rs_sw_mm#17_add']
+D     remove_parallel_split: remove node = ['/Transpose_output_0-rs_split#1', '/Transpose_output_0-rs_split'], add node = ['/Transpose_output_0-rs_split#1']
+D     fold_constant ...
+D     fold_constant done.
+D fuse_ops done.
+D 
+D sparse_weight ...
+D sparse_weight done.
+D 
+I rknn building ...

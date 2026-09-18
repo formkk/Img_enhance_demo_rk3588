@@ -1,0 +1,8 @@
+{
+  "mode": "norm-ablate",
+  "replaced_layer_norm": 8,
+  "pt_ablation_vs_original_max_abs": 1.1533291339874268,
+  "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr/normablate/hq_512x288_normablate.onnx",
+  "input": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/gate_input_512x288.npy",
+  "note": "手工式 = (x-mean)/sqrt(var_biased+eps)*w+b，与原 nn.LayerNorm 数学等价"
+}

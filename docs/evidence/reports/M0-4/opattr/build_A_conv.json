@@ -1,0 +1,29 @@
+{
+  "stage": "build",
+  "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr/A_conv.onnx",
+  "onnx_sha256": "7b53ff13a62ba267ae24dacadd5dbc24da60661340ac275660ceab1bf5a5ff5c",
+  "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr/A_conv.fp16.rknn",
+  "target_platform": "rk3588",
+  "quant": "fp16",
+  "input_normalization": {
+    "rgb2bgr": false,
+    "mean": [
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "std": [
+      [
+        255,
+        255,
+        255
+      ]
+    ]
+  },
+  "env": {
+    "python": "3.8.20",
+    "rknn_toolkit2": "unknown"
+  }
+}

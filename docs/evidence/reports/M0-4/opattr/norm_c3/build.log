@@ -1,0 +1,40 @@
+I rknn-toolkit2 version: 2.3.2
+[1;31mE[0m [1;31mload_onnx: The len of mean_values ([0, 0, 0]) for input 0 is wrong, expect 288![0m
+I ===================== WARN(0) =====================
+[1;31mE[0m [1;31mrknn-toolkit2 version: 2.3.2[0m
+[1;31mE[0m [1;31mload_onnx: Traceback (most recent call last):
+  File "rknn/api/rknn_log.py", line 344, in rknn.api.rknn_log.error_catch_decorator.error_catch_wrapper
+  File "rknn/api/rknn_base.py", line 1579, in rknn.api.rknn_base.RKNNBase.load_onnx
+  File "rknn/api/rknn_base.py", line 729, in rknn.api.rknn_base.RKNNBase._create_ir_and_inputs_meta
+  File "rknn/api/rknn_log.py", line 95, in rknn.api.rknn_log.RKNNLog.e
+ValueError: The len of mean_values ([0, 0, 0]) for input 0 is wrong, expect 288!
+[0m
+I ===================== WARN(0) =====================
+[1;31mE[0m [1;31mrknn-toolkit2 version: 2.3.2[0m
+Traceback (most recent call last):
+  File "rknn/api/rknn_log.py", line 344, in rknn.api.rknn_log.error_catch_decorator.error_catch_wrapper
+  File "rknn/api/rknn_base.py", line 1579, in rknn.api.rknn_base.RKNNBase.load_onnx
+  File "rknn/api/rknn_base.py", line 729, in rknn.api.rknn_base.RKNNBase._create_ir_and_inputs_meta
+  File "rknn/api/rknn_log.py", line 95, in rknn.api.rknn_log.RKNNLog.e
+ValueError: The len of mean_values ([0, 0, 0]) for input 0 is wrong, expect 288!
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "tools/convert_models.py", line 266, in <module>
+    main()
+  File "tools/convert_models.py", line 262, in main
+    sys.exit(args.func(args))
+  File "tools/convert_models.py", line 203, in do_build
+    if r.load_onnx(model=args.onnx) != 0:
+  File "/home/jenkolux/.conda/envs/rknn232/lib/python3.8/site-packages/rknn/api/rknn.py", line 168, in load_onnx
+    return self.rknn_base.load_onnx(model, inputs, input_size_list, input_initial_val, outputs)
+  File "rknn/api/rknn_log.py", line 349, in rknn.api.rknn_log.error_catch_decorator.error_catch_wrapper
+  File "rknn/api/rknn_log.py", line 95, in rknn.api.rknn_log.RKNNLog.e
+ValueError: Traceback (most recent call last):
+  File "rknn/api/rknn_log.py", line 344, in rknn.api.rknn_log.error_catch_decorator.error_catch_wrapper
+  File "rknn/api/rknn_base.py", line 1579, in rknn.api.rknn_base.RKNNBase.load_onnx
+  File "rknn/api/rknn_base.py", line 729, in rknn.api.rknn_base.RKNNBase._create_ir_and_inputs_meta
+  File "rknn/api/rknn_log.py", line 95, in rknn.api.rknn_log.RKNNLog.e
+ValueError: The len of mean_values ([0, 0, 0]) for input 0 is wrong, expect 288!
+

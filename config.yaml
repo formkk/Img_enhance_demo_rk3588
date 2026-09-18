@@ -51,16 +51,15 @@ rga:
 
 # ── 显示（定稿时点 M0，除末项）──────────────────────────────────────
 display:
-  screen_plugin: "mipi1080p"             # 勿 mipi600p；竖屏属性由本键 + mipi_canvas 承载
+  screen_plugin: "mipi600p"              # v3.33 变更（原 mipi1080p）：实物为 7" 1024×600 屏（STL7.0-60-132-K）
   dsi_connector: "DSI-1"                 # 自检比对用；CRTC/plane 一律运行时解析，禁止写死 crtc id
   hdmi_connector: "HDMI-A-1"             # 自检比对用；当前实测 disconnected（M0-9 需接显示器）
-  mipi_canvas: [1080, 1920]              # 内部合成画布（§3.4；竖屏）
+  mipi_canvas: [1024, 600]               # 内部合成画布（§3.4；v3.33 变更，横屏 7"）
   hdmi_canvas: [1920, 1080]              # 内部合成画布（§3.1 两层 SSOT 中的 buffer 尺寸）
-  panel_refresh_hz: 60                   # 实测：131376000 / (1120 × 1955) = 60.00 Hz
-  mode_htotal: 1120                      # 实测 /sys/kernel/debug/dri/0/summary（H: 1080 1090 1100 1120）
-  mode_vtotal: 1955                      # 实测 V: 1920 1930 1935 1955
-  dsi_lane_rate: 788                     # Mbit/s/lane，**推导值**（131376000 × 24 ÷ 4，无协议开销；
-                                         # dsi,lanes=4 / bus_format RGB888_1X24）；待 M0-9 回读复核
+  panel_refresh_hz: 60                   # 实测 1024x600p60（dclk 51668000，v3.33）
+  mode_htotal: null                      # 待复采（v3.33 屏型变更；原 1120 系 1080×1920 残留，不得引用）
+  mode_vtotal: null                      # 待复采（原 1955 系 1080×1920 残留，不得引用）
+  dsi_lane_rate: null                    # 待复采/重推导（原 788 系 1080×1920 推导值，不得引用）；本平台无回读口
   hdmi_mode_selection: null              # 定稿时点 M2（EDID mode list 优先 1080p，无则 preferred）
 
 # ── 链路（定稿时点见各行）───────────────────────────────────────────
@@ -83,7 +82,7 @@ pipeline:
                                          # scale+CSC blit（不越写 pad 行）（v3.27 裁定 O32）
     output_take: "effective_only"
   curve_field_precision: "fp16"          # 【临时期值】v3.22 裁定 O23 = 全档 FP16；定稿时点 M2
-  apply_scope: null                      # 定稿时点 M2（显示 = 1080×608；存盘 = 1920×1080）
+  apply_scope: null                      # 定稿时点 M2（显示 = 512×288（v3.33 变更）；存盘 = 1920×1080）
   curve_upsample: null                   # 定稿时点 M2（bilinear_fused）
   est_freq_hz: null                      # 定稿时点 M2（与 f_est 联动）
   ema_alpha: null                        # 定稿时点 M2（N = ln0.1/lnα）
@@ -98,7 +97,7 @@ hq:
   hold_policy: null                      # 定稿时点 M3（replace_and_hold）
   fade_ms: null                          # 定稿时点 M3（300）
   mipi_preview_ms: null                  # 定稿时点 M3（2500）
-  mipi_preview_rect: null                # 定稿时点 M3（1080×608；X 0–1079，Y 610–1217）
+  mipi_preview_rect: null                # 定稿时点 M3（512×288；X 512–1023，Y 0–287）（v3.33 变更）
 
 # ── 触发（定稿时点 M1）─────────────────────────────────────────────
 trigger:
@@ -108,13 +107,16 @@ trigger:
 
 # ── UI（定稿时点 M2）───────────────────────────────────────────────
 ui:
-  button_layout: null                    # 6 键三行 192/192/222（合计 606）
-  hit_area_min_px: null                  # 160
+  button_layout: null                    # 3 键单行，行高 96 px，各 341 px（v3.33 由 6 键三行精简）
+  hit_area_min_px: null                  # 67（v3.33 变更，原 160；同为 ≈10 mm @170 PPI）
   reset_hold_ms: null                    # 3000（v3.14 裁定 O6）
-  osd_lines: null                        # 2
-  osd_row_px: null                       # 96
+  osd_metrics_px: null                   # 216（v3.33 新增：OSD 指标区总高）
+  osd_status_row_px: null                # 36（v3.33 新增：状态/数值行高）
+  osd_plot_px: null                      # [512, 180]（v3.33 新增：曲线图与直方图各占）
+  osd_status_fields: null                # v3.35：状态行 8 字段与顺序（mode/fps/latency/curve_hz/countdown/mean_orig/mean_enh/dmean）
+  osd_stats_decimate: null               # v3.35：统计降采样率 4（512×288 → 128×72）
+  osd_stats_hz: null                     # v3.35：统计更新频率 1 Hz
   osd_font_px: null                      # 36/26
-  osd_field_w: null                      # 216×5
 
 # ── 计量（定稿时点 M1/M2）──────────────────────────────────────────
 metrics:

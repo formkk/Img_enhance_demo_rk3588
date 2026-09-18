@@ -21,11 +21,15 @@ docs/evidence/reports/**/*.npy
 # 同上：裸张量/裸图中间产物（曲线场 .f32、RGB888 帧 .rgb 等），同属可重生成项
 docs/evidence/reports/**/*.f32
 docs/evidence/reports/**/*.rgb
+# 同上：证据目录下的模型与输入中间产物（.onnx/.rknn 由 build 命令重生成，.raw 由 prep 命令重生成）
+docs/evidence/reports/**/*.onnx
+docs/evidence/reports/**/*.rknn
+docs/evidence/reports/**/*.raw
 
 # rknn-toolkit2 在**当前工作目录**留下的内部 onnx 优化中间文件（实测：每次 build 都会生成）
 *_optimize.onnx
-# 同理：2.3.2 还会留下 check*_ops.onnx（本目录 build 时实测）
-check*_ops.onnx
+# 同理：2.3.2 还会留下 check*_ops.onnx / check*_constant.onnx（本目录 build 时实测）
+check*.onnx
 
 # 量化校准集图像（代用集由 M0-8/M1 的采集流程生成，不入库；清单与复现命令见证据文档）
 models/**/calib*/

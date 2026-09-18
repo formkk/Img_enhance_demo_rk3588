@@ -137,9 +137,10 @@ conda activate rknn && python --version  # Python 3.8.20
 | 已装相关包 | `linux-modules-nvidia-535-5.15.0-139-generic`、`linux-objects-nvidia-535-5.15.0-139-generic`、`linux-signatures-nvidia-5.15.0-139-generic`、`nvidia-kernel-common-535`、`nvidia-firmware-535-535.230.02`、`libnvidia-compute-535`、`nvidia-prime`（另有 `-5.15.0-134` 一套与 `linux-modules-nvidia-525-*` 遗留） |
 | 设备节点 | `/dev/nvidia0`、`/dev/nvidiactl`、`/dev/nvidia-modeset`、`/dev/nvidia-uvm`、`/dev/nvidia-uvm-tools` —— **均存在**，权限 `crw-rw-rw-` |
 | CUDA 用户态库 | `libcuda.so.1`、`libnvidia-ml.so.1` **存在**（`/lib/x86_64-linux-gnu/`）；`libcudart.so` 缺失（CUDA toolkit 未装，非必需——torch 自带） |
-| **缺失** | `nvidia-utils-535` **未安装** → **无 `nvidia-smi`**（apt 候选 `535.230.02-0ubuntu0.20.04.1` 可直接补）；`nvidia-driver-535` 元包未装（故无 X/GL 驱动件）；无 `/usr/local/cuda*`、无 `nvcc` |
+| **`nvidia-smi`** | **已补齐**（2026-09-18 09:02，为死机排查装 `nvidia-utils-535` 535.230.02-0ubuntu0.20.04.1，**`--no-install-recommends`** → 未连带装入 `nvidia-driver-535` 元包，X/GL 驱动件仍未装）；实测输出：RTX 3090 / 42–43 °C / 22 W（370 W 上限）/ P8 / `pcie.link.gen.current=1`（空闲降速，**属正常省电行为，非链路故障**） |
+| **仍缺失** | `nvidia-driver-535` 元包未装（故无 X/GL 驱动件）；无 `/usr/local/cuda*`、无 `nvcc` |
 | torch | 2.0.1 **CPU 版**（`torch.cuda.is_available()=False`，`torch.version.cuda=None`）—— **驱动已具备，缺的是 CUDA 版 torch** |
-| 结论 | **GPU 算力"差一步"**：内核驱动 + `libcuda` + 设备节点齐备；补齐只需 ① 装 `nvidia-utils-535`（拿 `nvidia-smi` 做可用性核查）② 把 torch 换成 CUDA 版构建。当前**仍无可用 GPU 算力**（见 §6 C4） |
+| 结论 | **GPU 算力"差一步"**：内核驱动 + `libcuda` + 设备节点 + `nvidia-smi` 齐备；**只剩**把 torch 换成 CUDA 版构建（① 已于 2026-09-18 完成）。当前**仍无可用 GPU 算力**（见 §6 C4） |
 
 ### 3.5 网络可达性（只读探测）
 
@@ -193,7 +194,7 @@ conda activate rknn && python --version  # Python 3.8.20
 
 | 子系统 | 结论 |
 |---|---|
-| GPU | 见 §3.4：驱动 535.230.02 **已加载**，缺 `nvidia-utils-535` |
+| GPU | 见 §3.4：驱动 535.230.02 **已加载**；`nvidia-utils-535` 已于 2026-09-18 补装（`nvidia-smi` 可用） |
 | 网卡 | `eno1` Intel I217-V，驱动 **`e1000e` 已加载**；`state UP`，**RX/TX errors = 0、dropped = 0**（采集时累计 43.7 万收包 / 24.0 万发包） |
 | 存储 | Intel 8 系列 SATA 控制器，驱动 **`ahci` 已加载** |
 | 缺失固件 | 未查到 firmware 加载失败记录（`dmesg` 在沙箱内不可读，`dmesg_restrict=0`；此项**未完全核验**） |
@@ -259,7 +260,7 @@ conda activate rknn && python --version  # Python 3.8.20
 | C1b | apt 组件补齐（`libprotobuf-dev` / `protobuf-compiler` / `libxslt1-dev` / `libglib2.0-dev`，§3.6-B） | **需 sudo**（本终端 `sudo -n` 失败，需密码）→ 须用户执行或提供授权 |
 | C2 | `pybind11`（`docs/build.md` §4） | 版本须**锁定**并写入构建日志；ABI 与运行期 Python 一致 |
 | C3 | 交叉编译链 `aarch64-linux-gnu-gcc`（`docs/build.md` §1 备选路径） | 须用与板上同代 sysroot；产物 ABI 须与板上 Python 一致 → 受 P1 阻塞。附带的 `libdrm-dev` / `libv4l-dev` / `v4l-utils` / `libgbm-dev`（§3.6-C）同受阻塞 |
-| C4 | GPU 算力补齐（§3.4） | **修正后**：驱动已在，只差 ① `nvidia-utils-535`（apt，需 sudo）② CUDA 版 torch（pip，可装进专用环境）。若 M1 fine-tune 需要 GPU 才需做，否则可缓 |
+| C4 | GPU 算力补齐（§3.4） | **① `nvidia-utils-535` 已于 2026-09-18 完成**（`nvidia-smi` 可用）；**仅剩 ② CUDA 版 torch**（pip，可装进专用环境）。若 M1 fine-tune 需要 GPU 才需做，否则可缓 |
 | C5 | pip 镜像（§3.3） | 可选，仅影响下载速度；PD 直连已 200 |
 | C6 | git 身份（§4） | 需用户提供 `user.name` / `user.email` |
 | C7 | `~/.ssh/config` 主机别名 `board` / `board-ops` 的 `BOARD_SSH_*`（§4） | 受 P1 阻塞（板不可达，配了也无从验证） |
@@ -267,8 +268,8 @@ conda activate rknn && python --version  # Python 3.8.20
 
 ## 7. 采集元信息（可复现命令）
 
-采集时点：**① 2026-09-17 16:54 CST**（硬件 + 软件环境基线）、**② 2026-09-17 17:0x CST**（系统组件与驱动审计复采 —— §3.2 的 cmake/ninja 来源、§3.3 的 `rknn` 环境、§3.4 GPU 修正、§3.6 组件表均出自该次）。
-采集方式：**只读探测**（规则 `30-board-safety.md` §4 口径）。**唯一的写入动作**是新建 conda 环境 `rknn`（`conda create -n rknn python=3.8 -y`），未安装任何系统软件包、未改任何系统配置。
+采集时点：**① 2026-09-17 16:54 CST**（硬件 + 软件环境基线）、**② 2026-09-17 17:0x CST**（系统组件与驱动审计复采 —— §3.2 的 cmake/ninja 来源、§3.3 的 `rknn` 环境、§3.4 GPU 修正、§3.6 组件表均出自该次）、**③ 2026-09-18 08:58–09:05 CST**（死机取证与监测配置，见 §9；§3.4 的 `nvidia-smi` 行出自该次）。
+采集方式：**① ② 两次为只读探测**（规则 `30-board-safety.md` §4 口径），唯一写入动作是新建 conda 环境 `rknn`；**③ 次含系统写入**（装 4 个监控包 + 3 处配置变更 + 1 个 systemd 服务启用），逐项见 §9.4 的写入清单与回退方式。
 
 ```bash
 uname -a; cat /etc/os-release
@@ -360,3 +361,138 @@ PYTHONNOUSERSITE=1 /home/jenkolux/.conda/envs/rknn232/bin/python tools/convert_m
 # 板上探测（板端脚本在 ~/rknn_ab/，可一键删除回退）
 ssh board 'cd ~/rknn_ab && ./run_arm.sh arm232 232 zde_curve_480x272_fp16_tk232.rknn B_tk232'
 ```
+
+## 9. 死机事件与取证配置（2026-09-18）
+
+> 本节是**环境记录**，不是项目结论：不进验收链（§头部效力条款），也不构成主基准任何 §15 开放项的裁定。凡标「推断」者为**未证实**，不得当作原因；凡标「已排除」者均附核验来源。
+
+### 9.1 事件：2026-09-18 一次硬死机
+
+| 项 | 实测 |
+|---|---|
+| 崩溃那次启动 | boot -1，`Fri 2026-09-18 07:51:10 CST` 启动 |
+| 最后一条内核日志 | `08:47:18`（`[UFW BLOCK]` mDNS 拦截，来自 `192.168.0.104`） |
+| 最后一条用户态日志 | `08:48:37`（`/var/log/syslog`，NetworkManager `CONNECTED_SITE`） |
+| 下一次启动 | boot 0，`Fri 2026-09-18 08:51:19 CST` |
+| 关机记录 | **无** —— `last -x` 中该次 boot 无 `shutdown`/`Power-Off` 行，journal 亦无 `Shutting down`/`Reached target Power-Off`（对照：boot -2 于 01:07:55 **有**完整关机序列）⇒ **非有序关机**。**判据边界**：boot -3（仅 52 s）结尾只有两次 `Power key pressed` 且同样无关机序列 —— 说明"无关机日志"也可由**长按电源键硬断电**造成，故该判据本身只支持「非有序关机」；**本次归类依据用户报告**，见下一行 |
+| 现场现象（**用户确认**，2026-09-18 14:00） | **"画面卡住不动，需按复位或长按电源键才重启"** ⇒ 属**冻结（hang）**，**不是掉电**（掉电会直接黑屏且不会停在同一画面）。据此：① 三种"非有序结束"（有序关机 / 冻结后强制复位 / 长按电源硬断电）中归入**第二类**；② **排除"市电中断 / PSU 瞬间掉电导致黑屏"这一支**，但**不排除**"供电电压跌落引起的系统挂死"（两者表现不同：跌落可致 CPU 停止推进而不复位） |
+| 死机窗口 | 可确证的下界 `08:47:18`，上界 `08:51:19`。**推断**可收紧到约 `08:46:40` 之后：网关 mDNS（`SRC=192.168.0.1 DST=224.0.0.1`）在 08:31:44 / 08:33:52 / … / 08:46:40 呈严格 `2 min 08 s` 节奏，下一次（约 08:48:48）缺失。**该收紧为推断，不作为结论。** |
+
+**已排除项**（逐条有核验来源，全部落在崩溃那次启动内）：
+
+| 排除对象 | 核验来源与结果 |
+|---|---|
+| OOM / 内存耗尽 | `journalctl -b -1`：0 命中 `out of memory`/`oom-kill`；崩溃后 `free` 亦为 15 GiB 仅用 1.3 GiB |
+| panic / oops / BUG | 内核日志 0 命中；`panic=0` 本身也不产生自动重启 |
+| soft lockup / hard lockup / hung task | 0 命中（`nmi_watchdog=1` 已启用，若为硬 LOCKUP 本应留下记录） |
+| MCE / EDAC / Hardware Error | 0 命中 |
+| 热击穿 | 0 命中 thermal trip/shutdown；复位后空闲 CPU 包 43 °C、acpitz 27.8/29.8 °C |
+| suspend / hibernate | 0 命中 |
+| GPU 驱动故障 | `kern.log` 全库 `NVRM`/`Xid` 仅 5 条且均为 "loading"；Xorg 日志（当前与 `.old` 两次启动）仅有既存无害项（`drm ... -2`、`glamor initialization failed`） |
+| SATA / 磁盘错误 | `kern.log` 全库仅 link-up 行，0 命中 `failed command`/`exception Emask`/`I/O error`/`hard resetting` |
+| 磁盘本体 | SMART **两盘均 PASSED**：sda KingDian S280 240GB（`Power_On_Hours 16495`、`Power_Cycle_Count 279`）、sdb Great Wall GW600 512GB；重分配/待定/离线不可校正/`UDMA_CRC_Error_Count` **全为 0** |
+| PCIe 链路错误 | `lspci -vv`：`DevSta` 无 `CorrErr/NonFatalErr/FatalErr`，`CESta` 全无 |
+| GPU PCIe 降速 | `LnkSta: Speed 2.5GT/s (downgraded)` 与 `nvidia-smi` 的 `pcie.link.gen.current=1` **是空闲省电行为**（`LnkCap` 为 8GT/s / x16，`Width x16 (ok)`），**不是链路故障**——此项为对先前疑似项的正名 |
+| nouveau 混用 | **不成立**：`lspci -k` 为 `Kernel driver in use: nvidia`，`/proc/driver/nvidia/version` = 535.230.02（§3.4 已修正） |
+
+**关键推断边界（必须随结论保留）**：以上排除项合起来说明**没有抓到任何软件侧致死证据**——NMI watchdog 已开却无 hard LOCKUP、且从最后一条日志到复位约有 2–3 分钟可供落盘，与"内核仍在跑、只是用户态卡住"不符，**倾向于系统级瞬时停止**（供电 / 内存-CPU 稳定性 / 总线或器件电气层）。**根因未定论**；现有证据不足以在上述候选之间裁决。这不是"已定位原因"，只是"已划定范围"。
+
+### 9.2 已取证的硬件异常：USB 端口 3-7（CHERRY 键盘）
+
+| 项 | 实测 |
+|---|---|
+| 该端口设备身份 | `idVendor=046a idProduct=00cb`，`Product: Mechanical Keyboard`，`Manufacturer: CHERRY`（**全速** USB 设备） |
+| 故障起点 | **2026-09-17 19:47:51**（boot -2 内，uptime 13438 s）：`reset full-speed USB device number 2 using xhci_hcd` → 反复 `device descriptor read/64, error -71`（EPROTO）→ `usb3-port7: attempt power cycle` → `19:48:02 unable to enumerate USB device` |
+| 现状 | 2026-09-18 07:51 与 08:51 两次启动**均复现失败**；`lsusb -t` 中 `Bus 03 Port 7` 为空、`/sys/bus/usb/devices/` 下无 `3-7` ⇒ **该键盘自 9-17 19:47 起已不可用** |
+| 同日同控制器另一端口 | 端口 3-8（TESORO 鼠标）于 2026-09-17 11:10 出现**一次性**同类失败（含 1 次 `error -110`），随后恢复并在当前启动正常工作 |
+| 历史频次 | 仅能查到 2023-03-02（该次启动时钟错乱）另有一组 `3-8` 的 `-71` — 但 `kern.log` 只覆盖 **9-17 11:08 起**，`journalctl -b -4` 的早期记录时钟不可信 ⇒ **"是否新出现"不可判定，不得表述为"新故障"** |
+| 与死机的关系 | **未证实因果**：死机前 13 小时的日志中无任何 USB 事件，崩溃那次启动的最后 60 分钟也无 USB 记录。列为**已确认存在的独立硬件异常**与**待消除项**，不作为死机原因 |
+| **归属定位（2026-09-18 13:58:53 实测，已结案）** | 用户把同一把 CHERRY 键盘改插到 **端口 3-6**：**一次性枚举成功**（`usb 3-6: New USB device found, idVendor=046a, idProduct=00cb` → `input: CHERRY Mechanical Keyboard` → `usbhid` 绑定，`/proc/bus/input/devices` 出现 `Handlers=sysrq kbd event21 leds`）。⇒ **键盘本体正常，故障在端口 3-7 一侧**（端口/插座/前面板排线），**不是键盘坏**。该项由"待消除"转为**已定位的端口缺陷** |
+
+### 9.3 取证能力缺口（"为什么没有日志"）
+
+| 缺口 | 实测 |
+|---|---|
+| 无崩溃转储 | **无 EFI**（`/sys/firmware/efi` 不存在）⇒ 无 pstore/efi_pstore；`kdump-tools` 未装、`cmdline` 无 `crashkernel=` |
+| 不自动重启 | `panic=0`、`softlockup_panic=0`、`hung_task_panic=0`、`hung_task_timeout_secs=120` |
+| SysRq 转储被禁 | `kernel.sysrq=176`（Ubuntu 默认）= 仅 sync/remount/reboot；**进程转储 `t`/阻塞任务 `w`/内存 `m` 均被禁用** |
+| 无硬件看门狗 | `/dev/watchdog*` 不存在（`iTCO_wdt` 未加载）；`systemd` 侧 `#RuntimeWatchdogSec=0` |
+| 无死机前遥测 | sysstat 未启用、lm-sensors 未装 ⇒ **死机当场的 CPU/内存/IO/温度完全无记录**（这正是 9.4 要补的） |
+
+### 9.4 本次配置变更（2026-09-18 08:58–09:05 CST，均经 sudo）
+
+| # | 变更 | 目的 | 回退方式 |
+|---|---|---|---|
+| 1 | 安装 `smartmontools` / `sysstat` / `lm-sensors`（apt，3 个新包） | 磁盘健康 + 系统活动 + 温度采集 | `apt-get remove --purge smartmontools sysstat lm-sensors` |
+| 2 | 安装 `nvidia-utils-535`（`--no-install-recommends`，未连带 X/GL 驱动件） | 取得 `nvidia-smi`（GPU 温度/功耗） | `apt-get remove nvidia-utils-535` |
+| 3 | `/etc/default/sysstat`：`ENABLED="false"` → `"true"` | 启用 sar 采集 | 改回 `"false"` |
+| 4 | `/etc/cron.d/sysstat`：`5-55/10 * * * *` → `* * * * *` | 采样粒度 **10 min → 1 min**，使死机后可回溯最后时刻 | 恢复原行 |
+| 5 | 新增 `/etc/sysctl.d/99-crash-forensics.conf`：`kernel.sysrq = 1` | 下次卡死时可用 `Alt+SysRq+t/w/m` 抓任务栈与内存 | 删除该文件 |
+| 6 | `smartd` 服务随包启用（`enabled` + `active`） | 磁盘健康告警；当前状态 `Next check of 2 devices will start at ...` | `systemctl disable --now smartd` |
+
+```bash
+# 校验（均已执行并得到预期输出）
+sar -u -r -f /var/log/sysstat/sa18        # 可读出样本 → 采集生效
+nvidia-smi                                 # RTX 3090 / 42–43 °C / 22 W/370 W / P8
+cat /proc/sys/kernel/sysrq                 # 1
+systemctl status smartd --no-pager         # active (running)，监控 2 盘
+sensors                                    # coretemp：Package 43 °C / 四核 38–43 °C
+```
+
+### 9.5 待用户决策的后续动作（本档不代为执行）
+
+| 项 | 内容 | 需要的前提 |
+|---|---|---|
+| A | **已完成**（2026-09-18 13:58）：键盘改插端口 3-6 后恢复正常，见 §9.2 末行。**遗留**：端口 3-7 缺陷本身未修（该端口及该口所在前面板排线不宜再插设备；如需修复须查插座/排线） | — |
+| B | 内存稳定性测试（memtest86+）：**无需安装** —— `memtest86+ 5.01-3.1ubuntu2.1` **本就已装**，`/boot/memtest86+.elf` 与 `/etc/grub.d/20_memtest86+` 均在，`grub.cfg` 顶层菜单第 **2** 项即 `Memory test (memtest86+)`（第 3 项为 serial console 变体）。**已安排一次性引导**：`grub-reboot 2` 已执行，`grub-editenv list` = `next_entry=2`；`/etc/default/grub` **未改动**（仍 `GRUB_DEFAULT=0` / `TIMEOUT_STYLE=hidden` / `TIMEOUT=0`），故这是一次性生效、下次重启后自动恢复默认。硬件前提：MBR 分区（`part_msdos`）+ **无 EFI** ⇒ 该 5.01 实模式版本可用 | **待执行**：用户自行选择停机时段重启（见下方测试口径） |
+| C | 受控负载复现试验（`stress-ng` + 分钟级采集；死机前的可疑负载为多线程编译，如 08:37 `librknnc.so` 段错误那次编译） | **可能再次死机**，需用户确认 |
+| D | 无人值守自愈：`kernel.panic=10` + `softlockup_panic=1`，并在确认 `iTCO_wdt` 可用后设 `RuntimeWatchdogSec` | 会**牺牲现场证据**，须用户权衡 |
+
+**下次死机时的现场取证步骤（条件已具备）**：键盘已于 2026-09-18 13:58 恢复（端口 3-6，`/proc/bus/input/devices` 中 `CHERRY Mechanical Keyboard` 绑 `Handlers=sysrq kbd event21`），`kernel.sysrq=1` 亦已生效 ⇒ 卡住时按 `Alt+SysRq+t`（任务栈）→ `w`（阻塞任务）→ `m`（内存）→ 拍照或抄录屏幕 → `b` 重启。若连 SysRq 也无响应，则说明内核已停止推进（与 `nmi_watchdog=1` 下仍无 LOCKUP 记录一致），此时应转向**硬件层**取证（供电、内存、温度）。事后：`sar -f /var/log/sysstat/sa<DD>` 回溯死机前数分钟的 CPU/内存/IO，`journalctl -b -1` 与 `last -x` 确认是否为硬复位，`nvidia-smi` 与 `sensors` 取复位后基线。
+
+**memtest 测试口径（§9.5-B 的执行约定）**：
+
+1. **进入方式**：直接 `sudo reboot` 即可，**不需要**按 Shift/Esc 选菜单 —— `grubenv` 中 `next_entry=2` 会被 GRUB 一次性消费，之后自动恢复默认引导（已核验 `/etc/default/grub` 未被改动）。若届时未进 memtest，可用 `sudo grub-editenv /boot/grub/grubenv list` 复核 `next_entry`。
+2. **时长**：16 GB 单遍约 40–60 分钟；**至少跑满 2 遍**（约 2 小时），最稳妥为过夜 4–8 遍。只跑半遍**不足以排除**间歇性错误。
+3. **判读**：看屏幕下方 `Pass` 与 **`Errors`** 计数及失败地址。非 ECC 内存，错误不会被纠错掩盖，出现任何一位错误即判**内存或内存控制器不稳定**。
+4. **留存**：拍照记录 `Pass` 数、`Errors` 数、失败地址，以及 memtest 识别到的内存频率/时序（用于与 BIOS 现状对照：当前为 DDR3-1600 配置值、XMP 未启用、两槽 `ChannelA-DIMM0` / `ChannelB-DIMM0`）。
+5. **异常处置**：该版本为 5.01（2013 年上游、2020 年打包），个别平台会卡在 `Loading...` 或黑屏无输出。此时**长按电源键重启即可**（`next_entry` 已被消费，会正常回到 Ubuntu）；若确需更新版本，可用 U 盘写 memtest86+ 6.x（本机 `/dev/sdc` Cruzer Blade 可腾用）。
+6. **回写义务**：跑完后把结论回填本节 B 行；若出现错误，则据此把 §9.1 的候选排序改为"内存/内存控制器不稳"为**直接证据**，并相应重估"供电"候选的权重。
+
+### 9.6 诊断状态：**挂起**（2026-09-18 14:20 CST）
+
+> **本次死机排查到此挂起，不结案**。根因仍未定论；下列未决项与基线保留，供**下次死机时**继续推断。按用户决定，不主动加压复现（§9.5-C 不做），memtest（§9.5-B）等用户择期重启执行。
+
+**挂起时点的系统基线**（采集于 `2026-09-18 14:10 CST`，uptime 5:18，仅作日后对比基准，**不构成"问题不存在"的依据**）：
+
+| 维度 | 实测 |
+|---|---|
+| 负载 / CPU | load `0.23 / 0.28 / 0.25`（8 线程）；空闲 **96%**，`wa`=0% |
+| 热降频 | 8 个逻辑核 `core_throttle_count` 与 `package_throttle_count` **全为 0**（本次启动从未降频） |
+| CPU 频率 | governor `ondemand`，空闲 800 MHz |
+| 内存 / Swap | 15 GiB 中用 1.6 GiB、可用 13 GiB；**Swap 0B 使用** |
+| PSI 压力 | memory `avg10/60/300` 全 `0.00`；io `some avg300=0.06%`、`full avg300=0.05%` |
+| 进程 | 266 任务（1 running / 265 sleeping / 0 stopped / **0 zombie**）；**D 状态进程 0** |
+| 磁盘 | `/` 用 46%（95 G / 219 G）；sda `%util` 0.3–1.6%、`r_await`<2 ms；sdb/sdc 近零活动 |
+| 文件系统错误 | **0**（无 EXT4-fs error / I/O error / journal abort） |
+| 温度 | CPU 包 **39 °C**（核心 35–37 °C）；acpitz 27.8 / 29.8 °C；GPU **44 °C** |
+| GPU | 22.4 W（上限 370 W）、**P8**、0% 利用率、显存 6 MiB |
+| 失败 systemd 单元 | **0** |
+| 硬件错误 | 仅开机横幅 `EDAC MC: Ver: 3.0.0`；**无 MCE / EDAC 报告 / PCIe AER** |
+| 磁盘 SMART | 两盘 PASSED（复核于 09:0x） |
+
+**新增一条既存告警（据实记录，未判为故障）**：本次启动日志含 nvidia 资源提示 `resource sanity check: requesting [mem 0x000e0000-0x000fffff], which spans more than PCI Bus 0000:00 [mem 0x000d0000-0x000e7fff window]` 与 `caller os_map_kernel_space+0xa0/0x100 [nvidia] mapping multiple BARs`；另 `hid-generic 0003:195D:1022.0002: ignoring exceeding usage max`（TESORO 鼠标 HID 描述符）与 `at24 0-0050 / 0-0052: supply vcc not found, using dummy regulator`（SMBus SPD EEPROM）。三项均属既存无害，**列此仅为避免日后误读**。
+
+**误读警示**：`journalctl` 中 2 条 `I/O error` 命中来自**排查过程中执行的 grep 命令行**（被 sudo 记入日志），**不是真实 IO 错误**。
+
+**挂起时的未决项**：
+
+| # | 项 | 状态 |
+|---|---|---|
+| 1 | `grubenv` 的 `next_entry=2` **仍生效** | **任何原因导致的下一次重启都会直接进 memtest86+**（含万一再冻结后按复位）。跑完或按 §9.5-B 步骤 5 处置后自动恢复默认 |
+| 2 | §9.5-B 内存测试 | 待用户择期重启执行 |
+| 3 | §9.5-C 受控负载复现 | 用户决定不做，保留为可选 |
+| 4 | §9.5-D 自动重启自愈 | 未启用（为保留现场证据） |
+| 5 | 端口 3-7 缺陷本体 | 未修（该口暂不使用即可） |
+
+**恢复推断的触发条件与第一步**：下次死机发生时，按 §9.5 末段的取证流程采集（`Alt+SysRq+t/w/m` → 拍照 → 复位），随后用 `sar -f /var/log/sysstat/sa<DD>` 取死机前数分钟曲线并与本节基线对比，再用 `journalctl -b -1` + `last -x` 判定是否硬复位。若 memtest 先跑出结果，则以该结果优先重排 §9.1 的候选权重。

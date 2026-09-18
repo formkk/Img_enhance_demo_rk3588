@@ -31,6 +31,50 @@
 | 内存 | total **7.7 GiB**（available 7.1 GiB） |
 | eMMC | `mmcblk0` **58.7 G**（`name=11S000`、`manfid=0x2f`；厂商标识字段未得）；根分区 `/dev/mmcblk0p3` 58 G，**可用 51 G** |
 | 摄像头 | ✅ **（v3.23）CAM0 + 野火 IMX415 已打通**：`imx415 1-001a` 检测到 `id 0000e0`、`csi2-dcphy0` link 完成、`rkisp_mainpath` = `/dev/video11` 出 NV12 1920×1080，帧逐帧对齐；首轮失败系排线接触/方位问题（详见 **§7**）。⚠️ 当前 overlay 为 **1080p@60** 变体，实测 ≈50.6 fps，**非 §3.1/§3.2 的 30 fps** |
+| 无线 | ❌ **无板载 WiFi / BT** —— 该板为**插槽式**设计（模块走 PCIe），当前插槽未插任何模块；内核驱动已备。详见 **§2.1** |
+
+### 2.1 无线（WiFi / BT）——**无板载，须另配模块**（2026-09-18 只读探测）
+
+**结论**：本板**没有可用无线**。鲁班猫5 的 WiFi/BT 是**插槽式**设计（WiFi 模块走 **PCIe** 协议），当前插槽未插模块；镜像自带对应驱动，插上即可用。**对本项目无影响**（演示单板离线运行，板侧联网走 `eth0`）。
+
+| 判据 | 实测 |
+|---|---|
+| 网络接口 | 仅 `lo` / `dummy0` / `eth0`(已连接) / `eth1` / `usb0` —— **无 wlan 类接口** |
+| NetworkManager | 设备表无 wifi 类型设备；`nmcli device wifi list` 无输出 |
+| 无线内核模块 | `lsmod` **0 个**（无 `cfg80211` / `mac80211` / `brcmfmac` / `rtw89` / `8852be` 等） |
+| SDIO 器件 | `mmc1` 主机存在但**无子器件**（`/sys/class/mmc_host/mmc1/` 仅 `device`/`power`/`subsystem`/`uevent`）⇒ 未挂任何 SDIO 卡 |
+| DTB | `rk3588-lubancat-5-v2.dtb` 与运行中的 `/boot/rk-kernel.dtb` 均 **grep 无线芯片字符串计数 = 0** |
+| **PCIe 插槽** | `/sys/bus/pci/devices/` = **空目录（计数 0）** ⇒ M.2 E KEY 与 Mini-PCIe **均未插模块**（WiFi 走 PCIe，此为关键判据）；dmesg 侧另有 `rk-pcie fe190000.pcie: invalid prsnt-gpios property in node` / `no vpcie3v3 regulator found` |
+| USB | 仅 hub，**无 USB 无线网卡** |
+| 蓝牙 | `hciconfig -a` **无输出**（无适配器）、**无蓝牙/HCI 模块加载**、dmesg 仅子系统初始化行（`Bluetooth: Core ver 2.22` / `HCI device and connection manager initialized`）而**无 HCI 控制器注册行**；`bluetoothd` 服务 `active`（Debian 默认启用，非硬件存在证据）。⇒ **无蓝牙控制器**。⚠️ 末次确认因板子离线中断（见本小节末尾的留痕），本行为**待复采**项 |
+
+**厂商规格书依据**（`refs/野火鲁班猫/2-硬件资料/LubanCat-RK系列硬件资料集合_20260807.zip` → `…/鲁班猫5/[野火]鲁班猫5开发板硬件规格书_V1.1.4.pdf`，本次提取文本至 `/tmp/lc5/spec.txt`）：
+
+| 接口 | 规格书原文 |
+|---|---|
+| `M2` | `1 x PCIe2.0 * 1Lanes M.2 E KEY，支持野火 RTL8852Be 无线网卡` |
+| `PCIe接口` | `Mini-PCIe接口，可配合全高或半高的 WIFI 网卡、4G 模块或其他 Mini-PCIe 接口模块使用` |
+| `WIFI&BT` | `1 ·支持 MINI PCI-E 接口的 WIFI&BT 模块` |
+| 注2 | `MINI PCI-E 接口接 Wi-Fi 模块时，走的是 pcie 协议`；接 4G/5G 模块时物理连接相同但协议不同 |
+
+**驱动已备**：镜像自带 `rockchip_wlan/rtl8852be/8852be.ko` 与 `rockchip_wlan/rtl8852bu/8852bu.ko`（正是野火所售 RTL8852BE 网卡）⇒ **插上模块无需自行编译驱动**。内核另有 `mediatek` / `realtek`(`rtw88`/`rtlwifi`/`rtl8xxxu`) / `broadcom` 无线驱动模块，且 `CONFIG_CFG80211=y` / `CONFIG_MAC80211=y` / `CONFIG_WLAN=y`（无线子系统已编入内核）。
+
+**边界说明**：本项**不构成 M0 任何出口项**，仅作硬件事实留痕；若后续需要无线联网，路径是**采购野火 RTL8852BE 模块插入 M.2 E KEY**（属外部采购与副作用操作，须另议）。
+
+**复现命令（只读）**：
+
+```
+ssh board 'ip -brief link show; nmcli device status; nmcli device wifi list; \
+  lsmod | grep -Ei "cfg80211|mac80211|brcmfmac|rtw89|8852" || echo "无无线模块"; \
+  echo -n "pci devs: "; ls /sys/bus/pci/devices/ | wc -l; \
+  ls /sys/class/mmc_host/; ls -d /sys/class/bluetooth/hci* | wc -l; \
+  hciconfig -a; \
+  echo -n "DTB 无线串计数: "; strings /boot/dtb/rk3588-lubancat-5-v2.dtb | grep -icE "wifi|brcm|8852|ap6"'
+```
+
+判据（本次全部满足）：无 wlan 接口、`lsmod` 无无线模块、PCIe 设备计数 **0**、DTB 无线字符串计数 **0**、`hciconfig -a` 无输出。
+
+> **探测中断留痕**：2026-09-18 14:0x，本项末次蓝牙确认命令发出后 SSH 报 `client_loop: send disconnect: Broken pipe`，随后 `ping` **100% 丢包**、`ssh` 连接超时 ⇒ **板子已离线**（原因未查，可能为断电/拔网线/重启）。上述 WiFi 诸项在离线前已**两轮独立探测一致**，结论有效；**蓝牙行为唯一未走完的项**，待板子恢复后复采。
 
 ## 3. 软件栈（**M0-1 定案项**）
 
@@ -51,7 +95,7 @@
 | 软件版本三元组 | ✅ **已定版**（v3.22）：librknnrt **2.3.2** / toolkit2 **2.3.2**（同版本号）/ driver **0.9.8**（≥0.9.2 下限）；确认门 = M0-4 的 HQ 编译结果 |
 | overlay / `/dev/videoX` / rkisp 节点 | ✅ **已满足（v3.23）**：`uEnvLubanCat5-V2.txt` 第 63 行启用 cam0 的 imx415 overlay；`/dev/video0…19+`、`/dev/v4l-subdev*`、`/dev/media0|1` 齐备；ISP 主路径 = **`/dev/video11`**（rkisp_mainpath，NV12 1920×1080）；`camera.video_node` / `camera.rkisp_node` 取值以此为准（详见 §7） |
 | 丝印 CAM 口 lane 数 | ✅ **CAM0 = 4 lane**（驱动 `detect imx415 lane 4`；原理图 J8 走 D0~D3+CLK）——与 R12"Cat-5 仅 CAM0/CAM1 为 4-lane"一致 |
-| 屏插件 / 横竖屏 / connector | ✅ **已核（v3.28，只读探测）**：`card0-DSI-1` status=**connected** / enabled=enabled / 原生 mode **1080×1920（竖屏 5.5"）**；overlay 第 44 行 `rk3588-lubancat-5-v2-dsi0-vp2-1080x1920-5.5inch-ebf410125-overlay.dtbo`；**mode timing = 1080x1920p60**（`clk 131376 kHz`、**htotal 1120 / vtotal 1955** ⇒ 实测 **60.00 Hz**）；DSI 物理层 `RGB888_1X24` / `dsi,lanes=4`。HDMI 侧 `card0-HDMI-A-1` = **disconnected**（显示器未接、无 EDID）。原始输出见 `docs/evidence/reports/M0-1/drm_probe.txt` |
+| 屏插件 / 横竖屏 / connector | ✅ **已核（v3.33 变更：屏型经用户 2026-09-18 确认为 7"）**：`card0-DSI-1` status=**connected** / enabled=enabled / 原生 mode **1024×600（横屏 7"）**；屏**自带固件描述**（`lcd firmware magic: dead5a5a`、`lcd vendor: Embedfire`、`model: STL7.0-60-132-K`），驱动优先按固件数据取 timing；**实测 mode = `1024x600p60`**（`dclk 51668000` ⇒ **60.00 Hz**）、DSI 链路带宽 `344453 × 4 Kbps`；DSI 物理层 `RGB888_1X24` / `dsi,lanes=4`。HDMI 侧 `card0-HDMI-A-1` = **disconnected**（显示器未接、无 EDID）。**⚠️ overlay 当前仍是 5.5" 那条**（第 44 行 `...-dsi0-vp2-1080x1920-5.5inch-ebf410125-overlay.dtbo`），**应为 `rk3588-lubancat-5-v2-dsi0-vp2-1024x600-7inch-ebf410173-overlay.dtbo`（切换动作待执行）**。**（v3.28 的 1080×1920 竖屏实测随屏型变更作废）** 详见 §9 |
 
 ## 5. 待办与阻塞
 
@@ -103,7 +147,7 @@
 | 备份 | `/boot/uEnv/uEnvLubanCat5-V2.txt.bak.20260917_cam0`，sha256 `dd5facae17149a49dada35e7dbfa118d2a6c60723e163180d446f52e092590aa`；改后 sha256 `d00c7e7642789ca12b89f174e02f7915acacced9b159f9004276d50d121fb88d` |
 | 生效方式 | `sudo reboot`（21:53，SSH 约 18 s 后恢复） |
 | 恢复步骤 | `sudo cp /boot/uEnv/uEnvLubanCat5-V2.txt.bak.20260917_cam0 /boot/uEnv/uEnvLubanCat5-V2.txt && sudo reboot` |
-| 同时生效的其它 overlay（未改动） | 第 39 行 `rk3588-lubancat-5-hdmi0-vp0-overlay.dtbo`；第 44 行 `rk3588-lubancat-5-v2-dsi0-vp2-1080x1920-5.5inch-ebf410125-overlay.dtbo`（5.5" 屏 vp2/dsi0）；`enable_uboot_overlays=1` |
+| 同时生效的其它 overlay（未改动） | 第 39 行 `rk3588-lubancat-5-hdmi0-vp0-overlay.dtbo`；**第 44 行 `rk3588-lubancat-5-v2-dsi0-vp2-1080x1920-5.5inch-ebf410125-overlay.dtbo` —— ⚠️ v3.33 起该条与实物（7" 1024×600）不符，应换为 `rk3588-lubancat-5-v2-dsi0-vp2-1024x600-7inch-ebf410173-overlay.dtbo`（切换待执行，见 §9）**；`enable_uboot_overlays=1` |
 | 仍为注释 | cam1~cam5 的 imx415 overlay（未启用） |
 
 ### 7.2 启用后的实测（只读）
@@ -237,3 +281,31 @@ AE 正常自适应（`analogue_gain` 161 → 146、`exposure` 1350/2242）；`rk
 | ZDE++ 模型侧（转换/对齐/量化/bench）、RGA/曲线应用、双屏、关桌面、并发压测 | 无 —— 与镜头解耦 |
 | **画质类结论**（§4.3 三档 A/B 定档、O23 盲评、§9.5 ISP 调参、§13 画质验收） | **挂起**（不得以当前糊图定稿） |
 | M1 实拍校准/评测集（≥200 张） | **前置依赖**：镜头定型 + 摆正 + 对焦达标（O31），否则评测集作废重采 |
+
+## 9. MIPI 屏调试记录（v3.33，2026-09-18）
+
+**结论**：实物屏为 **7" MIPI 屏**（屏固件自报 model `STL7.0-60-132-K`），**不是**项目此前记载的 5.5"。用户目视确认。
+
+### 9.1 症状与根因
+
+| 项 | 实测 |
+|---|---|
+| 症状 | 屏"已连接但无显示、无背光" |
+| 软件侧排查 | **逐项全部正常**：overlay 生效（`dsi@fde20000` = okay）、panel 节点 `status=okay`、面板供电 `mipi_dsi0_power` enabled、复位脚 `gpio-36` 已释放（`out hi`）、背光 PWM 有占空比输出、DSI 带宽协商成功、`fb0` 存在、CRTC 142 在扫描 |
+| **根因** | 屏**自带固件描述**（经 DSI 侧读取）。**读不到时**驱动退回 DT 里 5.5" 的 1080×1920 timing ⇒ 与 7" 屏（1024×600）不符 ⇒ 不显示；**读到后**按固件数据取 timing ⇒ 屏正常。判据 = dmesg 由 `not found firmware desc data, using defaults` 变为 `found firmware desc data` |
+| 触发条件 | **排线接触**。重插 DSI0 排线 + 重启后固件即可读到 |
+
+### 9.2 期间发现并已定位的其它问题
+
+| 项 | 结论 |
+|---|---|
+| GT911 触摸不应答 | **同一根 FPC 上的独立 I2C 器件**，其"应答 / 不应答"是**排线电气连接是否良好**的最硬判据（i2c1 上另三个器件正常应答 ⇒ 总线本身无问题）。重插后触摸恢复正常 |
+| USB 端口 3-7 缺陷 | 属**开发机 30**，与屏无关，见 `dev-host-30.md` §9.2 |
+
+### 9.3 遗留（待执行）
+
+| # | 事项 | 说明 |
+|---|---|---|
+| 1 | **overlay 切换**：uEnv 第 44 行改为 `rk3588-lubancat-5-v2-dsi0-vp2-1024x600-7inch-ebf410173-overlay.dtbo` | 当前 overlay 与实物不符（靠固件自纠正工作，但不规范）；切换需改 uEnv + 重启，**待授权执行** |
+| 2 | `display.mode_htotal/vtotal` / `display.dsi_lane_rate` 复采 | 本平台无 lane-rate 回读口；主基准 §10.4 该行已标"未复采前不得定稿" |
+| 3 | 主基准已按 7" 屏回写（v3.33） | §2.3 / §3.1 / §3.3 / §3.4 / §3.5 / §4.1 / §5 / §6 / §10.4 / §11.1-1 / §14 / §15；布局由上下铺排改为**左右并排**、新增 **OSD 指标区**，详见主基准 §14 的 v3.33 行 |
