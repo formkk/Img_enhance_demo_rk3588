@@ -1,0 +1,13 @@
+{"api":"2.3.2 (429f97ae6b@2025-04-09T09:09:27)","drv":"0.9.8",
+"core_mask":0,"core_mask_ret":0,
+"in_elems":1566720,"out_elems":1566720,"n_input":1,"n_output":1,
+"in_attr":{"fmt":"NHWC","n_dims":4,"dims":[1,544,960,3],"type":1},
+"out_attr":{"fmt":"NCHW","n_dims":4,"dims":[1,3,544,960],"type":1},
+"mem":{"weight":24832,"internal":253808640,"dma":261279744,"sram":0,"sram_free":0},
+"n":5,
+"wall_ms":{"min":223.79,"median":271.18,"p90":405.54,"max":405.54},
+"npu_run_ms":{"min":187.25,"median":187.82,"p90":335.85,"max":335.85},
+"overhead_ms_median":83.35,
+"cfg":{"fmt":"nhwc","want_float":1,"sram":0,"in_type":"uint8","perf_collect":0}
+}
+"dump":"curves/hard_00699_960x544.f32",
