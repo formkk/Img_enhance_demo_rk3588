@@ -153,7 +153,7 @@ conda activate rknn && python --version  # Python 3.8.20
 | `mirrors.tuna.tsinghua.edu.cn`（conda-forge / pkgs/main） | HEAD **200**，0.91–0.98 s（可作 conda 镜像备选） |
 | `www.baidu.com` | HTTP 200，0.47 s |
 | 代理环境变量 | 无 `http_proxy` / `https_proxy`；仅见 Trae 自身的 `ICUBE_PROXY_HOST=127.0.0.1` / `PREVIEW_PROXY_ENABLED=false` |
-| 演示板 `192.168.0.104` | **不可达**：2 包全丢，`/dev/tcp/192.168.0.104/22` 报"没有到主机的路由"（17:0x 复测同结论） |
+| 演示板 `192.168.0.104` | ✅ **可达（2026-09-18 复测更正）**：`ssh board` 免密登录成功（实测返回 `host=lubancat user=cat`）。**历史**：2026-09-17 17:0x 曾**不可达**（2 包全丢、`/dev/tcp/192.168.0.104/22` 报"没有到主机的路由"），该记录已被本次复测取代 |
 
 ### 3.6 系统组件与驱动审计（2026-09-17 17:0x 复采，只读）
 
@@ -188,7 +188,7 @@ conda activate rknn && python --version  # Python 3.8.20
 
 | 包 | 状态 |
 |---|---|
-| `libdrm-dev` / `libv4l-dev` / `v4l-utils` / `libgbm-dev` | **全部未装** —— 交叉编译板上程序前须补齐；受 P1（板不可达、sysroot 无法对齐）阻塞，**现在装也无从验证** |
+| `libdrm-dev` / `libv4l-dev` / `v4l-utils` / `libgbm-dev` | **全部未装** —— 交叉编译板上程序前须补齐；**P1（板可达）已于 2026-09-18 解除**，但**板上 Python 版本与 sysroot 对齐仍未做** ⇒ 现在装仍无从验证 |
 
 **D. 驱动侧** —— 无阻塞项
 
@@ -204,17 +204,17 @@ conda activate rknn && python --version  # Python 3.8.20
 1. **构建链在本机就绪**（gcc 9.4 + python3.8-dev + make + pkg-config），但 `cmake`/`ninja` 是用户级/conda 安装，**不属系统组件**——构建脚本须显式解析或固定路径。
 2. **模型转换链的依赖缺口有两层**：Python 包（§3.3 缺失表）**加上** apt 组件（本表 B 组，尤其 `libprotobuf-dev` / `libxslt1-dev` / `libglib2.0-dev`）。装 Python 包**必须先补 B 组**，且需 sudo（本终端无免密 sudo）。
 3. **驱动层无阻塞**：GPU / 网卡 / 存储驱动均已加载，`nvidia-smi` 只影响可读性、不影响算力本体。
-4. **C 组（板上开发头文件）受 P1 阻塞**，不宜在 sysroot 未对齐前安装，以免锁定错误版本。
+4. **C 组（板上开发头文件）**：P1（板可达）已解除，但**仍受 sysroot 未对齐阻塞**，不宜在此之前安装，以免锁定错误版本。
 
 ## 4. 通道与访问
 
 | 项 | 状态 |
 |---|---|
 | 本机自连免密 | **已配置**（2026-09-17）：`~/.ssh/id_ed25519`（ed25519，无口令，指纹 `SHA256:M4te9AEI9Y2RWqIIU38LjLjN8LGWiP02goLCqsHcGxc`）已入 `~/.ssh/authorized_keys`（该文件共 2 行，另有 1 条历史 RSA 公钥；无 `~/.ssh/id_rsa` 私钥）；`ssh -o BatchMode=yes jenkolux@192.168.0.30` 验证通过 |
-| `~/.ssh/config` | **不存在**（无 `board` 等主机别名） |
-| 开发机 → 演示板 | **未打通**：板不可达（§3.5），`ssh-copy-id` 无从执行 |
-| `board-ops` MCP | server 代码在 `.trae/mcp/board-ops/server.py`（主基准 §14 v3.18）；**注册入口在 IDE 的 MCP 设置（JSON）**，模板见 **§4.1**。`BOARD_SSH_HOST` / `BOARD_SSH_USER` **未配置** → 8 个只读工具可被列出，但调用时返回配置指引、**不执行任何远程命令** |
-| git 身份 | `~/.gitconfig` 内 `user.name` / `user.email` **均未配置**（该文件仅有 git-lfs filter 与 `safe.directory=*`）；**IDE 侧**已配 `formkk <formk@163.com>`，但**命令行不读取**——首提以 `git -c user.name=formkk -c user.email=formk@163.com` 单次指定完成（commit `337eb3d`）；**C6 仍待全局配置** |
+| `~/.ssh/config` | ✅ **已存在（2026-09-18）**：含 `Host board`（HostName 192.168.0.104 / User cat / IdentityFile `~/.ssh/id_ed25519`）与 `Host dev30`（本机自连别名）。**历史**：2026-09-17 时该文件不存在 |
+| 开发机 → 演示板 | ✅ **已打通（2026-09-18）**：`ssh board` 免密可用（ed25519 公钥已入板端 `authorized_keys`）；本档 §7/§9 的板端实测、屏调试与摄像头预览均经此通道执行 |
+| `board-ops` MCP | server 代码在 `.trae/mcp/board-ops/server.py`（主基准 §14 v3.18）；**注册入口在 IDE 的 MCP 设置（JSON）**，模板见 **§4.1**。`BOARD_SSH_HOST` / `BOARD_SSH_USER` **仍未在 IDE 侧配置**（C7）→ 8 个只读工具可被列出，但调用时返回配置指引、**不执行任何远程命令**；**板本身已可达**（2026-09-18）⇒ 该配置现在可做且可验证 |
+| git 身份 | ✅ **（2026-09-18 已完成全局配置）** `git config --global user.name=formkk` / `user.email=formk@163.com`（用户执行；实测 `git config --global --list` 回读一致）⇒ **此后提交无需再带 `-c`**。**历史沿革**：配置前 `~/.gitconfig` 内 `user.name`/`user.email` 均空（该文件仅有 git-lfs filter 与 `safe.directory=*`），IDE 侧虽配 `formkk <formk@163.com>` 但命令行不读取，故首提以 `git -c user.name=formkk -c user.email=formk@163.com` 单次指定完成（commit `337eb3d`），本仓 `e3fe059`/`dbdaedc` 亦为同样单次指定 |
 
 ### 4.1 `board-ops` MCP 注册模板（IDE 侧 JSON）
 
@@ -237,7 +237,7 @@ conda activate rknn && python --version  # Python 3.8.20
 ```
 
 - `command` 用**绝对路径** `/usr/bin/python3`：理由见 §3.3 口径段（GUI 子进程不读 `~/.bashrc`，PATH 解析不可控）；该 server **零依赖**，3.8.10 与 3.11.3 均已实测可跑。
-- `env` 仅在**板可达后**填写（演示板 `192.168.0.104` 现**不可达**，见 §3.5）；留空或省略时工具返回配置指引，不会瞎连。
+- `env` 现**可填写**（板已可达，见 §3.5）；留空或省略时工具返回配置指引，不会瞎连。
 - 若界面校验要求传输类型，按提示补 `"type": "stdio"`。
 - 可选项：`BOARD_SSH_KEY`（私钥路径）、`BOARD_SSH_TIMEOUT`（默认 20 s）。
 
@@ -245,7 +245,7 @@ conda activate rknn && python --version  # Python 3.8.20
 
 | 前置 | 现状 | 判定 |
 |---|---|---|
-| P1 演示板可达（SSH） | 板 `192.168.0.104` 无路由、端口不可达 | **未满足** —— 仍为 M0 第一道阻塞 |
+| P1 演示板可达（SSH） | ✅ **已满足（2026-09-18 更正）**：`ssh board` 免密登录成功，板端命令可执行 | **已满足 —— 不再是 M0 阻塞**。**历史**：2026-09-17 记录为"无路由、端口不可达"，已被取代。**遗留**：`board-ops` MCP 的 `BOARD_SSH_*` 环境变量仍未在 IDE 侧配置（C7），但板本身可达、该配置现在可做且可验证 |
 | P2 硬件齐套 | 板、IMX415、MIPI 屏、HDMI、风扇状态**本机无法核验** | 未知（待板上只读探测） |
 | P3 模型与工具链 | **部分推进**：转换环境 `rknn`(py3.8) 已建（§3.3）；但 Python 包（`onnx`/`onnxsim`/`rknn-toolkit2`/`pybind11`）与 apt 组件（`libprotobuf-dev` 等，§3.6-B）**双缺** | **未满足** —— 仍有**两层缺口**，且补 apt 组需 sudo |
 | P4 代用数据源 | 本机无 USB 摄像头、无 `/dev/video*`，亦未见离线暗光集 | **未满足**（待确认数据来源） |
@@ -256,14 +256,14 @@ conda activate rknn && python --version  # Python 3.8.20
 
 | # | 事项 | 前置 / 约束 |
 |---|---|---|
-| C1 | Python 转换环境（`onnx` / `onnxsim` / `onnxruntime` / `rknn-toolkit2`） | **环境已建**（conda `rknn`，py3.8.20，§3.3）；**包体待装**。装前须先补 apt 组件（§3.6-B，需 sudo）；依赖按该版本 toolkit2 的 **`requirements_cp38-<ver>.txt` 全量安装**（py3.8 → 用 cp38 档与对应 wheel），其中 `onnx`/`onnxsim`/`onnxruntime` 不受板端约束、**可先装**；而 `rknn-toolkit2` 必须与板上 `librknnrt` **同版本号**（主基准 §2.2 / §10.1，v3.20 已由"同代"精确化）→ **其版本受 P1（探板）阻塞**。**opset 基线 12 见主基准 §10.2** |
+| C1 | Python 转换环境（`onnx` / `onnxsim` / `onnxruntime` / `rknn-toolkit2`） | **环境已建**（conda `rknn`，py3.8.20，§3.3）；**包体待装**。装前须先补 apt 组件（§3.6-B，需 sudo）；依赖按该版本 toolkit2 的 **`requirements_cp38-<ver>.txt` 全量安装**（py3.8 → 用 cp38 档与对应 wheel），其中 `onnx`/`onnxsim`/`onnxruntime` 不受板端约束、**可先装**；而 `rknn-toolkit2` 必须与板上 `librknnrt` **同版本号**（主基准 §2.2 / §10.1，v3.20 已由"同代"精确化）→ **其版本受 P1（探板）阻塞**；**P1 已解除且探板已完成**（2026-09-17，板上 `librknnrt` = **2.3.2**，见 `environment/board-lubancat5.md` §3）⇒ 该约束**已可落定**。**opset 基线 12 见主基准 §10.2** |
 | C1b | apt 组件补齐（`libprotobuf-dev` / `protobuf-compiler` / `libxslt1-dev` / `libglib2.0-dev`，§3.6-B） | **需 sudo**（本终端 `sudo -n` 失败，需密码）→ 须用户执行或提供授权 |
 | C2 | `pybind11`（`docs/build.md` §4） | 版本须**锁定**并写入构建日志；ABI 与运行期 Python 一致 |
-| C3 | 交叉编译链 `aarch64-linux-gnu-gcc`（`docs/build.md` §1 备选路径） | 须用与板上同代 sysroot；产物 ABI 须与板上 Python 一致 → 受 P1 阻塞。附带的 `libdrm-dev` / `libv4l-dev` / `v4l-utils` / `libgbm-dev`（§3.6-C）同受阻塞 |
+| C3 | 交叉编译链 `aarch64-linux-gnu-gcc`（`docs/build.md` §1 备选路径） | 须用与板上同代 sysroot；产物 ABI 须与板上 Python 一致 → **P1 已解除（板可达）**，现仅受 **sysroot 未对齐**阻塞。附带的 `libdrm-dev` / `libv4l-dev` / `v4l-utils` / `libgbm-dev`（§3.6-C）同 |
 | C4 | GPU 算力补齐（§3.4） | **① `nvidia-utils-535` 已于 2026-09-18 完成**（`nvidia-smi` 可用）；**仅剩 ② CUDA 版 torch**（pip，可装进专用环境）。若 M1 fine-tune 需要 GPU 才需做，否则可缓 |
 | C5 | pip 镜像（§3.3） | 可选，仅影响下载速度；PD 直连已 200 |
-| C6 | git 身份（§4） | 需用户提供 `user.name` / `user.email` |
-| C7 | `~/.ssh/config` 主机别名 `board` / `board-ops` 的 `BOARD_SSH_*`（§4） | 受 P1 阻塞（板不可达，配了也无从验证） |
+| ~~C6~~ | ~~git 身份（§4）~~ | ✅ **已于 2026-09-18 完成**：全局 `user.name=formkk` / `user.email=formk@163.com` 已配置并回读核验（详见 §4 该行） |
+| C7 | `board-ops` MCP 的 `BOARD_SSH_*` 环境变量（IDE 侧 JSON，见 §4.1） | **P1 已不阻塞**（板可达，2026-09-18）⇒ 现在可配且可验证；`~/.ssh/config` 的 `board` 别名已就绪 |
 | C8 | 代用数据源接入（§5 P4） | 需确认用 USB 相机（本机无）还是既有离线暗光集 |
 
 ## 7. 采集元信息（可复现命令）
