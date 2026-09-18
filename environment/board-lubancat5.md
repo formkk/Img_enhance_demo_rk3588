@@ -237,7 +237,7 @@ ssh board 'sudo dmesg | grep -E "s_stream|vts"; \
 
 ## 8. 摄像头光学与成像现状（v3.24，2026-09-17 22:2x–23:0x）
 
-**结论**：链路（sensor→CSI→ISP→mainpath）完全可用、帧实时前进；**光学侧未定型** —— 镜头换装后仍**未达合焦**，且**安装朝向倾斜约 30–40°**。⇒ **画质类结论一律挂起**；**"镜头定型 + 摆正 + 对焦达标"为 M1 前置闸口（主基准 §15 O31）**，未关闭前不得采 M1 实拍集。
+**结论**：链路（sensor→CSI→ISP→mainpath）完全可用、帧实时前进。**（v3.44 更新）**：**镜头已定型 = 保留 8 mm 可调焦**、**对焦经用户 2026-09-18 现场确认已达最清晰状态**（见 §8.2）⇒ **O31 已裁定解除**；**唯一残留 = 安装朝向「摆正」**（画面竖直结构仍斜置，见 §8.3）⇒ **M1 前置闸口未全关，未摆正前不得采 M1 实拍集**。
 
 ### 8.1 镜头换装
 
@@ -255,6 +255,16 @@ ssh board 'sudo dmesg | grep -E "s_stream|vts"; \
 | gray std | 28.8 | 66.4 | 细节量增加（场景已可辨识） |
 | B/G/R 均值 | 121/112/121 | 120/107/111 | **中性，无红偏** ✅ |
 
+**（v3.44 更新，O31 裁定）** 用户现场调焦后复测（靶标 = 约 **2.6 m 室内实物**；口径同上）：
+
+| 项 | 值 |
+|---|---|
+| 中心 1:1 480×270 Laplacian 方差 | **32.6**（静置 12 帧 31.7–33.4） |
+| 扫焦峰值 / 最低 | **33.7** / 5.2（**6.46×**）；焦环位于峰值 |
+| 判定 | **用户确认「已是最清晰状态」** ⇒ 对焦达标 |
+
+> **判据口径说明**：实物靶标的该指标**强依赖场景纹理**，上表"合焦通常 >150"是**同类桌面场景的经验值**，与实物场景**不可直接比** ⇒ 本项目**不以绝对阈值判**，改用「**焦环位于峰值 + 用户目视确认**」。如需可复现的绝对阈值，须换**高纹理靶标**（如 2.6 m 处印刷文字）另测。证据 `docs/evidence/O31-lens-focus.md`。
+
 场景内容（换场景后）：书桌场景（黑色显示器/电视、纸箱、线缆、红色物体）——**可辨识但 1:1 边缘糊开约 3–5 px**。
 AE 正常自适应（`analogue_gain` 161 → 146、`exposure` 1350/2242）；`rkaiq_3A_server` 常驻。
 
@@ -268,6 +278,8 @@ AE 正常自适应（`analogue_gain` 161 → 146、`exposure` 1350/2242）；`rk
 - 用法（板上）：`python3 tools/cam_preview.py --device /dev/video11 --port 8090`；浏览器开 `http://<板地址>:8090/`
   （含：全幅 + 中心 4× 放大；**清晰度读数**（中心 1:1 Laplacian 方差）+ 本次最大 + 帧序号 + **重复帧计数**；下载当前原图）。
 - 停止：`ssh board "sudo pkill -9 -f 'cam_pre[.]view'"`（注意 `pkill -f` 会匹配到自己的命令行，须用 `[.]`/`[-]` 转义写法）。
+
+> **（v3.44）实测两坑**：① **长跑后流会停**——`/stat` 的 `seq` 卡住、两次快照 md5 相同（摄像头本身健康，另抓帧正常）；需长时间预览时改用**直接 gst 窗口 sink**：`v4l2src ! tee`（一路 `videoscale → videoconvert → ximagesink` 出画面；一路 `videocrop` 取中心 1:1 480×270 → GRAY8 → `multifilesink` 落盘供测量）。② **面板 DPMS 熄灭 ⇒「黑屏无背光」**：`/sys/class/backlight/backlight-dsi0/bl_power` 被置 **4**（`FB_BLANK_POWERDOWN`）而 `brightness` 仍 200；恢复 = `echo 0 | sudo tee /sys/class/backlight/backlight-dsi0/bl_power`，预防 = 开发期 `xset s off -dpms`（**演示态 `multi-user.target` 无桌面，不适用**）。
 - **两个实测坑（本档留痕，避免重复踩）**：
   1. **`/dev/video11` 是 Multiplanar 节点**：`ffmpeg/ffplay/mpv` 的 v4l2 输入直接报 `Not a video capture device`（实测），须用 **GStreamer `v4l2src`**（支持 MPlane）；
   2. **`v4l2src` 直连 `mppjpegenc` 会反复编码同一块陈旧缓冲** ⇒ 页面"画面冻住"而帧序号仍在涨（极易误判为相机故障）；**必须前置 `videoconvert` 做一次真实拷贝**。对照实测：加 videoconvert 后 `19 帧 / 19 唯一`；纯软件 `jpegenc` 亦正常。工具因此加了 `dup_run` 监控。
