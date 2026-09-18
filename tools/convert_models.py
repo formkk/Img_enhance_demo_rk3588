@@ -194,12 +194,19 @@ def do_build(args):
     rknn_ver = getattr(rknn, '__version__', 'unknown')
 
     r = RKNN(verbose=True)
-    r.config(
+    cfg = dict(
         mean_values=MEAN,
         std_values=STD,
         target_platform=args.target,
         quant_img_RGB2BGR=False,
     )
+    if args.inputs_yuv_fmt:
+        # M0-7 实验：在模型顶部插入 YUV 预处理（RKNN 仅支持 nv12/nv21，
+        # 且仅 INT8 生效；要求输入为 NCHW 4 维、channel=3、H/W 均被 4 整除）
+        if quant != 'int8':
+            raise SystemExit('inputs_yuv_fmt 仅 INT8 生效，请用 --quant int8')
+        cfg['inputs_yuv_fmt'] = [args.inputs_yuv_fmt]
+    r.config(**cfg)
     if r.load_onnx(model=args.onnx) != 0:
         raise SystemExit('load_onnx failed')
     if quant == 'fp16':
@@ -223,6 +230,7 @@ def do_build(args):
         'target_platform': args.target,
         'quant': quant,
         'input_normalization': {'rgb2bgr': False, 'mean': MEAN, 'std': STD},
+        'inputs_yuv_fmt': [args.inputs_yuv_fmt] if args.inputs_yuv_fmt else None,
         'env': {'python': platform.python_version(), 'rknn_toolkit2': rknn_ver},
     }
     write_report(report, args.report)
@@ -255,6 +263,8 @@ def main():
     pb.add_argument('--quant', choices=['fp16', 'int8'], default='fp16')
     pb.add_argument('--calib', default='')
     pb.add_argument('--target', default=TARGET_PLATFORM)
+    pb.add_argument('--inputs-yuv-fmt', choices=['', 'nv12', 'nv21'], default='',
+                    help='M0-7 实验：在模型顶部插入 YUV 预处理（仅 INT8；输入 H/W 须被 4 整除）')
     pb.add_argument('--report', default='')
     pb.set_defaults(func=do_build)
 

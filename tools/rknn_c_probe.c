@@ -48,7 +48,7 @@ static const char* fmt_str(rknn_tensor_format f) {
 int main(int argc, char** argv) {
     if (argc < 4) {
         fprintf(stderr, "usage: %s <model.rknn> <input.f32> <runs> [nhwc|nchw] [float|nofloat] [sram|nosram] "
-                        "[u8|f32] [perf|noperf] [dump.f32] [core_mask]\n", argv[0]);
+                        "[u8|rawu8|f32] [perf|noperf] [dump.f32] [core_mask]\n", argv[0]);
         return 2;
     }
     const char* model_path = argv[1];
@@ -57,7 +57,8 @@ int main(int argc, char** argv) {
     int use_nhwc = (argc > 4 && strcmp(argv[4], "nchw") != 0);
     int want_float = !(argc > 5 && strcmp(argv[5], "nofloat") == 0);
     int use_sram = (argc > 6 && strcmp(argv[6], "sram") == 0);
-    int use_u8 = (argc > 7 && strcmp(argv[7], "u8") == 0);   /* 输入按 uint8 提供（4× 少数据） */
+    int use_u8 = (argc > 7 && strcmp(argv[7], "u8") == 0);   /* float32 文件 → uint8（值等价） */
+    int use_raw = (argc > 7 && strcmp(argv[7], "rawu8") == 0); /* 直接读 uint8 文件（NV12 等，不做转换） */
     int noperf = (argc > 8 && strcmp(argv[8], "noperf") == 0);
     int core_mask = (argc > 10) ? atoi(argv[10]) : 0;        /* 0 = AUTO */
 
@@ -89,18 +90,27 @@ int main(int argc, char** argv) {
 
     rknn_input_output_num io_num;
     rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
-    rknn_tensor_attr in_attr, out_attr;
-    memset(&in_attr, 0, sizeof(in_attr));  in_attr.index = 0;
+    rknn_tensor_attr in_attr[2], out_attr;
+    uint32_t n_in = io_num.n_input > 2 ? 2 : io_num.n_input;
+    for (uint32_t k = 0; k < n_in; k++) {
+        memset(&in_attr[k], 0, sizeof(rknn_tensor_attr));
+        in_attr[k].index = k;
+        rknn_query(ctx, RKNN_QUERY_INPUT_ATTR, &in_attr[k], sizeof(rknn_tensor_attr));
+    }
     memset(&out_attr, 0, sizeof(out_attr)); out_attr.index = 0;
-    rknn_query(ctx, RKNN_QUERY_INPUT_ATTR, &in_attr, sizeof(in_attr));
     rknn_query(ctx, RKNN_QUERY_OUTPUT_ATTR, &out_attr, sizeof(out_attr));
     printf("\"in_elems\":%u,\"out_elems\":%u,\"n_input\":%u,\"n_output\":%u,\n",
-           in_attr.n_elems, out_attr.n_elems, io_num.n_input, io_num.n_output);
+           in_attr[0].n_elems, out_attr.n_elems, io_num.n_input, io_num.n_output);
 
     /* v3.28：张量属性实测（§10.4 `model.zde_output_layout` / `model.zde_output_dims`） */
-    printf("\"in_attr\":{\"fmt\":\"%s\",\"n_dims\":%u,\"dims\":[", fmt_str(in_attr.fmt), in_attr.n_dims);
-    for (uint32_t i = 0; i < in_attr.n_dims; i++) printf("%s%u", i ? "," : "", in_attr.dims[i]);
-    printf("],\"type\":%d},\n", (int)in_attr.type);
+    printf("\"in_attr\":{\"fmt\":\"%s\",\"n_dims\":%u,\"dims\":[", fmt_str(in_attr[0].fmt), in_attr[0].n_dims);
+    for (uint32_t i = 0; i < in_attr[0].n_dims; i++) printf("%s%u", i ? "," : "", in_attr[0].dims[i]);
+    printf("],\"n_elems\":%u,\"type\":%d},\n", in_attr[0].n_elems, (int)in_attr[0].type);
+    if (n_in > 1) {
+        printf("\"in_attr1\":{\"fmt\":\"%s\",\"n_dims\":%u,\"dims\":[", fmt_str(in_attr[1].fmt), in_attr[1].n_dims);
+        for (uint32_t i = 0; i < in_attr[1].n_dims; i++) printf("%s%u", i ? "," : "", in_attr[1].dims[i]);
+        printf("],\"n_elems\":%u,\"type\":%d},\n", in_attr[1].n_elems, (int)in_attr[1].type);
+    }
     printf("\"out_attr\":{\"fmt\":\"%s\",\"n_dims\":%u,\"dims\":[", fmt_str(out_attr.fmt), out_attr.n_dims);
     for (uint32_t i = 0; i < out_attr.n_dims; i++) printf("%s%u", i ? "," : "", out_attr.dims[i]);
     printf("],\"type\":%d},\n", (int)out_attr.type);
@@ -122,12 +132,12 @@ int main(int argc, char** argv) {
     if (fread(in_buf, 1, in_bytes, fi) != (size_t)in_bytes) { perror("read input"); return 5; }
     fclose(fi);
 
-    rknn_input inputs[1];
+    rknn_input inputs[2];
     memset(inputs, 0, sizeof(inputs));
     inputs[0].index = 0;
     inputs[0].buf = in_buf;
     inputs[0].pass_through = 0;
-    inputs[0].type = use_u8 ? RKNN_TENSOR_UINT8 : RKNN_TENSOR_FLOAT32;
+    inputs[0].type = (use_u8 || use_raw) ? RKNN_TENSOR_UINT8 : RKNN_TENSOR_FLOAT32;
     if (use_u8) {                                           /* float32 的 0..255 → uint8（值等价） */
         uint8_t* u8 = (uint8_t*)malloc(in_bytes / 4);
         const float* f = (const float*)in_buf;
@@ -139,6 +149,21 @@ int main(int argc, char** argv) {
     }
     inputs[0].fmt = use_nhwc ? RKNN_TENSOR_NHWC : RKNN_TENSOR_NCHW;
     inputs[0].size = (uint32_t)in_bytes;
+
+    /* M0-7：NV12 直喂时 RKNN 把输入拆成 2 个 tensor（Y / UV），按 in_attr 切分同一缓冲 */
+    uint32_t n_input_feed = 1;
+    if (use_raw && n_in > 1) {
+        inputs[0].size = in_attr[0].n_elems;
+        for (uint32_t k = 1; k < n_in; k++) {
+            inputs[k].index = k;
+            inputs[k].buf = (uint8_t*)in_buf + in_attr[0].n_elems;   /* 第 2 个输入紧邻第 1 个 */
+            inputs[k].size = in_attr[k].n_elems;
+            inputs[k].pass_through = 0;
+            inputs[k].type = RKNN_TENSOR_UINT8;
+            inputs[k].fmt = RKNN_TENSOR_NHWC;
+        }
+        n_input_feed = n_in;
+    }
     rknn_output outputs[1];
     memset(outputs, 0, sizeof(outputs));
     outputs[0].index = 0;
@@ -149,7 +174,7 @@ int main(int argc, char** argv) {
     int ok = 0;
     for (int i = 0; i < runs; i++) {
         double t0 = now_ms();
-        if (rknn_inputs_set(ctx, 1, inputs) < 0) { fprintf(stderr, "inputs_set failed\n"); return 6; }
+        if (rknn_inputs_set(ctx, n_input_feed, inputs) < 0) { fprintf(stderr, "inputs_set failed\n"); return 6; }
         if (rknn_run(ctx, NULL) < 0) { fprintf(stderr, "run failed\n"); return 6; }
         if (rknn_outputs_get(ctx, 1, outputs, NULL) < 0) { fprintf(stderr, "outputs_get failed\n"); return 6; }
         wall[i] = now_ms() - t0;
@@ -175,13 +200,14 @@ int main(int argc, char** argv) {
            r[0], r[ok / 2], r[(int)(ok * 0.9)], r[ok - 1]);
     printf("\"overhead_ms_median\":%.2f,\n", w[ok / 2] - r[ok / 2]);
     printf("\"cfg\":{\"fmt\":\"%s\",\"want_float\":%d,\"sram\":%d,\"in_type\":\"%s\",\"perf_collect\":%d}\n}\n",
-           use_nhwc ? "nhwc" : "nchw", want_float, use_sram, use_u8 ? "uint8" : "float32", !noperf);
+           use_nhwc ? "nhwc" : "nchw", want_float, use_sram,
+           use_raw ? "rawuint8" : (use_u8 ? "uint8" : "float32"), !noperf);
 
     if (argc > 9 && want_float) {          /* 落盘输出（float32），便于与切分结果逐元素比对 */
         FILE* fo = fopen(argv[9], "wb");
         if (fo) {
             /* 末尾一次循环的输出 buf 已 release，故此处重跑一次并保留 buf */
-            rknn_inputs_set(ctx, 1, inputs);
+            rknn_inputs_set(ctx, n_input_feed, inputs);
             rknn_run(ctx, NULL);
             if (rknn_outputs_get(ctx, 1, outputs, NULL) == 0) {
                 fwrite(outputs[0].buf, 1, outputs[0].size, fo);
