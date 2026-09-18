@@ -56,10 +56,10 @@ display:
   hdmi_connector: "HDMI-A-1"             # 自检比对用；当前实测 disconnected（M0-9 需接显示器）
   mipi_canvas: [1024, 600]               # 内部合成画布（§3.4；v3.33 变更，横屏 7"）
   hdmi_canvas: [1920, 1080]              # 内部合成画布（§3.1 两层 SSOT 中的 buffer 尺寸）
-  panel_refresh_hz: 60                   # 实测 1024x600p60（dclk 51668000，v3.33）
-  mode_htotal: null                      # 待复采（v3.33 屏型变更；原 1120 系 1080×1920 残留，不得引用）
-  mode_vtotal: null                      # 待复采（原 1955 系 1080×1920 残留，不得引用）
-  dsi_lane_rate: null                    # 待复采/重推导（原 788 系 1080×1920 推导值，不得引用）；本平台无回读口
+  panel_refresh_hz: 60                   # 实测 1024x600p60（dclk 51668000；51668000/(1354×636)=60.00 Hz）
+  mode_htotal: 1354                      # 实测 modetest #0：1024 1184 1194 1354（=1024+160+10+160）
+  mode_vtotal: 636                       # 实测 modetest #0：600 612 613 636（=600+12+1+23）
+  dsi_lane_rate: 344                     # Mbit/s/lane，dmesg 实测 "DSI-Link bandwidth: 344453 x 4 Kbps"
   hdmi_mode_selection: null              # 定稿时点 M2（EDID mode list 优先 1080p，无则 preferred）
 
 # ── 链路（定稿时点见各行）───────────────────────────────────────────

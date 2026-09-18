@@ -174,9 +174,9 @@ conda activate rknn && python --version  # Python 3.8.20
 
 | 包 | 状态 | 影响 |
 |---|---|---|
-| `libprotobuf-dev` / `protobuf-compiler` | **未装** | protobuf 头与编译器缺失，ONNX / RKNN 相关 Python 包安装与转换链受影响 |
-| `libxslt1-dev` | **未装** | RKNN Toolkit2 官方依赖清单列出 |
-| `libglib2.0-dev` | **未装** | 同上 |
+| `libprotobuf-dev` / `protobuf-compiler` | ✅ **已装（2026-09-18，C1b）** 3.6.1.3-2ubuntu5.2；`protoc --version` = libprotoc 3.6.1、`pkg-config --modversion protobuf` = 3.6.1 | 原"未装"记录已被取代；protobuf 头与编译器齐备 |
+| `libxslt1-dev` | ✅ **已装（2026-09-18，C1b）** 1.1.34-4ubuntu0.20.04.3 | 原"未装"记录已被取代；**注意 `pkg-config libxslt-1.0` 查不到**（该版本 .pc 命名不同），但头文件已就位，不影响构建 |
+| `libglib2.0-dev` | ✅ **已装（2026-09-18，C1b）** 2.64.6-1~ubuntu20.04.9；`pkg-config --modversion glib-2.0` = 2.64.6 | 原"未装"记录已被取代 |
 | `libgl1` | 1.3.2 已装 | ✅（`libgl1-mesa-glx` 未装，但 `libgl1` 已覆盖运行期） |
 | `libsm6` | 2:1.2.3 已装 | ✅ |
 | `zlib1g-dev` | 1.2.11 已装 | ✅ |
@@ -202,7 +202,7 @@ conda activate rknn && python --version  # Python 3.8.20
 **E. 审计结论**
 
 1. **构建链在本机就绪**（gcc 9.4 + python3.8-dev + make + pkg-config），但 `cmake`/`ninja` 是用户级/conda 安装，**不属系统组件**——构建脚本须显式解析或固定路径。
-2. **模型转换链的依赖缺口有两层**：Python 包（§3.3 缺失表）**加上** apt 组件（本表 B 组，尤其 `libprotobuf-dev` / `libxslt1-dev` / `libglib2.0-dev`）。装 Python 包**必须先补 B 组**，且需 sudo（本终端无免密 sudo）。
+2. **模型转换链的依赖缺口**：**apt 组件（本表 B 组）已于 2026-09-18 补齐**（C1b：`libprotobuf-dev` / `protobuf-compiler` / `libxslt1-dev` / `libglib2.0-dev` 均已装，`protoc` 3.6.1 实测可用）⇒ **该层缺口已关闭**；**剩余缺口仅为 Python 包**（§3.3 缺失表：`onnx` / `onnxsim` / `onnxruntime` / `rknn-toolkit2` / `pybind11`）。
 3. **驱动层无阻塞**：GPU / 网卡 / 存储驱动均已加载，`nvidia-smi` 只影响可读性、不影响算力本体。
 4. **C 组（板上开发头文件）**：P1（板可达）已解除，但**仍受 sysroot 未对齐阻塞**，不宜在此之前安装，以免锁定错误版本。
 
@@ -257,13 +257,13 @@ conda activate rknn && python --version  # Python 3.8.20
 | # | 事项 | 前置 / 约束 |
 |---|---|---|
 | C1 | Python 转换环境（`onnx` / `onnxsim` / `onnxruntime` / `rknn-toolkit2`） | **环境已建**（conda `rknn`，py3.8.20，§3.3）；**包体待装**。装前须先补 apt 组件（§3.6-B，需 sudo）；依赖按该版本 toolkit2 的 **`requirements_cp38-<ver>.txt` 全量安装**（py3.8 → 用 cp38 档与对应 wheel），其中 `onnx`/`onnxsim`/`onnxruntime` 不受板端约束、**可先装**；而 `rknn-toolkit2` 必须与板上 `librknnrt` **同版本号**（主基准 §2.2 / §10.1，v3.20 已由"同代"精确化）→ **其版本受 P1（探板）阻塞**；**P1 已解除且探板已完成**（2026-09-17，板上 `librknnrt` = **2.3.2**，见 `environment/board-lubancat5.md` §3）⇒ 该约束**已可落定**。**opset 基线 12 见主基准 §10.2** |
-| C1b | apt 组件补齐（`libprotobuf-dev` / `protobuf-compiler` / `libxslt1-dev` / `libglib2.0-dev`，§3.6-B） | **需 sudo**（本终端 `sudo -n` 失败，需密码）→ 须用户执行或提供授权 |
+| ~~C1b~~ | ~~apt 组件补齐（`libprotobuf-dev` / `protobuf-compiler` / `libxslt1-dev` / `libglib2.0-dev`，§3.6-B）~~ | ✅ **已于 2026-09-18 完成**（用户提供 sudo 密码）：四包均已装；`protoc --version` = libprotoc 3.6.1、`pkg-config protobuf` = 3.6.1、`glib-2.0` = 2.64.6 实测可用（详见 §3.6-B） |
 | C2 | `pybind11`（`docs/build.md` §4） | 版本须**锁定**并写入构建日志；ABI 与运行期 Python 一致 |
 | C3 | 交叉编译链 `aarch64-linux-gnu-gcc`（`docs/build.md` §1 备选路径） | 须用与板上同代 sysroot；产物 ABI 须与板上 Python 一致 → **P1 已解除（板可达）**，现仅受 **sysroot 未对齐**阻塞。附带的 `libdrm-dev` / `libv4l-dev` / `v4l-utils` / `libgbm-dev`（§3.6-C）同 |
-| C4 | GPU 算力补齐（§3.4） | **① `nvidia-utils-535` 已于 2026-09-18 完成**（`nvidia-smi` 可用）；**仅剩 ② CUDA 版 torch**（pip，可装进专用环境）。若 M1 fine-tune 需要 GPU 才需做，否则可缓 |
+| ~~C4~~ | ~~GPU 算力补齐（§3.4）~~ | ✅ **已于 2026-09-18 全部完成**：① `nvidia-utils-535`（`nvidia-smi` 可用）；② **CUDA 版 torch** —— 专用环境 **`train-cu`**（`~/anaconda3/envs/train-cu`，py3.8）装 `torch 2.0.1+cu117` + `numpy 1.24.4`，**隔离 user site 后实测**：`cuda_avail=True`、RTX 3090 矩阵乘通过、numpy×cuda 张量互转正常；环境体积 3.7 G。**设计说明**：三套**转换环境**（rknn150/232/242）自身仍是 **CPU 版 torch**（§8.2 的设计选择，**勿改**）；**训练一律用 `train-cu` + `PYTHONNOUSERSITE=1`** |
 | C5 | pip 镜像（§3.3） | 可选，仅影响下载速度；PD 直连已 200 |
 | ~~C6~~ | ~~git 身份（§4）~~ | ✅ **已于 2026-09-18 完成**：全局 `user.name=formkk` / `user.email=formk@163.com` 已配置并回读核验（详见 §4 该行） |
-| C7 | `board-ops` MCP 的 `BOARD_SSH_*` 环境变量（IDE 侧 JSON，见 §4.1） | **P1 已不阻塞**（板可达，2026-09-18）⇒ 现在可配且可验证；`~/.ssh/config` 的 `board` 别名已就绪 |
+| C7 | `board-ops` MCP 的 `BOARD_SSH_*` 环境变量（IDE 侧 JSON，见 §4.1） | **P1 已不阻塞**（板可达）；**服务端已于 2026-09-18 验证通过** —— 带 `BOARD_SSH_HOST=192.168.0.104` / `BOARD_SSH_USER=cat` 干跑 `server.py`，导入成功且变量被正确读取（该 server 依赖仅标准库，无第三方包）。**剩余动作在 IDE 侧**：须在 MCP 设置（JSON）按 §4.1 填入 `env` 三项后重启该 server；`~/.ssh/config` 的 `board` 别名已就绪 |
 | C8 | 代用数据源接入（§5 P4） | 需确认用 USB 相机（本机无）还是既有离线暗光集 |
 
 ## 7. 采集元信息（可复现命令）

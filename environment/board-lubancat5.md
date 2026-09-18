@@ -84,7 +84,7 @@ ssh board 'ip -brief link show; nmcli device status; nmcli device wifi list; \
 | 板端 python3 | **3.9.2** | ⇒ `rknn_toolkit_lite2` 用 **cp39** wheel；**pybind11 扩展 ABI = `cpython-39-aarch64`**（`docs/build.md` §4） |
 | NPU 运行时 | **（v3.22 已升级）`librknnrt 2.3.2`**（`429f97ae6b@2025-04-09`，sha256 `d31fc19c…38e8`）；原 **1.5.0** 备份于 **`/usr/lib/librknnrt.so.bak.1.5.0_20260917`**（sha256 `c525301f…b84c`） | 升级记录与恢复步骤见 §5 的 B1 行尾部与 §5.1；**实测结论**：① 2.3.2 模型需 2.3.2 运行时（1.5.0 报 `Invalid RKNN model version 6`）；② **反向兼容成立**——2.3.2 运行时**能加载** 1.5.0 编译的模型（实测对齐 5.42e-4） |
 | NPU 驱动 | **rknpu 0.9.8** | ✅ 满足官方 V2.3.0 的「≥0.9.2」下限 |
-| 图形/桌面 | 未见运行中的图形会话（未探测 systemd 目标，属待补项） | 关桌面两态（§2.3）待演练 |
+| 图形/桌面 | **（v3.37 已演练）** 实测有图形会话：`default.target = graphical.target`、`gdm.service` running、`Xorg`(vt2) + `gnome-shell` 占用 `card0` DRM master（`systemd-logind` 常持 fd）；`card1` = `fdab0000.npu`（**NPU 的 DRM，非显示**） | 关桌面两态（§2.3）**已演练通过**（`isolate` 当次切换可回退 + modetest 取 master；`set-default` 可回退），见 `docs/evidence/M0-10-desktop-off.md` |
 
 ## 4. 与 M0-1 出口判定对照（§11.1-1）
 
@@ -95,7 +95,7 @@ ssh board 'ip -brief link show; nmcli device status; nmcli device wifi list; \
 | 软件版本三元组 | ✅ **已定版**（v3.22）：librknnrt **2.3.2** / toolkit2 **2.3.2**（同版本号）/ driver **0.9.8**（≥0.9.2 下限）；确认门 = M0-4 的 HQ 编译结果 |
 | overlay / `/dev/videoX` / rkisp 节点 | ✅ **已满足（v3.23）**：`uEnvLubanCat5-V2.txt` 第 63 行启用 cam0 的 imx415 overlay；`/dev/video0…19+`、`/dev/v4l-subdev*`、`/dev/media0|1` 齐备；ISP 主路径 = **`/dev/video11`**（rkisp_mainpath，NV12 1920×1080）；`camera.video_node` / `camera.rkisp_node` 取值以此为准（详见 §7） |
 | 丝印 CAM 口 lane 数 | ✅ **CAM0 = 4 lane**（驱动 `detect imx415 lane 4`；原理图 J8 走 D0~D3+CLK）——与 R12"Cat-5 仅 CAM0/CAM1 为 4-lane"一致 |
-| 屏插件 / 横竖屏 / connector | ✅ **已核（v3.33 变更：屏型经用户 2026-09-18 确认为 7"）**：`card0-DSI-1` status=**connected** / enabled=enabled / 原生 mode **1024×600（横屏 7"）**；屏**自带固件描述**（`lcd firmware magic: dead5a5a`、`lcd vendor: Embedfire`、`model: STL7.0-60-132-K`），驱动优先按固件数据取 timing；**实测 mode = `1024x600p60`**（`dclk 51668000` ⇒ **60.00 Hz**）、DSI 链路带宽 `344453 × 4 Kbps`；DSI 物理层 `RGB888_1X24` / `dsi,lanes=4`。HDMI 侧 `card0-HDMI-A-1` = **disconnected**（显示器未接、无 EDID）。**⚠️ overlay 当前仍是 5.5" 那条**（第 44 行 `...-dsi0-vp2-1080x1920-5.5inch-ebf410125-overlay.dtbo`），**应为 `rk3588-lubancat-5-v2-dsi0-vp2-1024x600-7inch-ebf410173-overlay.dtbo`（切换动作待执行）**。**（v3.28 的 1080×1920 竖屏实测随屏型变更作废）** 详见 §9 |
+| 屏插件 / 横竖屏 / connector | ✅ **已核（v3.33 变更：屏型经用户 2026-09-18 确认为 7"）**：`card0-DSI-1` status=**connected** / enabled=enabled / 原生 mode **1024×600（横屏 7"）**；屏**自带固件描述**（`lcd firmware magic: dead5a5a`、`lcd vendor: Embedfire`、`model: STL7.0-60-132-K`），驱动优先按固件数据取 timing；**实测 mode = `1024x600p60`**（`dclk 51668000` ⇒ **60.00 Hz**）、DSI 链路带宽 `344453 × 4 Kbps`；DSI 物理层 `RGB888_1X24` / `dsi,lanes=4`。HDMI 侧 `card0-HDMI-A-1` = **disconnected**（显示器未接、无 EDID）。**✅ overlay 已切换（v3.37 更正）**：uEnv 第 44 行 = `rk3588-lubancat-5-v2-dsi0-vp2-1024x600-7inch-ebf410173-overlay.dtbo`（备份 `.bak.20260918_dsi7inch`），dmesg 实测 `found firmware desc data`；**mode timing 已复采**：`htotal 1354` / `vtotal 636`（`51668000/(1354×636)=60.00 Hz`）⇒ `display.mode_htotal/vtotal`、`display.dsi_lane_rate` 已回填 `config.yaml`。**（v3.28 的 1080×1920 竖屏实测随屏型变更作废）** 详见 §9 |
 
 ## 5. 待办与阻塞
 
@@ -302,10 +302,10 @@ AE 正常自适应（`analogue_gain` 161 → 146、`exposure` 1350/2242）；`rk
 | GT911 触摸不应答 | **同一根 FPC 上的独立 I2C 器件**，其"应答 / 不应答"是**排线电气连接是否良好**的最硬判据（i2c1 上另三个器件正常应答 ⇒ 总线本身无问题）。重插后触摸恢复正常 |
 | USB 端口 3-7 缺陷 | 属**开发机 30**，与屏无关，见 `dev-host-30.md` §9.2 |
 
-### 9.3 遗留（待执行）
+### 9.3 遗留（v3.37 更新：#1 / #2 已完成）
 
 | # | 事项 | 说明 |
 |---|---|---|
-| 1 | **overlay 切换**：uEnv 第 44 行改为 `rk3588-lubancat-5-v2-dsi0-vp2-1024x600-7inch-ebf410173-overlay.dtbo` | 当前 overlay 与实物不符（靠固件自纠正工作，但不规范）；切换需改 uEnv + 重启，**待授权执行** |
-| 2 | `display.mode_htotal/vtotal` / `display.dsi_lane_rate` 复采 | 本平台无 lane-rate 回读口；主基准 §10.4 该行已标"未复采前不得定稿" |
+| 1 | **overlay 切换**：uEnv 第 44 行改为 `rk3588-lubancat-5-v2-dsi0-vp2-1024x600-7inch-ebf410173-overlay.dtbo` | **✅ 已完成（2026-09-18）**：原 overlay 与实物不符（靠固件自纠正工作，不规范）；已切换 + 重启，dmesg 实测 `found firmware desc data`；备份 `.bak.20260918_dsi7inch` |
+| 2 | `display.mode_htotal/vtotal` / `display.dsi_lane_rate` 复采 | **✅ 已完成（2026-09-18）**：`htotal 1354` / `vtotal 636` / `dsi_lane_rate 344 Mbit/s/lane`，已回填主基准 §10.4 与 `config.yaml`（本平台无 lane-rate 回读口，由实测 mode timing 推得） |
 | 3 | 主基准已按 7" 屏回写（v3.33） | §2.3 / §3.1 / §3.3 / §3.4 / §3.5 / §4.1 / §5 / §6 / §10.4 / §11.1-1 / §14 / §15；布局由上下铺排改为**左右并排**、新增 **OSD 指标区**，详见主基准 §14 的 v3.33 行 |
