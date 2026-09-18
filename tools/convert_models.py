@@ -206,6 +206,19 @@ def do_build(args):
         if quant != 'int8':
             raise SystemExit('inputs_yuv_fmt 仅 INT8 生效，请用 --quant int8')
         cfg['inputs_yuv_fmt'] = [args.inputs_yuv_fmt]
+    if getattr(args, 'auto_hybrid', False):
+        # M0-8：自动混合量化（仅 INT8 生效）
+        if quant != 'int8':
+            raise SystemExit('auto_hybrid 仅 INT8 生效，请用 --quant int8')
+        cfg['auto_hybrid_cos_thresh'] = args.hybrid_cos
+    if getattr(args, 'hybrid_level', 0):
+        if quant != 'int8':
+            raise SystemExit('hybrid_level 仅 INT8 生效，请用 --quant int8')
+        cfg['quantized_hybrid_level'] = args.hybrid_level
+    if getattr(args, 'qdtype', 'w8a8') != 'w8a8':
+        if quant != 'int8':
+            raise SystemExit('qdtype 仅 INT8 生效，请用 --quant int8')
+        cfg['quantized_dtype'] = args.qdtype
     r.config(**cfg)
     if r.load_onnx(model=args.onnx) != 0:
         raise SystemExit('load_onnx failed')
@@ -214,7 +227,8 @@ def do_build(args):
     else:
         if not args.calib:
             raise SystemExit('int8 需要 --calib')
-        ret = r.build(do_quantization=True, dataset=args.calib, rknn_batch_size=1)
+        ret = r.build(do_quantization=True, dataset=args.calib, rknn_batch_size=1,
+                      auto_hybrid=getattr(args, 'auto_hybrid', False))
     if ret != 0:
         raise SystemExit('build failed')
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
@@ -231,6 +245,10 @@ def do_build(args):
         'quant': quant,
         'input_normalization': {'rgb2bgr': False, 'mean': MEAN, 'std': STD},
         'inputs_yuv_fmt': [args.inputs_yuv_fmt] if args.inputs_yuv_fmt else None,
+        'auto_hybrid': True if getattr(args, 'auto_hybrid', False) else None,
+        'hybrid_cos': args.hybrid_cos if getattr(args, 'auto_hybrid', False) else None,
+        'hybrid_level': getattr(args, 'hybrid_level', 0) or None,
+        'quantized_dtype': getattr(args, 'qdtype', 'w8a8'),
         'env': {'python': platform.python_version(), 'rknn_toolkit2': rknn_ver},
     }
     write_report(report, args.report)
@@ -265,6 +283,15 @@ def main():
     pb.add_argument('--target', default=TARGET_PLATFORM)
     pb.add_argument('--inputs-yuv-fmt', choices=['', 'nv12', 'nv21'], default='',
                     help='M0-7 实验：在模型顶部插入 YUV 预处理（仅 INT8；输入 H/W 须被 4 整除）')
+    pb.add_argument('--auto-hybrid', action='store_true',
+                    help='M0-8：INT8 自动混合量化（按余弦/欧氏距离把高误差层留在浮点；仅 INT8 生效）')
+    pb.add_argument('--hybrid-cos', type=float, default=0.98,
+                    help='M0-8：auto hybrid 的余弦距离阈值（默认 0.98；越高越多层留浮点）')
+    pb.add_argument('--hybrid-level', type=int, default=0,
+                    help='M0-8：quantized_hybrid_level（0=关；>0 按档把高误差层留浮点）')
+    pb.add_argument('--qdtype', default='w8a8',
+                    choices=['w8a8', 'w8a16', 'w16a16i', 'w16a16i_dfp', 'w4a16'],
+                    help='M0-8：量化数据类型（w8a16 = 权重 8bit / 激活 16bit，仅 INT8 生效）')
     pb.add_argument('--report', default='')
     pb.set_defaults(func=do_build)
 

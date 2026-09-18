@@ -1,0 +1,412 @@
+I rknn-toolkit2 version: 2.3.2
+I Loading :   0%|                                                            | 0/28 [00:00<?, ?it/s]I Loading : 100%|████████████████████████████████████████████████| 28/28 [00:00<00:00, 70832.64it/s]
+D base_optimize ...
+D base_optimize done.
+D 
+D fold_constant ...
+D fold_constant done.
+D 
+D correct_ops ...
+D correct_ops done.
+D 
+D fuse_ops ...
+D fuse_ops done.
+D 
+D sparse_weight ...
+D sparse_weight done.
+D 
+I GraphPreparing :   0%|                                                     | 0/24 [00:00<?, ?it/s]I GraphPreparing : 100%|██████████████████████████████████████████| 24/24 [00:00<00:00, 9395.49it/s]
+I Quantizating 1/4:   0%|                                                    | 0/24 [00:00<?, ?it/s]I Quantizating 1/4:   4%|█▊                                          | 1/24 [00:00<00:02,  9.60it/s]I Quantizating 1/4:   8%|███▋                                        | 2/24 [00:00<00:03,  5.94it/s]I Quantizating 1/4:  12%|█████▌                                      | 3/24 [00:00<00:03,  6.74it/s]I Quantizating 1/4:  17%|███████▎                                    | 4/24 [00:00<00:04,  4.43it/s]I Quantizating 1/4:  21%|█████████▏                                  | 5/24 [00:01<00:04,  4.28it/s]I Quantizating 1/4:  25%|███████████                                 | 6/24 [00:01<00:03,  5.02it/s]I Quantizating 1/4:  29%|████████████▊                               | 7/24 [00:01<00:04,  4.08it/s]I Quantizating 1/4:  33%|██████████████▋                             | 8/24 [00:01<00:03,  4.28it/s]I Quantizating 1/4:  38%|████████████████▌                           | 9/24 [00:01<00:03,  4.94it/s]I Quantizating 1/4:  42%|█████████████████▉                         | 10/24 [00:02<00:03,  4.02it/s]I Quantizating 1/4:  46%|███████████████████▋                       | 11/24 [00:02<00:03,  4.20it/s]I Quantizating 1/4:  50%|█████████████████████▌                     | 12/24 [00:02<00:02,  4.87it/s]I Quantizating 1/4:  54%|███████████████████████▎                   | 13/24 [00:02<00:02,  4.36it/s]I Quantizating 1/4:  58%|█████████████████████████                  | 14/24 [00:03<00:03,  2.71it/s]I Quantizating 1/4:  62%|██████████████████████████▉                | 15/24 [00:04<00:03,  2.35it/s]I Quantizating 1/4:  67%|████████████████████████████▋              | 16/24 [00:04<00:02,  2.94it/s]I Quantizating 1/4:  71%|██████████████████████████████▍            | 17/24 [00:04<00:02,  3.09it/s]I Quantizating 1/4:  75%|████████████████████████████████▎          | 18/24 [00:05<00:02,  2.33it/s]I Quantizating 1/4:  79%|██████████████████████████████████         | 19/24 [00:06<00:02,  1.74it/s]I Quantizating 1/4:  83%|███████████████████████████████████▊       | 20/24 [00:06<00:01,  2.27it/s]I Quantizating 1/4:  88%|█████████████████████████████████████▋     | 21/24 [00:06<00:01,  2.54it/s]I Quantizating 1/4:  92%|███████████████████████████████████████▍   | 22/24 [00:07<00:00,  2.15it/s]I Quantizating 1/4:  96%|█████████████████████████████████████████▏ | 23/24 [00:07<00:00,  2.78it/s]I Quantizating 1/4: 100%|███████████████████████████████████████████| 24/24 [00:07<00:00,  3.30it/s]
+I Quantizating 2/4:   0%|                                                    | 0/24 [00:00<?, ?it/s]I Quantizating 2/4:   8%|███▋                                        | 2/24 [00:00<00:02,  7.33it/s]I Quantizating 2/4:  12%|█████▌                                      | 3/24 [00:00<00:02,  7.66it/s]I Quantizating 2/4:  17%|███████▎                                    | 4/24 [00:00<00:03,  5.01it/s]I Quantizating 2/4:  21%|█████████▏                                  | 5/24 [00:00<00:04,  4.59it/s]I Quantizating 2/4:  25%|███████████                                 | 6/24 [00:01<00:03,  5.50it/s]I Quantizating 2/4:  29%|████████████▊                               | 7/24 [00:01<00:03,  4.25it/s]I Quantizating 2/4:  33%|██████████████▋                             | 8/24 [00:01<00:03,  4.42it/s]I Quantizating 2/4:  38%|████████████████▌                           | 9/24 [00:01<00:02,  5.13it/s]I Quantizating 2/4:  42%|█████████████████▉                         | 10/24 [00:02<00:03,  4.13it/s]I Quantizating 2/4:  46%|███████████████████▋                       | 11/24 [00:02<00:03,  4.33it/s]I Quantizating 2/4:  50%|█████████████████████▌                     | 12/24 [00:02<00:02,  5.02it/s]I Quantizating 2/4:  54%|███████████████████████▎                   | 13/24 [00:02<00:02,  4.48it/s]I Quantizating 2/4:  58%|█████████████████████████                  | 14/24 [00:03<00:03,  2.81it/s]I Quantizating 2/4:  62%|██████████████████████████▉                | 15/24 [00:03<00:03,  2.36it/s]I Quantizating 2/4:  67%|████████████████████████████▋              | 16/24 [00:04<00:02,  2.99it/s]I Quantizating 2/4:  71%|██████████████████████████████▍            | 17/24 [00:04<00:02,  3.17it/s]I Quantizating 2/4:  75%|████████████████████████████████▎          | 18/24 [00:05<00:02,  2.39it/s]I Quantizating 2/4:  79%|██████████████████████████████████         | 19/24 [00:05<00:02,  1.77it/s]I Quantizating 2/4:  83%|███████████████████████████████████▊       | 20/24 [00:06<00:01,  2.32it/s]I Quantizating 2/4:  88%|█████████████████████████████████████▋     | 21/24 [00:06<00:01,  2.60it/s]I Quantizating 2/4:  92%|███████████████████████████████████████▍   | 22/24 [00:06<00:00,  2.19it/s]I Quantizating 2/4:  96%|█████████████████████████████████████████▏ | 23/24 [00:07<00:00,  2.83it/s]I Quantizating 2/4: 100%|███████████████████████████████████████████| 24/24 [00:07<00:00,  3.39it/s]
+I Quantizating 3/4:   0%|                                                    | 0/24 [00:00<?, ?it/s]I Quantizating 3/4:   4%|█▊                                          | 1/24 [00:00<00:02,  9.88it/s]I Quantizating 3/4:   8%|███▋                                        | 2/24 [00:00<00:03,  6.09it/s]I Quantizating 3/4:  12%|█████▌                                      | 3/24 [00:00<00:03,  6.77it/s]I Quantizating 3/4:  17%|███████▎                                    | 4/24 [00:00<00:04,  4.38it/s]I Quantizating 3/4:  21%|█████████▏                                  | 5/24 [00:01<00:04,  4.23it/s]I Quantizating 3/4:  25%|███████████                                 | 6/24 [00:01<00:03,  5.01it/s]I Quantizating 3/4:  29%|████████████▊                               | 7/24 [00:01<00:04,  4.09it/s]I Quantizating 3/4:  33%|██████████████▋                             | 8/24 [00:01<00:03,  4.33it/s]I Quantizating 3/4:  38%|████████████████▌                           | 9/24 [00:01<00:02,  5.02it/s]I Quantizating 3/4:  42%|█████████████████▉                         | 10/24 [00:02<00:03,  4.13it/s]I Quantizating 3/4:  46%|███████████████████▋                       | 11/24 [00:02<00:03,  4.31it/s]I Quantizating 3/4:  50%|█████████████████████▌                     | 12/24 [00:02<00:02,  4.99it/s]I Quantizating 3/4:  54%|███████████████████████▎                   | 13/24 [00:02<00:02,  4.42it/s]I Quantizating 3/4:  58%|█████████████████████████                  | 14/24 [00:03<00:03,  2.78it/s]I Quantizating 3/4:  62%|██████████████████████████▉                | 15/24 [00:04<00:03,  2.36it/s]I Quantizating 3/4:  67%|████████████████████████████▋              | 16/24 [00:04<00:02,  2.98it/s]I Quantizating 3/4:  71%|██████████████████████████████▍            | 17/24 [00:04<00:02,  3.13it/s]I Quantizating 3/4:  75%|████████████████████████████████▎          | 18/24 [00:05<00:02,  2.36it/s]I Quantizating 3/4:  79%|██████████████████████████████████         | 19/24 [00:06<00:02,  1.76it/s]I Quantizating 3/4:  83%|███████████████████████████████████▊       | 20/24 [00:06<00:01,  2.29it/s]I Quantizating 3/4:  88%|█████████████████████████████████████▋     | 21/24 [00:06<00:01,  2.59it/s]I Quantizating 3/4:  92%|███████████████████████████████████████▍   | 22/24 [00:07<00:00,  2.10it/s]I Quantizating 3/4:  96%|█████████████████████████████████████████▏ | 23/24 [00:07<00:00,  2.73it/s]I Quantizating 3/4: 100%|███████████████████████████████████████████| 24/24 [00:07<00:00,  3.31it/s]
+I Quantizating 4/4:   0%|                                                    | 0/24 [00:00<?, ?it/s]I Quantizating 4/4:  21%|█████████▏                                  | 5/24 [00:00<00:00, 42.78it/s]I Quantizating 4/4:  42%|█████████████████▉                         | 10/24 [00:00<00:00, 46.70it/s]I Quantizating 4/4:  62%|██████████████████████████▉                | 15/24 [00:00<00:00, 32.64it/s]I Quantizating 4/4:  79%|██████████████████████████████████         | 19/24 [00:00<00:00, 24.96it/s]I Quantizating 4/4:  92%|███████████████████████████████████████▍   | 22/24 [00:00<00:00, 26.12it/s]I Quantizating 4/4: 100%|███████████████████████████████████████████| 24/24 [00:00<00:00, 31.01it/s]
+D 
+D quant_optimizer ...
+D quant_optimizer results:
+D     adjust_relu: ['/relu_5/Relu', '/relu_4/Relu', '/relu_3/Relu', '/relu_2/Relu', '/relu_1/Relu', '/relu/Relu']
+D quant_optimizer done.
+D 
+[1;33mW[0m [1;33mbuild: Adjust scale of bias 'e_conv1.depth_conv.bias'![0m
+[1;33mW[0m [1;33mbuild: Adjust scale of bias 'e_conv1.point_conv.bias'![0m
+[1;33mW[0m [1;33mbuild: Adjust scale of bias 'e_conv2.depth_conv.bias'![0m
+[1;33mW[0m [1;33mbuild: Adjust scale of bias 'e_conv3.depth_conv.bias'![0m
+[1;33mW[0m [1;33mbuild: Adjust scale of bias 'e_conv4.depth_conv.bias'![0m
+[1;33mW[0m [1;33mbuild: Adjust scale of bias 'e_conv4.point_conv.bias'![0m
+[1;33mW[0m [1;33mbuild: Adjust scale of bias 'e_conv5.depth_conv.bias'![0m
+[1;33mW[0m [1;33mbuild: Adjust scale of bias 'e_conv6.depth_conv.bias'![0m
+[1;33mW[0m [1;33mbuild: Adjust scale of bias 'e_conv7.depth_conv.bias'![0m
+[1;33mW[0m [1;33mbuild: The default input dtype of 'input' is changed from 'float32' to 'int16' in rknn model for performance!
+                       Please take care of this change when deploy rknn model with Runtime API![0m
+[1;33mW[0m [1;33mbuild: The default output dtype of 'curve' is changed from 'float32' to 'int16' in rknn model for performance!
+                      Please take care of this change when deploy rknn model with Runtime API![0m
+I rknn building ...
+E RKNN: [20:55:44.822] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.822] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.822] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.822] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.823] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.824] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.824] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.824] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.824] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.824] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.824] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.824] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.824] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.824] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.825] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.826] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.827] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.828] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.828] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.828] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.828] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.828] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.828] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.828] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.828] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.828] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.829] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.830] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.830] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.830] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.830] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.830] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.830] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.830] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.830] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.830] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.831] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.832] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.833] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.833] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.833] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.833] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.833] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.833] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.833] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.833] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.833] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.834] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.834] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.834] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.834] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.834] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.834] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.834] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.834] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.834] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.835] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.836] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.837] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.837] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.837] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.837] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.837] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.837] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.837] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.837] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.837] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.838] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.839] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.839] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.839] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.839] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.839] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.839] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.839] Lut fuse dtype not support yet!, dtype: 5
+E RKNN: [20:55:44.839] Lut fuse dtype not support yet!, dtype: 5
+I RKNN: [20:55:44.778] compress = 0, conv_eltwise_activation_fuse = 1, global_fuse = 1, multi-core-model-mode = 7, output_optimize = 1, layout_match = 1, enable_argb_group = 0, op_group_sram_opt = 0, enable_flash_attention = 0, op_group_nbuf_opt = 0, safe_fuse = 0
+I RKNN: librknnc version: 2.3.2 (e045de294f@2025-04-07T19:48:25)
+D RKNN: [20:55:44.780] RKNN is invoked
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNExtractCustomOpAttrs
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNExtractCustomOpAttrs
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNSetOpTargetPass
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNSetOpTargetPass
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNBindNorm
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNBindNorm
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNEliminateQATDataConvert
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNEliminateQATDataConvert
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNConvStrideFixPass
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNConvStrideFixPass
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNTileGroupConv
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNTileGroupConv
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNAddConvBias
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNAddConvBias
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNTileChannel
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNTileChannel
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNDuplicateWeightPass
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNDuplicateWeightPass
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNInitRNNConst
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNInitRNNConst
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNPerChannelPrep
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNPerChannelPrep
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNBnQuant
+D RKNN: [20:55:44.789] <<<<<<<< end: rknn::RKNNBnQuant
+D RKNN: [20:55:44.789] >>>>>> start: rknn::RKNNFuseOptimizerPass
+D RKNN: [20:55:44.790] <<<<<<<< end: rknn::RKNNFuseOptimizerPass
+D RKNN: [20:55:44.790] >>>>>> start: rknn::RKNNTurnAutoPad
+D RKNN: [20:55:44.790] <<<<<<<< end: rknn::RKNNTurnAutoPad
+D RKNN: [20:55:44.790] >>>>>> start: rknn::RKNNInitCastConst
+D RKNN: [20:55:44.790] <<<<<<<< end: rknn::RKNNInitCastConst
+D RKNN: [20:55:44.790] >>>>>> start: rknn::RKNNMultiSurfacePass
+D RKNN: [20:55:44.790] <<<<<<<< end: rknn::RKNNMultiSurfacePass
+D RKNN: [20:55:44.790] >>>>>> start: rknn::RKNNReplaceConstantTensorPass
+D RKNN: [20:55:44.790] <<<<<<<< end: rknn::RKNNReplaceConstantTensorPass
+D RKNN: [20:55:44.790] >>>>>> start: rknn::RKNNSubgraphManager
+D RKNN: [20:55:44.790] <<<<<<<< end: rknn::RKNNSubgraphManager
+D RKNN: [20:55:44.790] >>>>>> start: OpEmit
+D RKNN: [20:55:44.790] <<<<<<<< end: OpEmit
+D RKNN: [20:55:44.790] >>>>>> start: rknn::RKNNAddFirstConv
+D RKNN: [20:55:44.790] <<<<<<<< end: rknn::RKNNAddFirstConv
+D RKNN: [20:55:44.790] >>>>>> start: rknn::RKNNTilingPass
+D RKNN: [20:55:44.793] <<<<<<<< end: rknn::RKNNTilingPass
+D RKNN: [20:55:44.793] >>>>>> start: rknn::RKNNLayoutMatchPass
+D RKNN: [20:55:44.793] <<<<<<<< end: rknn::RKNNLayoutMatchPass
+D RKNN: [20:55:44.793] >>>>>> start: rknn::RKNNAddSecondaryNode
+D RKNN: [20:55:44.793] <<<<<<<< end: rknn::RKNNAddSecondaryNode
+D RKNN: [20:55:44.793] >>>>>> start: rknn::RKNNAllocateConvCachePass
+D RKNN: [20:55:44.793] <<<<<<<< end: rknn::RKNNAllocateConvCachePass
+D RKNN: [20:55:44.793] >>>>>> start: OpEmit
+D RKNN: [20:55:44.839] <<<<<<<< end: OpEmit
+D RKNN: [20:55:44.839] >>>>>> start: rknn::RKNNSubGraphMemoryPlanPass
+D RKNN: [20:55:44.839] <<<<<<<< end: rknn::RKNNSubGraphMemoryPlanPass
+D RKNN: [20:55:44.839] >>>>>> start: rknn::RKNNProfileAnalysisPass
+D RKNN: [20:55:44.840] <<<<<<<< end: rknn::RKNNProfileAnalysisPass
+D RKNN: [20:55:44.840] >>>>>> start: rknn::RKNNOperatorIdGenPass
+D RKNN: [20:55:44.840] <<<<<<<< end: rknn::RKNNOperatorIdGenPass
+D RKNN: [20:55:44.840] >>>>>> start: rknn::RKNNWeightTransposePass
+D RKNN: [20:55:44.841] <<<<<<<< end: rknn::RKNNWeightTransposePass
+D RKNN: [20:55:44.841] >>>>>> start: rknn::RKNNCPUWeightTransposePass
+D RKNN: [20:55:44.841] <<<<<<<< end: rknn::RKNNCPUWeightTransposePass
+D RKNN: [20:55:44.841] >>>>>> start: rknn::RKNNModelBuildPass
+D RKNN: [20:55:44.905] <<<<<<<< end: rknn::RKNNModelBuildPass
+D RKNN: [20:55:44.905] >>>>>> start: rknn::RKNNModelRegCmdbuildPass
+D RKNN: [20:55:44.944] --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:55:44.944]                                                         Network Layer Information Table                                                      
+D RKNN: [20:55:44.944] --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:55:44.944] ID   OpType             DataType Target InputShape                               OutputShape            Cycles(DDR/NPU/Total)    RW(KB)       FullName        
+D RKNN: [20:55:44.944] --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:55:44.944] 0    InputOperator      INT16    CPU    \                                        (1,3,272,480)          0/0/0                    0            InputOperator:input
+D RKNN: [20:55:44.944] 1    Conv               INT16    NPU    (1,3,272,480),(3,3,1,1),(3)              (1,3,272,480)          121436/261120/261120     765                          
+D RKNN: [20:55:44.944] 2    Conv               INT16    NPU    (1,3,272,480),(1,3,3,3),(3)              (1,3,272,480)          176640/1175040/1175040   2040         Conv:/e_conv1/depth_conv/Conv
+D RKNN: [20:55:44.944] 3    ConvRelu           INT16    NPU    (1,3,272,480),(32,3,1,1),(32)            (1,32,272,480)         441599/522240/522240     2040         Conv:/e_conv1/point_conv/Conv
+D RKNN: [20:55:44.944] 4    Conv               INT16    NPU    (1,32,272,480),(1,32,3,3),(32)           (1,32,272,480)         706541/1175040/1175040   8160         Conv:/e_conv2/depth_conv/Conv
+D RKNN: [20:55:44.944] 5    ConvRelu           INT16    NPU    (1,32,272,480),(32,32,1,1),(32)          (1,32,272,480)         706603/522240/706603     8162         Conv:/e_conv2/point_conv/Conv
+D RKNN: [20:55:44.944] 6    Conv               INT16    NPU    (1,32,272,480),(1,32,3,3),(32)           (1,32,272,480)         706541/1175040/1175040   8160         Conv:/e_conv3/depth_conv/Conv
+D RKNN: [20:55:44.944] 7    ConvRelu           INT16    NPU    (1,32,272,480),(32,32,1,1),(32)          (1,32,272,480)         706603/522240/706603     8162         Conv:/e_conv3/point_conv/Conv
+D RKNN: [20:55:44.944] 8    Conv               INT16    NPU    (1,32,272,480),(1,32,3,3),(32)           (1,32,272,480)         706541/1175040/1175040   8160         Conv:/e_conv4/depth_conv/Conv
+D RKNN: [20:55:44.944] 9    ConvRelu           INT16    NPU    (1,32,272,480),(32,32,1,1),(32)          (1,32,272,480)         706603/522240/706603     8162         Conv:/e_conv4/point_conv/Conv
+D RKNN: [20:55:44.944] 10   Concat             INT16    CPU    (1,32,272,480),(1,32,272,480)            (1,64,272,480)         0/0/0                    16320        Concat:/Concat  
+D RKNN: [20:55:44.944] 11   Conv               INT16    NPU    (1,64,272,480),(1,64,3,3),(64)           (1,64,272,480)         1413082/1175040/1413082  16321        Conv:/e_conv5/depth_conv/Conv
+D RKNN: [20:55:44.944] 12   ConvRelu           INT16    NPU    (1,64,272,480),(32,64,1,1),(32)          (1,32,272,480)         1059943/522240/1059943   16324        Conv:/e_conv5/point_conv/Conv
+D RKNN: [20:55:44.944] 13   Concat             INT16    CPU    (1,32,272,480),(1,32,272,480)            (1,64,272,480)         0/0/0                    16320        Concat:/Concat_1
+D RKNN: [20:55:44.944] 14   Conv               INT16    NPU    (1,64,272,480),(1,64,3,3),(64)           (1,64,272,480)         1413082/1175040/1413082  16321        Conv:/e_conv6/depth_conv/Conv
+D RKNN: [20:55:44.944] 15   ConvRelu           INT16    NPU    (1,64,272,480),(32,64,1,1),(32)          (1,32,272,480)         1059943/522240/1059943   16324        Conv:/e_conv6/point_conv/Conv
+D RKNN: [20:55:44.944] 16   Concat             INT16    CPU    (1,32,272,480),(1,32,272,480)            (1,64,272,480)         0/0/0                    16320        Concat:/Concat_2
+D RKNN: [20:55:44.944] 17   Conv               INT16    NPU    (1,64,272,480),(1,64,3,3),(64)           (1,64,272,480)         1413082/1175040/1413082  16321        Conv:/e_conv7/depth_conv/Conv
+D RKNN: [20:55:44.944] 18   ConvTanh           INT16    NPU    (1,64,272,480),(3,64,1,1),(3)            (1,3,272,480)          883154/261120/883154     16320        Conv:/e_conv7/point_conv/Conv
+D RKNN: [20:55:44.944] 19   OutputOperator     INT16    CPU    (1,3,272,480)                            \                      0/0/0                    4080         OutputOperator:curve
+D RKNN: [20:55:44.944] --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:55:44.944] <<<<<<<< end: rknn::RKNNModelRegCmdbuildPass
+D RKNN: [20:55:44.944] >>>>>> start: rknn::RKNNModelExportPass
+D RKNN: [20:55:44.944] Export RKNN model to /tmp/tmpm_fjxemq/check.rknn
+D RKNN: [20:55:44.948] <<<<<<<< end: rknn::RKNNModelExportPass
+D RKNN: [20:55:44.948] >>>>>> start: rknn::RKNNMemStatisticsPass
+D RKNN: [20:55:44.948] ---------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:55:44.948]                                                Feature Tensor Information Table                                      
+D RKNN: [20:55:44.948] -----------------------------------------------------------------------------------------------------------+---------------------------------
+D RKNN: [20:55:44.948] ID  User           Tensor                            DataType  DataFormat   OrigShape      NativeShape     |     [Start       End)       Size
+D RKNN: [20:55:44.948] -----------------------------------------------------------------------------------------------------------+---------------------------------
+D RKNN: [20:55:44.948] 1   Conv           input                             INT16     NC1HWC2      (1,3,272,480)  (1,4,272,480,3) | 0x00000000 0x000bf400 0x000bf400
+D RKNN: [20:55:44.948] 2   Conv           New_input_input                   INT16     NC1HWC2      (1,3,272,480)  (1,8,272,480,8) | 0x000bf400 0x004bb400 0x003fc000
+D RKNN: [20:55:44.948] 3   ConvRelu       /e_conv1/depth_conv/Conv_output_0 INT16     NC1HWC2      (1,3,272,480)  (1,16,272,480,8) | 0x004bb400 0x00cb3400 0x007f8000
+D RKNN: [20:55:44.948] 4   Conv           /relu/Relu_output_0               INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x00cb3400 0x014ab400 0x007f8000
+D RKNN: [20:55:44.948] 5   ConvRelu       /e_conv2/depth_conv/Conv_output_0 INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [20:55:44.948] 6   Conv           /relu_1/Relu_output_0             INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x014ab400 0x01ca3400 0x007f8000
+D RKNN: [20:55:44.948] 7   ConvRelu       /e_conv3/depth_conv/Conv_output_0 INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [20:55:44.948] 8   Conv           /relu_2/Relu_output_0             INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x01ca3400 0x0249b400 0x007f8000
+D RKNN: [20:55:44.948] 9   ConvRelu       /e_conv4/depth_conv/Conv_output_0 INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [20:55:44.948] 10  Concat         /relu_2/Relu_output_0             INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x01ca3400 0x0249b400 0x007f8000
+D RKNN: [20:55:44.948] 10  Concat         /relu_3/Relu_output_0             INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x0249b400 0x02c93400 0x007f8000
+D RKNN: [20:55:44.948] 11  Conv           /Concat_output_0                  INT16     NC1HWC2      (1,64,272,480) (1,32,272,480,8) | 0x02c93400*0x03c83400 0x00ff0000
+D RKNN: [20:55:44.948] 12  ConvRelu       /e_conv5/depth_conv/Conv_output_0 INT16     NC1HWC2      (1,64,272,480) (1,32,272,480,8) | 0x01ca3400 0x02c93400 0x00ff0000
+D RKNN: [20:55:44.948] 13  Concat         /relu_1/Relu_output_0             INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x014ab400 0x01ca3400 0x007f8000
+D RKNN: [20:55:44.948] 13  Concat         /relu_4/Relu_output_0             INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [20:55:44.948] 14  Conv           /Concat_1_output_0                INT16     NC1HWC2      (1,64,272,480) (1,32,272,480,8) | 0x01ca3400 0x02c93400 0x00ff0000
+D RKNN: [20:55:44.948] 15  ConvRelu       /e_conv6/depth_conv/Conv_output_0 INT16     NC1HWC2      (1,64,272,480) (1,32,272,480,8) | 0x02c93400*0x03c83400 0x00ff0000
+D RKNN: [20:55:44.948] 16  Concat         /relu/Relu_output_0               INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x00cb3400 0x014ab400 0x007f8000
+D RKNN: [20:55:44.948] 16  Concat         /relu_5/Relu_output_0             INT16     NC1HWC2      (1,32,272,480) (1,16,272,480,8) | 0x00000000 0x007f8000 0x007f8000
+D RKNN: [20:55:44.948] 17  Conv           /Concat_2_output_0                INT16     NC1HWC2      (1,64,272,480) (1,32,272,480,8) | 0x014ab400 0x0249b400 0x00ff0000
+D RKNN: [20:55:44.948] 18  ConvTanh       /e_conv7/depth_conv/Conv_output_0 INT16     NC1HWC2      (1,64,272,480) (1,32,272,480,8) | 0x00000000 0x00ff0000 0x00ff0000
+D RKNN: [20:55:44.948] 19  OutputOperator curve                             INT16     NC1HWC2      (1,3,272,480)  (1,8,272,480,8) | 0x00ff0000 0x013ec000 0x003fc000
+D RKNN: [20:55:44.948] -----------------------------------------------------------------------------------------------------------+---------------------------------
+D RKNN: [20:55:44.948] ------------------------------------------------------------------------------------------------
+D RKNN: [20:55:44.948]                                 Const Tensor Information Table                  
+D RKNN: [20:55:44.948] --------------------------------------------------------------+---------------------------------
+D RKNN: [20:55:44.948] ID  User     Tensor                    DataType  OrigShape    |     [Start       End)       Size
+D RKNN: [20:55:44.948] --------------------------------------------------------------+---------------------------------
+D RKNN: [20:55:44.948] 1   Conv     Pre_weightinput           INT16     (3,3,1,1)    | 0x00006100 0x00006130 0x00000030
+D RKNN: [20:55:44.948] 1   Conv     Pre_weightinput_bias_0    INT32     (3)          | 0x00006140 0x00006180 0x00000040
+D RKNN: [20:55:44.948] 2   Conv     e_conv1.depth_conv.weight INT16     (1,3,3,3)    | 0x00000000 0x00000090 0x00000090
+D RKNN: [20:55:44.948] 2   Conv     e_conv1.depth_conv.bias   INT32     (3)          | 0x000000c0 0x000001c0 0x00000100
+D RKNN: [20:55:44.948] 3   ConvRelu e_conv1.point_conv.weight INT16     (32,3,1,1)   | 0x000001c0 0x000003c0 0x00000200
+D RKNN: [20:55:44.948] 3   ConvRelu e_conv1.point_conv.bias   INT32     (32)         | 0x000003c0 0x000004c0 0x00000100
+D RKNN: [20:55:44.948] 4   Conv     e_conv2.depth_conv.weight INT16     (1,32,3,3)   | 0x000004c0 0x00000700 0x00000240
+D RKNN: [20:55:44.948] 4   Conv     e_conv2.depth_conv.bias   INT32     (32)         | 0x00000700 0x00000800 0x00000100
+D RKNN: [20:55:44.948] 5   ConvRelu e_conv2.point_conv.weight INT16     (32,32,1,1)  | 0x00000800 0x00001000 0x00000800
+D RKNN: [20:55:44.948] 5   ConvRelu e_conv2.point_conv.bias   INT32     (32)         | 0x00001000 0x00001100 0x00000100
+D RKNN: [20:55:44.948] 6   Conv     e_conv3.depth_conv.weight INT16     (1,32,3,3)   | 0x00001100 0x00001340 0x00000240
+D RKNN: [20:55:44.948] 6   Conv     e_conv3.depth_conv.bias   INT32     (32)         | 0x00001340 0x00001440 0x00000100
+D RKNN: [20:55:44.948] 7   ConvRelu e_conv3.point_conv.weight INT16     (32,32,1,1)  | 0x00001440 0x00001c40 0x00000800
+D RKNN: [20:55:44.948] 7   ConvRelu eI rknn building done.
+{
+  "stage": "build",
+  "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/zde_curve_480x272.onnx",
+  "onnx_sha256": "6fef7434ec7f04d349e94f5af9d810ced5425a7b90cc983697b21314b42b4174",
+  "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/zde_curve_480x272_w16a16i_tk232.rknn",
+  "target_platform": "rk3588",
+  "quant": "int8",
+  "input_normalization": {
+    "rgb2bgr": false,
+    "mean": [
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "std": [
+      [
+        255,
+        255,
+        255
+      ]
+    ]
+  },
+  "inputs_yuv_fmt": null,
+  "auto_hybrid": null,
+  "hybrid_cos": null,
+  "hybrid_level": null,
+  "quantized_dtype": "w16a16i",
+  "env": {
+    "python": "3.8.20",
+    "rknn_toolkit2": "unknown"
+  }
+}
+[report] docs/evidence/reports/M0-8/build_w16a16i.json
+_conv3.point_conv.bias   INT32     (32)         | 0x00001c40 0x00001d40 0x00000100
+D RKNN: [20:55:44.948] 8   Conv     e_conv4.depth_conv.weight INT16     (1,32,3,3)   | 0x00001d40 0x00001f80 0x00000240
+D RKNN: [20:55:44.948] 8   Conv     e_conv4.depth_conv.bias   INT32     (32)         | 0x00001f80 0x00002080 0x00000100
+D RKNN: [20:55:44.948] 9   ConvRelu e_conv4.point_conv.weight INT16     (32,32,1,1)  | 0x00002080 0x00002880 0x00000800
+D RKNN: [20:55:44.948] 9   ConvRelu e_conv4.point_conv.bias   INT32     (32)         | 0x00002880 0x00002980 0x00000100
+D RKNN: [20:55:44.948] 11  Conv     e_conv5.depth_conv.weight INT16     (1,64,3,3)   | 0x00002980 0x00002e00 0x00000480
+D RKNN: [20:55:44.948] 11  Conv     e_conv5.depth_conv.bias   INT32     (64)         | 0x00002e00 0x00003000 0x00000200
+D RKNN: [20:55:44.948] 12  ConvRelu e_conv5.point_conv.weight INT16     (32,64,1,1)  | 0x00003000 0x00004000 0x00001000
+D RKNN: [20:55:44.948] 12  ConvRelu e_conv5.point_conv.bias   INT32     (32)         | 0x00004000 0x00004100 0x00000100
+D RKNN: [20:55:44.948] 14  Conv     e_conv6.depth_conv.weight INT16     (1,64,3,3)   | 0x00004100 0x00004580 0x00000480
+D RKNN: [20:55:44.948] 14  Conv     e_conv6.depth_conv.bias   INT32     (64)         | 0x00004580 0x00004780 0x00000200
+D RKNN: [20:55:44.948] 15  ConvRelu e_conv6.point_conv.weight INT16     (32,64,1,1)  | 0x00004780 0x00005780 0x00001000
+D RKNN: [20:55:44.948] 15  ConvRelu e_conv6.point_conv.bias   INT32     (32)         | 0x00005780 0x00005880 0x00000100
+D RKNN: [20:55:44.948] 17  Conv     e_conv7.depth_conv.weight INT16     (1,64,3,3)   | 0x00005880 0x00005d00 0x00000480
+D RKNN: [20:55:44.948] 17  Conv     e_conv7.depth_conv.bias   INT32     (64)         | 0x00005d00 0x00005f00 0x00000200
+D RKNN: [20:55:44.948] 18  ConvTanh e_conv7.point_conv.weight INT16     (3,64,1,1)   | 0x00005f00 0x00006080 0x00000180
+D RKNN: [20:55:44.948] 18  ConvTanh e_conv7.point_conv.bias   INT32     (3)          | 0x00006080 0x00006100 0x00000080
+D RKNN: [20:55:44.948] --------------------------------------------------------------+---------------------------------
+D RKNN: [20:55:44.948] ----------------------------------------
+D RKNN: [20:55:44.948] Total Internal Memory Size: 61965KB
+D RKNN: [20:55:44.948] Total Weight Memory Size: 26.375KB
+D RKNN: [20:55:44.948] ----------------------------------------
+D RKNN: [20:55:44.948] <<<<<<<< end: rknn::RKNNMemStatisticsPass

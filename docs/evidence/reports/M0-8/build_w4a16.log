@@ -1,0 +1,37 @@
+I rknn-toolkit2 version: 2.3.2
+[1;31mE[0m [1;31mconfig: The quantized_dtype = 'w4a16' not support in 'rk3588'![0m
+I ===================== WARN(0) =====================
+[1;31mE[0m [1;31mrknn-toolkit2 version: 2.3.2[0m
+[1;31mE[0m [1;31mconfig: Traceback (most recent call last):
+  File "rknn/api/rknn_log.py", line 344, in rknn.api.rknn_log.error_catch_decorator.error_catch_wrapper
+  File "rknn/api/rknn_base.py", line 1002, in rknn.api.rknn_base.RKNNBase.config
+  File "rknn/api/rknn_log.py", line 95, in rknn.api.rknn_log.RKNNLog.e
+ValueError: The quantized_dtype = 'w4a16' not support in 'rk3588'!
+[0m
+I ===================== WARN(0) =====================
+[1;31mE[0m [1;31mrknn-toolkit2 version: 2.3.2[0m
+Traceback (most recent call last):
+  File "rknn/api/rknn_log.py", line 344, in rknn.api.rknn_log.error_catch_decorator.error_catch_wrapper
+  File "rknn/api/rknn_base.py", line 1002, in rknn.api.rknn_base.RKNNBase.config
+  File "rknn/api/rknn_log.py", line 95, in rknn.api.rknn_log.RKNNLog.e
+ValueError: The quantized_dtype = 'w4a16' not support in 'rk3588'!
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "tools/convert_models.py", line 303, in <module>
+    main()
+  File "tools/convert_models.py", line 299, in main
+    sys.exit(args.func(args))
+  File "tools/convert_models.py", line 222, in do_build
+    r.config(**cfg)
+  File "/home/jenkolux/.conda/envs/rknn232/lib/python3.8/site-packages/rknn/api/rknn.py", line 124, in config
+    return self.rknn_base.config(args)
+  File "rknn/api/rknn_log.py", line 349, in rknn.api.rknn_log.error_catch_decorator.error_catch_wrapper
+  File "rknn/api/rknn_log.py", line 95, in rknn.api.rknn_log.RKNNLog.e
+ValueError: Traceback (most recent call last):
+  File "rknn/api/rknn_log.py", line 344, in rknn.api.rknn_log.error_catch_decorator.error_catch_wrapper
+  File "rknn/api/rknn_base.py", line 1002, in rknn.api.rknn_base.RKNNBase.config
+  File "rknn/api/rknn_log.py", line 95, in rknn.api.rknn_log.RKNNLog.e
+ValueError: The quantized_dtype = 'w4a16' not support in 'rk3588'!
+

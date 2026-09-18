@@ -1,0 +1,235 @@
+I rknn-toolkit2 version: 2.3.2
+I Loading :   0%|                                                            | 0/28 [00:00<?, ?it/s]I Loading : 100%|████████████████████████████████████████████████| 28/28 [00:00<00:00, 66500.86it/s]
+D base_optimize ...
+D base_optimize done.
+D 
+D fold_constant ...
+D fold_constant done.
+D 
+D correct_ops ...
+D correct_ops done.
+D 
+D fuse_ops ...
+D fuse_ops done.
+D 
+D sparse_weight ...
+D sparse_weight done.
+D 
+I GraphPreparing :   0%|                                                     | 0/24 [00:00<?, ?it/s]I GraphPreparing : 100%|██████████████████████████████████████████| 24/24 [00:00<00:00, 9390.23it/s]
+I Quantizating 1/4:   0%|                                                    | 0/24 [00:00<?, ?it/s]I Quantizating 1/4:   4%|█▊                                          | 1/24 [00:00<00:02,  9.68it/s]I Quantizating 1/4:   8%|███▋                                        | 2/24 [00:00<00:03,  5.92it/s]I Quantizating 1/4:  12%|█████▌                                      | 3/24 [00:00<00:03,  6.74it/s]I Quantizating 1/4:  17%|███████▎                                    | 4/24 [00:00<00:04,  4.50it/s]I Quantizating 1/4:  21%|█████████▏                                  | 5/24 [00:01<00:04,  4.28it/s]I Quantizating 1/4:  25%|███████████                                 | 6/24 [00:01<00:03,  5.04it/s]I Quantizating 1/4:  29%|████████████▊                               | 7/24 [00:01<00:04,  4.08it/s]I Quantizating 1/4:  33%|██████████████▋                             | 8/24 [00:01<00:03,  4.25it/s]I Quantizating 1/4:  38%|████████████████▌                           | 9/24 [00:01<00:03,  4.96it/s]I Quantizating 1/4:  42%|█████████████████▉                         | 10/24 [00:02<00:03,  4.06it/s]I Quantizating 1/4:  46%|███████████████████▋                       | 11/24 [00:02<00:03,  4.23it/s]I Quantizating 1/4:  50%|█████████████████████▌                     | 12/24 [00:02<00:02,  4.92it/s]I Quantizating 1/4:  54%|███████████████████████▎                   | 13/24 [00:02<00:02,  4.43it/s]I Quantizating 1/4:  58%|█████████████████████████                  | 14/24 [00:03<00:03,  2.70it/s]I Quantizating 1/4:  62%|██████████████████████████▉                | 15/24 [00:04<00:03,  2.34it/s]I Quantizating 1/4:  67%|████████████████████████████▋              | 16/24 [00:04<00:02,  2.94it/s]I Quantizating 1/4:  71%|██████████████████████████████▍            | 17/24 [00:04<00:02,  3.15it/s]I Quantizating 1/4:  75%|████████████████████████████████▎          | 18/24 [00:05<00:02,  2.33it/s]I Quantizating 1/4:  79%|██████████████████████████████████         | 19/24 [00:06<00:02,  1.75it/s]I Quantizating 1/4:  83%|███████████████████████████████████▊       | 20/24 [00:06<00:01,  2.26it/s]I Quantizating 1/4:  88%|█████████████████████████████████████▋     | 21/24 [00:06<00:01,  2.53it/s]I Quantizating 1/4:  92%|███████████████████████████████████████▍   | 22/24 [00:07<00:00,  2.09it/s]I Quantizating 1/4:  96%|█████████████████████████████████████████▏ | 23/24 [00:07<00:00,  2.73it/s]I Quantizating 1/4: 100%|███████████████████████████████████████████| 24/24 [00:07<00:00,  3.29it/s]
+I Quantizating 2/4:   0%|                                                    | 0/24 [00:00<?, ?it/s]I Quantizating 2/4:   8%|███▋                                        | 2/24 [00:00<00:03,  6.59it/s]I Quantizating 2/4:  12%|█████▌                                      | 3/24 [00:00<00:02,  7.19it/s]I Quantizating 2/4:  17%|███████▎                                    | 4/24 [00:00<00:04,  4.60it/s]I Quantizating 2/4:  21%|█████████▏                                  | 5/24 [00:01<00:04,  4.32it/s]I Quantizating 2/4:  25%|███████████                                 | 6/24 [00:01<00:03,  5.01it/s]I Quantizating 2/4:  29%|████████████▊                               | 7/24 [00:01<00:04,  3.98it/s]I Quantizating 2/4:  33%|██████████████▋                             | 8/24 [00:01<00:03,  4.21it/s]I Quantizating 2/4:  38%|████████████████▌                           | 9/24 [00:01<00:03,  4.91it/s]I Quantizating 2/4:  42%|█████████████████▉                         | 10/24 [00:02<00:03,  4.09it/s]I Quantizating 2/4:  46%|███████████████████▋                       | 11/24 [00:02<00:03,  4.27it/s]I Quantizating 2/4:  50%|█████████████████████▌                     | 12/24 [00:02<00:02,  4.95it/s]I Quantizating 2/4:  54%|███████████████████████▎                   | 13/24 [00:02<00:02,  4.38it/s]I Quantizating 2/4:  58%|█████████████████████████                  | 14/24 [00:03<00:03,  2.72it/s]I Quantizating 2/4:  62%|██████████████████████████▉                | 15/24 [00:04<00:03,  2.33it/s]I Quantizating 2/4:  67%|████████████████████████████▋              | 16/24 [00:04<00:02,  2.94it/s]I Quantizating 2/4:  71%|██████████████████████████████▍            | 17/24 [00:04<00:02,  3.10it/s]I Quantizating 2/4:  75%|████████████████████████████████▎          | 18/24 [00:05<00:02,  2.29it/s]I Quantizating 2/4:  79%|██████████████████████████████████         | 19/24 [00:06<00:02,  1.74it/s]I Quantizating 2/4:  83%|███████████████████████████████████▊       | 20/24 [00:06<00:01,  2.25it/s]I Quantizating 2/4:  88%|█████████████████████████████████████▋     | 21/24 [00:06<00:01,  2.54it/s]I Quantizating 2/4:  92%|███████████████████████████████████████▍   | 22/24 [00:07<00:00,  2.10it/s]I Quantizating 2/4:  96%|█████████████████████████████████████████▏ | 23/24 [00:07<00:00,  2.74it/s]I Quantizating 2/4: 100%|███████████████████████████████████████████| 24/24 [00:07<00:00,  3.28it/s]
+I Quantizating 3/4:   0%|                                                    | 0/24 [00:00<?, ?it/s]I Quantizating 3/4:   8%|███▋                                        | 2/24 [00:00<00:03,  6.68it/s]I Quantizating 3/4:  12%|█████▌                                      | 3/24 [00:00<00:02,  7.25it/s]I Quantizating 3/4:  17%|███████▎                                    | 4/24 [00:00<00:04,  4.62it/s]I Quantizating 3/4:  21%|█████████▏                                  | 5/24 [00:01<00:04,  4.43it/s]I Quantizating 3/4:  25%|███████████                                 | 6/24 [00:01<00:03,  5.16it/s]I Quantizating 3/4:  29%|████████████▊                               | 7/24 [00:01<00:04,  4.17it/s]I Quantizating 3/4:  33%|██████████████▋                             | 8/24 [00:01<00:03,  4.32it/s]I Quantizating 3/4:  38%|████████████████▌                           | 9/24 [00:01<00:02,  5.01it/s]I Quantizating 3/4:  42%|█████████████████▉                         | 10/24 [00:02<00:03,  4.12it/s]I Quantizating 3/4:  46%|███████████████████▋                       | 11/24 [00:02<00:03,  4.28it/s]I Quantizating 3/4:  50%|█████████████████████▌                     | 12/24 [00:02<00:02,  4.95it/s]I Quantizating 3/4:  54%|███████████████████████▎                   | 13/24 [00:02<00:02,  4.40it/s]I Quantizating 3/4:  58%|█████████████████████████                  | 14/24 [00:03<00:03,  2.70it/s]I Quantizating 3/4:  62%|██████████████████████████▉                | 15/24 [00:04<00:03,  2.34it/s]I Quantizating 3/4:  67%|████████████████████████████▋              | 16/24 [00:04<00:02,  2.93it/s]I Quantizating 3/4:  71%|██████████████████████████████▍            | 17/24 [00:04<00:02,  3.11it/s]I Quantizating 3/4:  75%|████████████████████████████████▎          | 18/24 [00:05<00:02,  2.28it/s]I Quantizating 3/4:  79%|██████████████████████████████████         | 19/24 [00:06<00:02,  1.75it/s]I Quantizating 3/4:  83%|███████████████████████████████████▊       | 20/24 [00:06<00:01,  2.26it/s]I Quantizating 3/4:  88%|█████████████████████████████████████▋     | 21/24 [00:06<00:01,  2.57it/s]I Quantizating 3/4:  92%|███████████████████████████████████████▍   | 22/24 [00:07<00:00,  2.10it/s]I Quantizating 3/4:  96%|█████████████████████████████████████████▏ | 23/24 [00:07<00:00,  2.73it/s]I Quantizating 3/4: 100%|███████████████████████████████████████████| 24/24 [00:07<00:00,  3.30it/s]
+I Quantizating 4/4:   0%|                                                    | 0/24 [00:00<?, ?it/s]I Quantizating 4/4:  25%|███████████                                 | 6/24 [00:00<00:00, 58.20it/s]I Quantizating 4/4:  50%|█████████████████████▌                     | 12/24 [00:00<00:00, 56.39it/s]I Quantizating 4/4:  75%|████████████████████████████████▎          | 18/24 [00:00<00:00, 36.11it/s]I Quantizating 4/4:  96%|█████████████████████████████████████████▏ | 23/24 [00:00<00:00, 31.75it/s]I Quantizating 4/4: 100%|███████████████████████████████████████████| 24/24 [00:00<00:00, 37.31it/s]
+D 
+D quant_optimizer ...
+D quant_optimizer results:
+D     adjust_relu: ['/relu_5/Relu', '/relu_4/Relu', '/relu_3/Relu', '/relu_2/Relu', '/relu_1/Relu', '/relu/Relu']
+D quant_optimizer done.
+D 
+I GraphPreparing :   0%|                                                     | 0/26 [00:00<?, ?it/s]I GraphPreparing : 100%|██████████████████████████████████████████| 26/26 [00:00<00:00, 7449.92it/s]
+I Adjust Accuracy :   0%|                                                    | 0/26 [00:00<?, ?it/s]I Adjust Accuracy :  12%|█████                                       | 3/26 [00:00<00:01, 18.63it/s]I Adjust Accuracy :  19%|████████▍                                   | 5/26 [00:00<00:02,  9.45it/s]I Adjust Accuracy :  27%|███████████▊                                | 7/26 [00:00<00:02,  6.62it/s]I Adjust Accuracy :  31%|█████████████▌                              | 8/26 [00:01<00:03,  5.87it/s]I Adjust Accuracy :  35%|███████████████▏                            | 9/26 [00:01<00:03,  5.02it/s]I Adjust Accuracy :  38%|████████████████▌                          | 10/26 [00:01<00:03,  4.61it/s]I Adjust Accuracy :  42%|██████████████████▏                        | 11/26 [00:02<00:03,  4.17it/s]I Adjust Accuracy :  46%|███████████████████▊                       | 12/26 [00:02<00:03,  3.71it/s]I Adjust Accuracy :  50%|█████████████████████▌                     | 13/26 [00:02<00:03,  3.46it/s]I Adjust Accuracy :  54%|███████████████████████▏                   | 14/26 [00:03<00:03,  3.06it/s]I Adjust Accuracy :  58%|████████████████████████▊                  | 15/26 [00:03<00:04,  2.70it/s]I Adjust Accuracy :  62%|██████████████████████████▍                | 16/26 [00:03<00:03,  2.67it/s]I Adjust Accuracy :  65%|████████████████████████████               | 17/26 [00:04<00:03,  2.93it/s]I Adjust Accuracy :  69%|█████████████████████████████▊             | 18/26 [00:04<00:02,  2.94it/s]I Adjust Accuracy :  73%|███████████████████████████████▍           | 19/26 [00:04<00:02,  2.80it/s]I Adjust Accuracy :  77%|█████████████████████████████████          | 20/26 [00:05<00:02,  2.93it/s]I Adjust Accuracy :  81%|██████████████████████████████████▋        | 21/26 [00:05<00:01,  3.41it/s]I Adjust Accuracy :  85%|████████████████████████████████████▍      | 22/26 [00:05<00:01,  3.52it/s]I Adjust Accuracy :  88%|██████████████████████████████████████     | 23/26 [00:06<00:00,  3.19it/s]I Adjust Accuracy :  92%|███████████████████████████████████████▋   | 24/26 [00:06<00:00,  3.82it/s]I Adjust Accuracy : 100%|███████████████████████████████████████████| 26/26 [00:06<00:00,  4.15it/s]
+[1;33mW[0m [1;33mbuild: The default input dtype of 'input' is changed from 'float32' to 'int8' in rknn model for performance!
+                       Please take care of this change when deploy rknn model with Runtime API![0m
+[1;33mW[0m [1;33mbuild: The default output dtype of 'curve' is changed from 'float32' to 'int8' in rknn model for performance!
+                      Please take care of this change when deploy rknn model with Runtime API![0m
+I rknn building ...
+I RKNN: [20:50:39.589] compress = 0, conv_eltwise_activation_fuse = 1, global_fuse = 1, multi-core-model-mode = 7, output_optimize = 1, layout_match = 1, enable_argb_group = 0, op_group_sram_opt = 0, enable_flash_attention = 0, op_group_nbuf_opt = 0, safe_fuse = 0
+I RKNN: librknnc version: 2.3.2 (e045de294f@2025-04-07T19:48:25)
+D RKNN: [20:50:39.592] RKNN is invoked
+D RKNN: [20:50:39.600] >>>>>> start: rknn::RKNNExtractCustomOpAttrs
+D RKNN: [20:50:39.600] <<<<<<<< end: rknn::RKNNExtractCustomOpAttrs
+D RKNN: [20:50:39.600] >>>>>> start: rknn::RKNNSetOpTargetPass
+D RKNN: [20:50:39.600] <<<<<<<< end: rknn::RKNNSetOpTargetPass
+D RKNN: [20:50:39.600] >>>>>> start: rknn::RKNNBindNorm
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNBindNorm
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNEliminateQATDataConvert
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNEliminateQATDataConvert
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNConvStrideFixPass
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNConvStrideFixPass
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNTileGroupConv
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNTileGroupConv
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNAddConvBias
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNAddConvBias
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNTileChannel
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNTileChannel
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNDuplicateWeightPass
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNDuplicateWeightPass
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNInitRNNConst
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNInitRNNConst
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNPerChannelPrep
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNPerChannelPrep
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNBnQuant
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNBnQuant
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNFuseOptimizerPass
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNFuseOptimizerPass
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNTurnAutoPad
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNTurnAutoPad
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNInitCastConst
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNInitCastConst
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNMultiSurfacePass
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNMultiSurfacePass
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNReplaceConstantTensorPass
+D RKNN: [20:50:39.601] <<<<<<<< end: rknn::RKNNReplaceConstantTensorPass
+D RKNN: [20:50:39.601] >>>>>> start: rknn::RKNNSubgraphManager
+D RKNN: [20:50:39.602] <<<<<<<< end: rknn::RKNNSubgraphManager
+D RKNN: [20:50:39.602] >>>>>> start: OpEmit
+D RKNN: [20:50:39.602] <<<<<<<< end: OpEmit
+D RKNN: [20:50:39.602] >>>>>> start: rknn::RKNNAddFirstConv
+D RKNN: [20:50:39.602] <<<<<<<< end: rknn::RKNNAddFirstConv
+D RKNN: [20:50:39.602] >>>>>> start: rknn::RKNNTilingPass
+D RKNN: [20:50:39.603] <<<<<<<< end: rknn::RKNNTilingPass
+D RKNN: [20:50:39.603] >>>>>> start: rknn::RKNNLayoutMatchPass
+D RKNN: [20:50:39.603] <<<<<<<< end: rknn::RKNNLayoutMatchPass
+D RKNN: [20:50:39.603] >>>>>> start: rknn::RKNNAddSecondaryNode
+D RKNN: [20:50:39.603] <<<<<<<< end: rknn::RKNNAddSecondaryNode
+D RKNN: [20:50:39.603] >>>>>> start: rknn::RKNNAllocateConvCachePass
+D RKNN: [20:50:39.603] <<<<<<<< end: rknn::RKNNAllocateConvCachePass
+D RKNN: [20:50:39.603] >>>>>> start: OpEmit
+D RKNN: [20:50:39.620] <<<<<<<< end: OpEmit
+D RKNN: [20:50:39.620] >>>>>> start: rknn::RKNNSubGraphMemoryPlanPass
+D RKNN: [20:50:39.620] <<<<<<<< end: rknn::RKNNSubGraphMemoryPlanPass
+D RKNN: [20:50:39.620] >>>>>> start: rknn::RKNNProfileAnalysisPass
+D RKNN: [20:50:39.620] <<<<<<<< end: rknn::RKNNProfileAnalysisPass
+D RKNN: [20:50:39.620] >>>>>> start: rknn::RKNNOperatorIdGenPass
+D RKNN: [20:50:39.620] <<<<<<<< end: rknn::RKNNOperatorIdGenPass
+D RKNN: [20:50:39.620] >>>>>> start: rknn::RKNNWeightTransposePass
+D RKNN: [20:50:39.621] <<<<<<<< end: rknn::RKNNWeightTransposePass
+D RKNN: [20:50:39.621] >>>>>> start: rknn::RKNNCPUWeightTransposePass
+D RKNN: [20:50:39.621] <<<<<<<< end: rknn::RKNNCPUWeightTransposePass
+D RKNN: [20:50:39.621] >>>>>> start: rknn::RKNNModelBuildPass
+D RKNN: [20:50:39.646] <<<<<<<< end: rknn::RKNNModelBuildPass
+D RKNN: [20:50:39.646] >>>>>> start: rknn::RKNNModelRegCmdbuildPass
+D RKNN: [20:50:39.660] --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:50:39.660]                                                         Network Layer Information Table                                                      
+D RKNN: [20:50:39.660] --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:50:39.660] ID   OpType             DataType Target InputShape                               OutputShape            Cycles(DDR/NPU/Total)    RW(KB)       FullName        
+D RKNN: [20:50:39.660] --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:50:39.660] 0    InputOperator      INT8     CPU    \                                        (1,3,272,480)          0/0/0                    0            InputOperator:input
+D RKNN: [20:50:39.660] 1    Conv               INT8     NPU    (1,3,272,480),(3,3,1,1),(3)              (1,3,272,480)          104881/522240/522240     382                          
+D RKNN: [20:50:39.660] 2    Conv               INT8     NPU    (1,3,272,480),(1,3,3,3),(3)              (1,3,272,480)          176650/1175040/1175040   2040         Conv:/e_conv1/depth_conv/Conv
+D RKNN: [20:50:39.660] 3    ConvRelu           INT8     NPU    (1,3,272,480),(32,3,1,1),(32)            (1,32,272,480)         264972/522240/522240     2040         Conv:/e_conv1/point_conv/Conv
+D RKNN: [20:50:39.660] 4    Conv               INT8     NPU    (1,32,272,480),(1,32,3,3),(32)           (1,32,272,480)         353287/1175040/1175040   4080         Conv:/e_conv2/depth_conv/Conv
+D RKNN: [20:50:39.660] 5    ConvRelu           INT8     NPU    (1,32,272,480),(32,32,1,1),(32)          (1,32,272,480)         353307/522240/522240     4081         Conv:/e_conv2/point_conv/Conv
+D RKNN: [20:50:39.660] 6    Conv               INT8     NPU    (1,32,272,480),(1,32,3,3),(32)           (1,32,272,480)         353287/1175040/1175040   4080         Conv:/e_conv3/depth_conv/Conv
+D RKNN: [20:50:39.660] 7    ConvRelu           INT8     NPU    (1,32,272,480),(32,32,1,1),(32)          (1,32,272,480)         353307/522240/522240     4081         Conv:/e_conv3/point_conv/Conv
+D RKNN: [20:50:39.660] 8    Conv               INT8     NPU    (1,32,272,480),(1,32,3,3),(32)           (1,32,272,480)         353287/1175040/1175040   4080         Conv:/e_conv4/depth_conv/Conv
+D RKNN: [20:50:39.660] 9    ConvRelu           INT8     NPU    (1,32,272,480),(32,32,1,1),(32)          (1,32,272,480)         353307/522240/522240     4081         Conv:/e_conv4/point_conv/Conv
+D RKNN: [20:50:39.660] 10   Concat             INT8     NPU    (1,32,272,480),(1,32,272,480)            (1,64,272,480)         0/0/0                    8160         Concat:/Concat  
+D RKNN: [20:50:39.660] 11   Conv               INT8     NPU    (1,64,272,480),(1,64,3,3),(64)           (1,64,272,480)         706552/1175040/1175040   8161         Conv:/e_conv5/depth_conv/Conv
+D RKNN: [20:50:39.660] 12   ConvRelu           INT8     NPU    (1,64,272,480),(32,64,1,1),(32)          (1,32,272,480)         529977/522240/529977     8162         Conv:/e_conv5/point_conv/Conv
+D RKNN: [20:50:39.660] 13   Concat             INT8     NPU    (1,32,272,480),(1,32,272,480)            (1,64,272,480)         0/0/0                    8160         Concat:/Concat_1
+D RKNN: [20:50:39.660] 14   Conv               INT8     NPU    (1,64,272,480),(1,64,3,3),(64)           (1,64,272,480)         706552/1175040/1175040   8161         Conv:/e_conv6/depth_conv/Conv
+D RKNN: [20:50:39.660] 15   ConvRelu           INT8     NPU    (1,64,272,480),(32,64,1,1),(32)          (1,32,272,480)         529977/522240/529977     8162         Conv:/e_conv6/point_conv/Conv
+D RKNN: [20:50:39.660] 16   Concat             INT8     NPU    (1,32,272,480),(1,32,272,480)            (1,64,272,480)         0/0/0                    8160         Concat:/Concat_2
+D RKNN: [20:50:39.660] 17   Conv               INT8     NPU    (1,64,272,480),(1,64,3,3),(64)           (1,64,272,480)         706552/1175040/1175040   8161         Conv:/e_conv7/depth_conv/Conv
+D RKNN: [20:50:39.660] 18   ConvTanh           INT8     NPU    (1,64,272,480),(3,64,1,1),(3)            (1,3,272,480)          529901/522240/529901     8160         Conv:/e_conv7/point_conv/Conv
+D RKNN: [20:50:39.660] 19   OutputOperator     INT8     CPU    (1,3,272,480)                            \                      0/0/0                    4080         OutputOperator:curve
+D RKNN: [20:50:39.660] --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:50:39.660] <<<<<<<< end: rknn::RKNNModelRegCmdbuildPass
+D RKNN: [20:50:39.660] >>>>>> start: rknn::RKNNModelExportPass
+D RKNN: [20:50:39.660] Export RKNN model to /tmp/tmpx1y1jxsx/check.rknn
+D RKNN: [20:50:39.661] <<<<<<<< end: rknn::RKNNModelExportPass
+D RKNN: [20:50:39.661] >>>>>> start: rknn::RKNNMemStatisticsPass
+D RKNN: [20:50:39.661] ----------------------------------------------------------------------------------------------------------------------------------------------
+D RKNN: [20:50:39.661]                                                Feature Tensor Information Table                                       
+D RKNN: [20:50:39.661] ------------------------------------------------------------------------------------------------------------+---------------------------------
+D RKNN: [20:50:39.661] ID  User           Tensor                            DataType  DataFormat   OrigShape      NativeShape      |     [Start       End)       Size
+D RKNN: [20:50:39.661] ------------------------------------------------------------------------------------------------------------+---------------------------------
+D RKNN: [20:50:39.661] 1   Conv           input                             INT8      NC1HWC2      (1,3,272,480)  (1,1,272,480,3)  | 0x00000000 0x0005fa00 0x0005fa00
+D RKNN: [20:50:39.661] 2   Conv           New_input_input                   INT8      NC1HWC2      (1,3,272,480)  (1,2,272,480,16) | 0x0005fa00 0x0045ba00 0x003fc000
+D RKNN: [20:50:39.661] 3   ConvRelu       /e_conv1/depth_conv/Conv_output_0 INT8      NC1HWC2      (1,3,272,480)  (1,4,272,480,16) | 0x0045ba00 0x00c53a00 0x007f8000
+D RKNN: [20:50:39.661] 4   Conv           /relu/Relu_output_0               INT8      NC1HWC2      (1,32,272,480) (1,2,272,480,16) | 0x00000000 0x003fc000 0x003fc000
+D RKNN: [20:50:39.661] 5   ConvRelu       /e_conv2/depth_conv/Conv_output_0 INT8      NC1HWC2      (1,32,272,480) (1,4,272,480,16) | 0x003fc000 0x00bf4000 0x007f8000
+D RKNN: [20:50:39.661] 6   Conv           /relu_1/Relu_output_0             INT8      NC1HWC2      (1,32,272,480) (1,2,272,480,16) | 0x00bf4000 0x00ff0000 0x003fc000
+D RKNN: [20:50:39.661] 7   ConvRelu       /e_conv3/depth_conv/Conv_output_0 INT8      NC1HWC2      (1,32,272,480) (1,4,272,480,16) | 0x003fc000 0x00bf4000 0x007f8000
+D RKNN: [20:50:39.661] 8   Conv           /relu_2/Relu_output_0             INT8      NC1HWC2      (1,32,272,480) (1,2,272,480,16) | 0x00ff0000 0x013ec000 0x003fc000
+D RKNN: [20:50:39.661] 9   ConvRelu       /e_conv4/depth_conv/Conv_output_0 INT8      NC1HWC2      (1,32,272,480) (1,4,272,480,16) | 0x003fc000 0x00bf4000 0x007f8000
+D RKNN: [20:50:39.661] 10  Concat         /relu_2/Relu_output_0             INT8      NC1HWC2      (1,32,272,480) (1,2,272,480,16) | 0x00ff0000 0x013ec000 0x003fc000
+D RKNN: [20:50:39.661] 10  Concat         /relu_3/Relu_output_0             INT8      NC1HWC2      (1,32,272,480) (1,2,272,480,16) | 0x013ec000*0x017e8000 0x003fc000
+D RKNN: [20:50:39.661] 11  Conv           /Concat_output_0                  INT8      NC1HWC2      (1,64,272,480) (1,4,272,480,16) | 0x003fc000 0x00bf4000 0x007f8000
+D RKNN: [20:50:39.661] 12  ConvRelu       /e_conv5/depth_conv/Conv_output_0 INT8      NC1HWC2      (1,64,272,480) (1,4,272,480,16) | 0x00ff0000*0x017e8000 0x007f8000
+D RKNN: [20:50:39.661] 13  Concat         /relu_1/Relu_output_0             INT8      NC1HWC2      (1,32,272,480) (1,2,272,480,16) | 0x00bf4000 0x00ff0000 0x003fc000
+D RKNN: [20:50:39.661] 13  Concat         /relu_4/Relu_output_0             INT8      NC1HWC2      (1,32,272,480) (1,2,272,480,16) | 0x003fc000 0x007f8000 0x003fc000
+D RKNN: [20:50:39.661] 14  Conv           /Concat_1_output_0                INT8      NC1HWC2      (1,64,272,480) (1,4,272,480,16) | 0x00ff0000*0x017e8000 0x007f8000
+D RKNN: [20:50:39.661] 15  ConvRelu       /e_conv6/depth_conv/Conv_output_0 INT8      NC1HWC2      (1,64,272,480) (1,4,272,480,16) | 0x003fc000 0x00bf4000 0x007f8000
+D RKNN: [20:50:39.661] 16  Concat         /relu/Relu_output_0               INT8      NC1HWC2      (1,32,272,480) (1,2,272,480,16) | 0x00000000 0x003fc000 0x003fc000
+D RKNN: [20:50:39.661] 16  Concat         /relu_5/Relu_output_0             INT8      NC1HWC2      (1,32,272,480) (1,2,272,480,16) | 0x00bf4000 0x00ff0000 0x003fc000
+D RKNN: [20:50:39.661] 17  Conv           /Concat_2_output_0                INT8      NC1HWC2      (1,64,272,480) (1,4,272,480,16) | 0x003fc000 0x00bf4000 0x007f8000
+D RKNN: [20:50:39.661] 18  ConvTanh       /e_conv7/depth_conv/Conv_output_0 INT8      NC1HWC2      (1,64,272,480) (1,4,272,480,16) | 0x00bf4000 0x013ec000 0x007f8000
+D RKNN: [20:50:39.661] 19  OutputOperator curve                             INT8      NC1HWC2      (1,3,272,480)  (1,2,272,480,16) | 0x00000000 0x003fc000 0x003fc000
+D RKNN: [20:50:39.661] ------------------------------------------------------------------------------------------------------------+---------------------------------
+D RKNN: [20:50:39.661] ------------------------------------------------------------------------------------------------
+D RKNN: [20:50:39.661]                                 Const Tensor Information Table                  
+D RKNN: [20:50:39.661] --------------------------------------------------------------+---------------------------------
+D RKNN: [20:50:39.661] ID  User     Tensor                    DataType  OrigShape    |     [Start       End)       Size
+D RKNN: [20:50:39.661] --------------------------------------------------------------+---------------------------------
+D RKNN: [20:50:39.661] 1   Conv     Pre_weightinput           INT8      (3,3,1,1)    | 0x00003f40 0x00003f80 0x00000040
+D RKNN: [20:50:39.661] 1   Conv     Pre_weightinput_bias_0    INT32     (3)          | 0x00003f80 0x00004000 0x00000080
+D RKNN: [20:50:39.661] 2   Conv     e_conv1.depth_conv.weight INT8      (1,3,3,3)    | 0x00000000 0x00000090 0x00000090
+D RKNN: [20:50:39.661] 2   Conv     e_conv1.depth_conv.bias   INT32     (3)          | 0x000000c0 0x000002c0 0x00000200
+D RKNN: [20:50:39.661] 3   ConvRelu e_conv1.point_conv.weight INT8      (32,3,1,1)   | 0x000002c0 0x000004c0 0x00000200
+D RKNN: [20:50:39.661] 3   ConvRelu e_conv1.point_conv.bias   INT32     (32)         | 0x000004c0 0x000005c0 0x00000100
+D RKNN: [20:50:39.661] 4   Conv     e_conv2.depth_conv.weight INT8      (1,32,3,3)   | 0x000005c0 0x000006e0 0x00000120
+D RKNN: [20:50:39.661] 4   Conv     e_conv2.depth_conv.bias   INT32     (32)         | 0x00000700 0x00000900 0x00000200
+D RKNN: [20:50:39.661] 5   ConvRelu e_conv2.point_conv.weight INT8      (32,32,1,1)  | 0x00000900 0x00000d00 0x00000400
+D RKNN: [20:50:39.661] 5   ConvRelu e_conv2.point_conv.bias   INT32     (32)         | 0x00000d00 0x00000e00 0x00000100
+D RKNN: [20:50:39.661] 6   Conv     e_conv3.depth_conv.weight INT8      (1,32,3,3)   | 0x00000e00 0x00000f20 0x00000120
+D RKNN: [20:50:39.661] 6   Conv     e_conv3.depth_conv.bias   INT32     (32)         | 0x00000f40 0x00001140 0x00000200
+D RKNN: [20:50:39.661] 7   ConvRelu e_conv3.point_conv.weight INT8      (32,32,1,1)  | 0x00001140 0x00001540 0x00000400
+D RKNN: [20:50:39.661] 7   CI rknn building done.
+{
+  "stage": "build",
+  "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/zde_curve_480x272.onnx",
+  "onnx_sha256": "6fef7434ec7f04d349e94f5af9d810ced5425a7b90cc983697b21314b42b4174",
+  "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/zde/zde_curve_480x272_int8_hyb098_tk232.rknn",
+  "target_platform": "rk3588",
+  "quant": "int8",
+  "input_normalization": {
+    "rgb2bgr": false,
+    "mean": [
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "std": [
+      [
+        255,
+        255,
+        255
+      ]
+    ]
+  },
+  "inputs_yuv_fmt": null,
+  "auto_hybrid": true,
+  "hybrid_cos": 0.98,
+  "env": {
+    "python": "3.8.20",
+    "rknn_toolkit2": "unknown"
+  }
+}
+[report] docs/evidence/reports/M0-8/build_hyb098.json
+onvRelu e_conv3.point_conv.bias   INT32     (32)         | 0x00001540 0x00001640 0x00000100
+D RKNN: [20:50:39.661] 8   Conv     e_conv4.depth_conv.weight INT8      (1,32,3,3)   | 0x00001640 0x00001760 0x00000120
+D RKNN: [20:50:39.661] 8   Conv     e_conv4.depth_conv.bias   INT32     (32)         | 0x00001780 0x00001980 0x00000200
+D RKNN: [20:50:39.661] 9   ConvRelu e_conv4.point_conv.weight INT8      (32,32,1,1)  | 0x00001980 0x00001d80 0x00000400
+D RKNN: [20:50:39.661] 9   ConvRelu e_conv4.point_conv.bias   INT32     (32)         | 0x00001d80 0x00001e80 0x00000100
+D RKNN: [20:50:39.661] 11  Conv     e_conv5.depth_conv.weight INT8      (1,64,3,3)   | 0x00001e80 0x000020c0 0x00000240
+D RKNN: [20:50:39.661] 11  Conv     e_conv5.depth_conv.bias   INT32     (64)         | 0x000020c0 0x000022c0 0x00000200
+D RKNN: [20:50:39.661] 12  ConvRelu e_conv5.point_conv.weight INT8      (32,64,1,1)  | 0x000022c0 0x00002ac0 0x00000800
+D RKNN: [20:50:39.661] 12  ConvRelu e_conv5.point_conv.bias   INT32     (32)         | 0x00002ac0 0x00002bc0 0x00000100
+D RKNN: [20:50:39.661] 14  Conv     e_conv6.depth_conv.weight INT8      (1,64,3,3)   | 0x00002bc0 0x00002e00 0x00000240
+D RKNN: [20:50:39.661] 14  Conv     e_conv6.depth_conv.bias   INT32     (64)         | 0x00002e00 0x00003000 0x00000200
+D RKNN: [20:50:39.661] 15  ConvRelu e_conv6.point_conv.weight INT8      (32,64,1,1)  | 0x00003000 0x00003800 0x00000800
+D RKNN: [20:50:39.661] 15  ConvRelu e_conv6.point_conv.bias   INT32     (32)         | 0x00003800 0x00003900 0x00000100
+D RKNN: [20:50:39.661] 17  Conv     e_conv7.depth_conv.weight INT8      (1,64,3,3)   | 0x00003900 0x00003b40 0x00000240
+D RKNN: [20:50:39.661] 17  Conv     e_conv7.depth_conv.bias   INT32     (64)         | 0x00003b40 0x00003d40 0x00000200
+D RKNN: [20:50:39.661] 18  ConvTanh e_conv7.point_conv.weight INT8      (3,64,1,1)   | 0x00003d40 0x00003e40 0x00000100
+D RKNN: [20:50:39.661] 18  ConvTanh e_conv7.point_conv.bias   INT32     (3)          | 0x00003e40 0x00003f40 0x00000100
+D RKNN: [20:50:39.661] --------------------------------------------------------------+---------------------------------
+D RKNN: [20:50:39.661] ----------------------------------------
+D RKNN: [20:50:39.661] Total Internal Memory Size: 24480KB
+D RKNN: [20:50:39.661] Total Weight Memory Size: 18KB
+D RKNN: [20:50:39.661] ----------------------------------------
+D RKNN: [20:50:39.661] <<<<<<<< end: rknn::RKNNMemStatisticsPass

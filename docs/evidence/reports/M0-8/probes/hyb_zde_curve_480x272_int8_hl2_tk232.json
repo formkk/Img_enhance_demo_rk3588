@@ -1,0 +1,13 @@
+{"api":"2.3.2 (429f97ae6b@2025-04-09T09:09:27)","drv":"0.9.8",
+"core_mask":0,"core_mask_ret":0,
+"in_elems":391680,"out_elems":391680,"n_input":1,"n_output":1,
+"in_attr":{"fmt":"NHWC","n_dims":4,"dims":[1,272,480,3],"type":2},
+"out_attr":{"fmt":"NCHW","n_dims":4,"dims":[1,3,272,480],"type":2},
+"mem":{"weight":18432,"internal":25067520,"dma":25825280,"sram":0,"sram_free":0},
+"n":5,
+"wall_ms":{"min":32.69,"median":49.48,"p90":56.68,"max":56.68},
+"npu_run_ms":{"min":28.75,"median":45.53,"p90":46.67,"max":46.67},
+"overhead_ms_median":3.94,
+"cfg":{"fmt":"nhwc","want_float":1,"sram":0,"in_type":"uint8","perf_collect":0}
+}
+"dump":"data/hyb_zde_curve_480x272_int8_hl2_tk232.f32",

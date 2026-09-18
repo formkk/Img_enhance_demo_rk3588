@@ -301,3 +301,59 @@ ssh board 'cd ~/rknn_ab && unshare -Ur -m sh -c "mount --bind \$HOME/rknn_ab/lib
 1. **三档差异在指标上很小**：均值/中位/暗部占比几乎重合；**低频 std（照明均匀性）三档相差 ≤0.7** ⇒ 本轮两图上**未测出档位相关的晕边/不均匀劣化**。
 2. **高光与细节呈单调趋势但方向随图而异**：18.png 上档位越高 → P99 越低（**227 → 215**，高光压缩更强）、细节能量略降（1453 → 1420）；06.CR2 上则档位越高 → 细节**升**（120.9 → 126.4）、P99 略降（199 → 193）。**含义**：低档的粗曲线场在高光段更"冲"，与"硬光源/高动态场景需要更高档"的预期方向一致，但**样本仅 2 张、且为代用素材**。
 3. **定档仍须走 §4.3 的正式路径**：IMX415 实拍两类暗帧（均匀暗光 + 单侧硬光源）双档对比 → **PSNR >35 dB 且盲评无差异**方锁 480×272；本节的图与指标**只作目视预判**，`provisional` 状态不变（O7/O23）。
+
+---
+
+## 12. 【收口】混合量化（输出层留 FP16）尝试 = **不可行**（2026-09-18 20:5x）
+
+**动机**（§9.2 第 5 条）：INT8 单模型曲线场误差 1.72e-2、图像域 51.07 dB；若把输出层（`e_conv7` + `tanh`）留在 FP16、其余 INT8，预期把误差降到 ~1e-3 量级。
+
+**工具**：`tools/convert_models.py` 的 `build` 段新增 `--auto-hybrid` / `--hybrid-cos` / `--hybrid-level` / `--qdtype` 四个选项（仅 INT8 生效）。**全部在同一固定输入**（`in_480x272_nhwc.f32`）与同一 PT 参考（`pt_ref_480x272.npy`）下比对。
+
+### 12.1 逐档实测
+
+| 档位 | 编译 | 板端运行 | 曲线场 vs PT（max_abs） | 与纯 INT8 基线（逐位） |
+|---|---|---|---|---|
+| **纯 INT8（基线）** | ✅ | ✅ | **1.7161e-2** | —（本次重跑与仓库 dump **max_abs = 0.0**，复现性确认） |
+| `auto_hybrid` cos=0.98 | ✅ | ✅ | 1.7161e-2 | **0.0（逐位一致）** |
+| `auto_hybrid` cos=0.995 | ✅ | ✅ | 1.7161e-2 | **0.0** |
+| `auto_hybrid` cos=0.999 | ✅ | ✅ | 1.7161e-2 | **0.0** |
+| `quantized_hybrid_level=1` | ✅ | ✅ | 1.7161e-2 | **0.0** |
+| `quantized_hybrid_level=2` | ✅ | ✅ | 1.7161e-2 | **0.0** |
+| `quantized_hybrid_level=3` | ✅ | ✅ | 1.7161e-2 | **0.0** |
+| `quantized_dtype=w8a16` | ❌ 编译期拒绝 | — | — | — |
+| `quantized_dtype=w4a16` | ❌ 编译期拒绝 | — | — | — |
+| `quantized_dtype=w16a16i` | ✅（1,990,547 B） | ❌ **运行期失败** | — | — |
+
+**失败原因（原文）**：
+- `w8a16` / `w4a16`：`ValueError: The quantized_dtype = 'w8a16' not support in 'rk3588'!`（`w4a16` 同）
+- `w16a16i`：`E RKNN: Op type:Concat, name: Concat:/Concat, fallback cpu failed.`（u8 / f32 两种喂入均失败；输入张量 `type=4`，与喂入类型无关）
+
+### 12.2 判定
+
+1. **`auto_hybrid` 与 `quantized_hybrid_level` 对本模型是 no-op**：三档 cos 阈值与三档 level 的曲线场**与纯 INT8 逐位一致**（max_abs = 0.0）——RKNN 的自动混合机制**未把任何层留在浮点**（该模型无溢出/无高误差层触发条件）。
+2. **per-layer「输出层留 FP16」不在 toolkit 能力内**：RKNN 的混合机制只有"自动选层"与"全局 dtype"两类，**无按层指定精度**的接口。
+3. **可用的 16bit 全局档不可用**：`w8a16`/`w4a16` 在 `rk3588` 编译期即被拒；`w16a16i` 虽可编译，但在本运行时（`librknnrt` 2.3.2）**运行期失败**（Concat 算子 CPU 回退失败）。
+4. **结论 = 混合量化不可行 ⇒ 关闭本子项**。**INT8 主线维持不变**：曲线场 1.72e-2、图像域 **51.07 dB**（双条带 53.46 dB），**已过 O27-①b 的 INT8 闸口**（张量 ≤3e-2、图像域 ≥50 dB），且双条带耗时 17.96 ms < 30 ms 目标 ⇒ **无精度缺口需要用混合量化补**。
+5. **保留**：M1 实拍校准集产出后按 O11 重转 INT8 并复检（`provisional` 状态不变）。
+
+### 12.3 复现命令
+
+```bash
+# ① 编译混合变体（PC，rknn232）
+PYTHONNOUSERSITE=1 ~/.conda/envs/rknn232/bin/python tools/convert_models.py build \
+  --onnx models/zde/zde_curve_480x272.onnx --out models/zde/zde_curve_480x272_int8_hyb098_tk232.rknn \
+  --quant int8 --target rk3588 --calib models/zde/calib/dataset.txt \
+  --auto-hybrid --hybrid-cos 0.98 --report docs/evidence/reports/M0-8/build_hyb098.json
+# （--hybrid-level N / --qdtype w8a16|w16a16i|w4a16 同理）
+# ② 板端推理（与 M0-2/M0-8 同一固定输入）
+ssh board 'cd ~/rknn_ab && probe/rknn_c_probe models/<model>.rknn data/in_480x272_nhwc.f32 5 nhwc float nosram u8 noperf data/out.f32 0'
+```
+
+### 12.4 产物
+
+| 产物 | 路径 |
+|---|---|
+| 构建报告 / 日志 | `docs/evidence/reports/M0-8/build_{hyb098,hyb0995,hyb0999,hl1,hl2,hl3,w16a16i}.json` + 各 `.log`（含 `w8a16`/`w4a16` 的失败日志） |
+| 板端探针报告 | `docs/evidence/reports/M0-8/probes/hyb_*.json` |
+| 曲线场（**不入库**，可由 §12.3 重生成） | `docs/evidence/reports/M0-8/curves/hyb_*.f32` |
