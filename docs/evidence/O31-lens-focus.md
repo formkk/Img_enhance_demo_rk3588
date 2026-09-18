@@ -91,4 +91,19 @@ ssh board 'cp $(ls -t /tmp/live/c_*.raw | head -1) /tmp/live/pick.raw'
 ## 8. 附：本轮顺带记录的两个板端坑（非 O31 内容）
 
 1. **面板被 DPMS 熄灭 ⇒ 黑屏无背光**：`/sys/class/backlight/backlight-dsi0/bl_power` 被置 **4**（`FB_BLANK_POWERDOWN`），而 `brightness` 仍 200 ⇒ 表现为"黑屏无背光"。恢复 = `echo 0 > /sys/class/backlight/backlight-dsi0/bl_power`；预防 = 开发期 `xset s off -dpms`。**演示态（`multi-user.target`，无桌面）不适用**。
-2. **`cam_preview.py`（HTTP+JPEG 管线）长跑后流会停**（`/stat` 的 `seq` 卡住，两次快照 md5 相同；摄像头本身健康）⇒ 需要长时间预览时改用**直接 gst 窗口 sink**（本轮用的 `ximagesink` + tee 方案）。
+2. **`cam_preview.py`（HTTP+JPEG 管线）长跑后流会停**（`/stat` 的 `seq` 卡住，两次快照 md5 相同；摄像头本身健康）⇒ 长时间预览改用**直接 gst 窗口 sink**。
+   ⚠️ **更正（同日实测）**：最初用的 `v4l2src ! tee`（一路出画面、一路裁图测量）**会引入明显鬼影**——两路共享 v4l2 的 DMA 缓冲，测量支路拖住缓冲使画面拿到被复写的帧。⇒ **预览必须单路**；测量须与预览**分时**做，不得 tee。
+
+## 9. 记录：预览「拖影」的根因 = ISP 时域降噪（3DNR）（2026-09-18，**只记录、未改动**）
+
+用户报告预览画面**拖影持续 >1 秒**；去掉 tee 改单路后**依旧** ⇒ **排除预览管线**。
+
+| 项 | 事实 |
+|---|---|
+| IQ 文件 | `/etc/iqfiles/imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json` |
+| **文件对应镜头 ≠ 实装镜头** | 文件按 **CMK-OT2022-PX1 / IR0147-50IRC / 8M / F20** 调优；实装为 **8 mm 可调焦** ⇒ **IQ 调优与镜头不匹配** |
+| 时域降噪段 | **`bayertnr_v2`**（Bayer 时域 NR）；另有 `bayer2dnr_v2` / `cnr_v2` / `ynr_adjust_*` |
+| 驱动侧可调性 | `/dev/video11` **无 NR 控制项**（仅 `pixel_rate`）⇒ 只能在 IQ JSON 里改，改后须重启 `rkaiq_3A_server`（pid 393） |
+
+**判定**：>1 s 的拖影 = **时域累积**（`bayertnr_v2` 在暗光下强度拉高），**不在预览管线上**。
+**处置（用户 2026-09-18 指示）**：**只记录、本轮不改动**（关掉时域 NR 会使暗部噪点明显增加）。该事实并入 **§15 的 O40（3DNR 采集期与运行期一致性）** 与 **O31③（IQ 失配 → §9.5 的 M1 ISP 调参）**。

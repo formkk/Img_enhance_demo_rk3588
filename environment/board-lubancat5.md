@@ -279,7 +279,9 @@ AE 正常自适应（`analogue_gain` 161 → 146、`exposure` 1350/2242）；`rk
   （含：全幅 + 中心 4× 放大；**清晰度读数**（中心 1:1 Laplacian 方差）+ 本次最大 + 帧序号 + **重复帧计数**；下载当前原图）。
 - 停止：`ssh board "sudo pkill -9 -f 'cam_pre[.]view'"`（注意 `pkill -f` 会匹配到自己的命令行，须用 `[.]`/`[-]` 转义写法）。
 
-> **（v3.44）实测两坑**：① **长跑后流会停**——`/stat` 的 `seq` 卡住、两次快照 md5 相同（摄像头本身健康，另抓帧正常）；需长时间预览时改用**直接 gst 窗口 sink**：`v4l2src ! tee`（一路 `videoscale → videoconvert → ximagesink` 出画面；一路 `videocrop` 取中心 1:1 480×270 → GRAY8 → `multifilesink` 落盘供测量）。② **面板 DPMS 熄灭 ⇒「黑屏无背光」**：`/sys/class/backlight/backlight-dsi0/bl_power` 被置 **4**（`FB_BLANK_POWERDOWN`）而 `brightness` 仍 200；恢复 = `echo 0 | sudo tee /sys/class/backlight/backlight-dsi0/bl_power`，预防 = 开发期 `xset s off -dpms`（**演示态 `multi-user.target` 无桌面，不适用**）。
+> **（v3.44）实测三坑**：① **长跑后流会停**——`/stat` 的 `seq` 卡住、两次快照 md5 相同（摄像头本身健康，另抓帧正常）；长时间预览改用**直接 gst 窗口 sink**（`v4l2src ! videoconvert ! videoscale → ximagesink`）。② **`v4l2src ! tee` 会引入明显鬼影**——两路共享 v4l2 的 DMA 缓冲、测量支路拖住缓冲使画面拿到被复写的帧 ⇒ **预览必须单路；测量与预览分时做，不得 tee**。③ **面板 DPMS 熄灭 ⇒「黑屏无背光」**：`/sys/class/backlight/backlight-dsi0/bl_power` 被置 **4**（`FB_BLANK_POWERDOWN`）而 `brightness` 仍 200；恢复 = `echo 0 | sudo tee /sys/class/backlight/backlight-dsi0/bl_power`，预防 = 开发期 `xset s off -dpms`（**演示态 `multi-user.target` 无桌面，不适用**）。
+>
+> **（v3.44 记录，未改动）预览「拖影持续 >1 s」的根因 = ISP 时域降噪**：IQ 文件 `/etc/iqfiles/imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json` 的 **`bayertnr_v2`**（Bayer 时域 NR）在暗光下强度拉高 ⇒ 时域累积；**该 IQ 文件按 CMK-OT2022-PX1 调优，与实装 8 mm 镜头不匹配**。`/dev/video11` 无 NR 控制项（仅 `pixel_rate`）⇒ 只能改 IQ JSON + 重启 `rkaiq_3A_server`。**用户指示只记录、本轮不改**（关闭时域 NR 会使暗部噪点明显增加）。关联 §15 的 **O40** 与 **O31③**。
 - **两个实测坑（本档留痕，避免重复踩）**：
   1. **`/dev/video11` 是 Multiplanar 节点**：`ffmpeg/ffplay/mpv` 的 v4l2 输入直接报 `Not a video capture device`（实测），须用 **GStreamer `v4l2src`**（支持 MPlane）；
   2. **`v4l2src` 直连 `mppjpegenc` 会反复编码同一块陈旧缓冲** ⇒ 页面"画面冻住"而帧序号仍在涨（极易误判为相机故障）；**必须前置 `videoconvert` 做一次真实拷贝**。对照实测：加 videoconvert 后 `19 帧 / 19 唯一`；纯软件 `jpegenc` 亦正常。工具因此加了 `dup_run` 监控。
