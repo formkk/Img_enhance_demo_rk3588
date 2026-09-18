@@ -60,7 +60,8 @@ display:
   mode_htotal: 1354                      # 实测 modetest #0：1024 1184 1194 1354（=1024+160+10+160）
   mode_vtotal: 636                       # 实测 modetest #0：600 612 613 636（=600+12+1+23）
   dsi_lane_rate: 344                     # Mbit/s/lane，dmesg 实测 "DSI-Link bandwidth: 344453 x 4 Kbps"
-  hdmi_mode_selection: null              # 定稿时点 M2（EDID mode list 优先 1080p，无则 preferred）
+  hdmi_mode_selection: null              # 定稿时点 **M2-1**（EDID mode list 优先 1080p，无则 preferred）
+                                         # v3.48 裁定 O49：由 M2 移入 M2-1（需 EDID ⇒ 需 HDMI 显示器接入）
 
 # ── 链路（定稿时点见各行）───────────────────────────────────────────
 pipeline:
@@ -87,13 +88,17 @@ pipeline:
   est_freq_hz: null                      # 定稿时点 M2（与 f_est 联动）
   ema_alpha: null                        # 定稿时点 M2（N = ln0.1/lnα）
 
-# ── HQ（定稿时点 M0，缺 3 项）───────────────────────────────────────
+# ── HQ（定稿时点 M2-2，除 shape_ladder；v3.48 裁定 O49 由 M0 顺延）──────────
 hq:
   model_id: null                         # ❌ 空缺：依赖 O30（v3.29 裁定为「暂时挂起」）⇒ 保持空缺，
                                          # 不得以默认值顶替；重启条件见 §15 O30
+                                         # 定稿时点 **M2-2**（v3.48 裁定 O49：随 §11.1-4/-12 顺延）
   shape_ladder: ["960x544", "768x432", "512x288"]
+                                         # 定稿时点 M0（取值不受 O49 影响，§10.4 既定梯度）
   active_shape: null                     # ❌ 空缺：M0-4 三档 R9 闸口当天定版（现为占位，O30 暂挂）
+                                         # 定稿时点 **M2-2**（v3.48 裁定 O49）
   pad_crop_policy: null                  # ❌ 空缺：随 active_shape 一并定版（同上）
+                                         # 定稿时点 **M2-2**（v3.48 裁定 O49）
   hold_policy: null                      # 定稿时点 M3（replace_and_hold）
   fade_ms: null                          # 定稿时点 M3（300）
   mipi_preview_ms: null                  # 定稿时点 M3（2500）
@@ -147,6 +152,7 @@ model:
   zde_ft_version: "none"                 # 当前权重 = 官方 Epoch99.pth，未做实拍域 fine-tune；
                                          # M1 按 O11 计划（权重变更即全量重跑）
   hq_fallback_id: null                   # ❌ 空缺：依赖 O30（v3.29 裁定为「暂时挂起」）⇒ 保持空缺
+                                         # 定稿时点 **M2-2**（v3.48 裁定 O49：由 M0/M1 顺延）
 
 # ── 运行时（定稿时点 M0）───────────────────────────────────────────
 runtime:

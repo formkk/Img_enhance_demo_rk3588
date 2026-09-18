@@ -1,0 +1,15 @@
+{
+"tool":"tools/pipeline_probe.c","mode":"offline",
+"geom":{"cap":"1920x1080 NV12","est":"480x272 (eff 480x270)","win":"512x288 RGB888","canvas":"1024x600 RGB888"},
+"params":{"est_every":16,"alpha":0.630,"ema":1,"copy_cap":0,"n_slices":2,"halo":7},
+"counters":{"frames":6,"estimates":1,"flip_skipped":0,"wall_s":0.20,"fps":30.77},
+"selfcheck_neon_vs_scalar":{"mismatch_bytes":0,"max_abs":0,"total":442368},
+"cap_dqbuf_ms":{"n":6,"min":6.033,"median":16.067,"p90":17.568,"max":17.568},
+"rga_est_ms":{"n":1,"min":3.350,"median":3.350,"p90":3.350,"max":3.350},
+"rga_win_ms":{"n":1,"min":2.031,"median":2.031,"p90":2.031,"max":2.031},
+"apply_ms":{"n":1,"min":12.833,"median":12.833,"p90":12.833,"max":12.833},
+"npu_est_ms":{"n":1,"min":38.525,"median":38.525,"p90":38.525,"max":38.525},
+"canvas_ms":null,
+"pageflip_ms":null,
+"frame_ms":{"n":1,"min":78.418,"median":78.418,"p90":78.418,"max":78.418}
+}

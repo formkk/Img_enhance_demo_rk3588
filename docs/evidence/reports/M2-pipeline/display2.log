@@ -1,0 +1,13 @@
+[cap] /dev/video11  driver=rkisp_v6 card=rkisp_mainpath caps=0x84201000
+[cap] fmt=NV12 1920x1080 num_planes=1 bytesperline=1920 sizeimage=3110400
+[cap] REQBUFS count=4
+[cap] 4 缓冲就绪（length=3133440，dmabuf_fd[0]=4）
+[main] 已开流（进程内只开一次）
+[rga] 就绪（est 480x272 eff 480x270 / win 512x288）
+[npu] slice 0 start=0 core_mask_ret=0
+[npu] slice 1 start=224 core_mask_ret=0
+[npu] 模型 /home/cat/rknn_ab/models/zde_curve_256x272_int8_tk232.rknn（499407 B）2 条带就绪
+[drm] connector 221  mode=1024x600 1024x600@60
+[drm] crtc 142
+[drm] 画布 2 块就绪（RGB888 1024x600，stride 3072）
+[selfcheck] NEON vs 标量：mismatch_bytes=0 max_abs=0 / 442368
