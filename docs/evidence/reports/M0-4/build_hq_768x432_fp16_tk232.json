@@ -1,0 +1,29 @@
+{
+  "stage": "build",
+  "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/hq/hq_768x432.onnx",
+  "onnx_sha256": "4c41313495ac8ffbd49499b22651394a5abd06166c33dd25a662b607eac4b3dd",
+  "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/models/hq/hq_768x432_fp16_tk232.rknn",
+  "target_platform": "rk3588",
+  "quant": "fp16",
+  "input_normalization": {
+    "rgb2bgr": false,
+    "mean": [
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "std": [
+      [
+        255,
+        255,
+        255
+      ]
+    ]
+  },
+  "env": {
+    "python": "3.8.20",
+    "rknn_toolkit2": "unknown"
+  }
+}

@@ -268,8 +268,9 @@ def cmd_gate(args):
             'image': image_metrics(np.clip(ref, 0, 1), np.clip(cand, 0, 1)),
             **row_col_diff(ref, cand),
         }
-        entry['pass_tensor'] = entry['tensor_max_abs'] <= thresholds['tensor_max_abs_fp16']
-        entry['pass_image'] = entry['image']['psnr_db'] >= thresholds['image_psnr_db_fp16']
+        # np.float64 与阈值比较会返回 np.bool_，不可 JSON 序列化 ⇒ 显式转 Python bool
+        entry['pass_tensor'] = bool(entry['tensor_max_abs'] <= thresholds['tensor_max_abs_fp16'])
+        entry['pass_image'] = bool(entry['image']['psnr_db'] >= thresholds['image_psnr_db_fp16'])
         s = args.tag.replace('x', 'x')
         save_rgb_png(os.path.join(out_dir, f'{s}_{name}_out.png'), cand[0])
         diff_map_png(os.path.join(out_dir, f'{s}_{name}_diff20x.png'), np.abs(ref[0] - cand[0]), args.diff_gain)

@@ -1,0 +1,69 @@
+{
+  "mode": "gate",
+  "tag": "960x544",
+  "pt_ref": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/pt_ref_960x544.npy",
+  "shape": [
+    1,
+    3,
+    544,
+    960
+  ],
+  "candidates": {
+    "board": {
+      "path": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/out_hq_960x544.f32",
+      "tensor_max_abs": 0.008928537368774414,
+      "tensor_mean_abs": 0.00030125657212920487,
+      "image": {
+        "psnr_db": 68.23022182389538,
+        "max_abs_lsb": 1.980316936969757,
+        "mean_abs_lsb": 0.07310179105843417,
+        "gt_1lsb_ratio": 9.701797385620914e-05,
+        "gt_2lsb_ratio": 0.0
+      },
+      "row_diff": {
+        "max": 0.0007075806497596204,
+        "median": 0.00029494642512872815,
+        "p99": 0.0005800161458319054,
+        "argmax": 893,
+        "structure_factor": 2.3990141580824376
+      },
+      "col_diff": {
+        "max": 0.0006151300040073693,
+        "median": 0.0002831135643646121,
+        "p99": 0.0005526901601115239,
+        "argmax": 893,
+        "structure_factor": 2.1727323640882314
+      },
+      "pass_tensor": false,
+      "pass_image": false
+    }
+  },
+  "fp16_round_control": {
+    "tensor_max_abs": 0.00048828125,
+    "image": {
+      "psnr_db": 85.98892455698933,
+      "max_abs_lsb": 0.062255859375,
+      "mean_abs_lsb": 0.007586253032059176,
+      "gt_1lsb_ratio": 0.0,
+      "gt_2lsb_ratio": 0.0
+    },
+    "row_diff": {
+      "max": 8.451494795735925e-05,
+      "median": 2.8860187740065157e-05,
+      "p99": 7.447161522577518e-05,
+      "argmax": 922,
+      "structure_factor": 2.9284268251668846
+    },
+    "col_diff": {
+      "max": 7.076923066051677e-05,
+      "median": 2.975969619001262e-05,
+      "p99": 6.687774330202955e-05,
+      "argmax": 491,
+      "structure_factor": 2.3780226185328797
+    }
+  },
+  "thresholds": {
+    "tensor_max_abs_fp16": 0.001,
+    "image_psnr_db_fp16": 70.0
+  }
+}

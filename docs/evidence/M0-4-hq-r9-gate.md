@@ -6,7 +6,7 @@
 | 效力 | **非验收依据**（规则 `00-ssot.md` §3.5）；结论若用于定稿须走 §15 裁定后回写正文与 §10.4 |
 | 对应主基准节 | §2.2（toolkit2 确认门）、§3.1（HQ shape 梯度与 pad/crop）、§4.1（模型选型与权重域）、§6.2（关键帧预算）、§9.3（R9 重影机械闸口）、§10.2（转换流程）、§11.1-4 / -5 / -12、§11.2 M0-①b、§15（O30） |
 | 时点 | **2026-09-17 21:0x–21:3x CST**（HQ 侧首次迁移与编译） |
-| 状态 | **`占位`** —— 用户 2026-09-17 明确指示"先做摄像头调试、HQ 只留占位"；本轮只完成"**可导出 + 可编译 + 资产盘点**"，**未做 R9 闸口与耗时** |
+| 状态 | **`draft`（部分完成；v3.31 更新）** —— 2026-09-17 曾按用户指示置为"占位"（只做"可导出 + 可编译 + 资产盘点"）；**v3.31 已完成三档转换与编译 + 板端三档推理 + R9/对齐闸口实测**（见 §7/§8）。**保底 CNN 仍按 O30「暂时挂起」不动**；`hq.model_id` / `hq.active_shape` / `hq.pad_crop_policy` 因**闸口不过**而**不予定版**（见 §9） |
 
 > 纪律：不引用预研归档中"M0 Retinexformer FP16 残影"等**历史结论**（规则 `10-evidence.md` §2、`environment/pre-research-inventory.md` §3）；本档只记录本轮自测。
 
@@ -133,8 +133,130 @@ PYTHONNOUSERSITE=1 $PY tools/convert_models.py build --onnx models/hq/hq_512x288
 
 | 类型 | 路径 |
 |---|---|
-| 模型 | `models/hq/hq_512x288.onnx`、`hq_768x432.onnx`、`hq_512x288_fp16_tk232.rknn`（`.gitignore` 不入库） |
-| 报告 | `docs/evidence/reports/M0-4/{hq_weight_selection,gate_inputs,export_hq_512x288_lolv1,export_hq_768x432_lolv1,build_hq_512x288_fp16_tk232}.json` + `build_hq_512x288_fp16_tk232.log` |
+| 模型 | 三档 ONNX `models/hq/hq_{512x288,768x432,960x544}.onnx` + 三档 FP16 `.rknn`（`hq_<shape>_fp16_tk232.rknn`）——**v3.31 齐备**（`.gitignore` 不入库；哈希见 §7.1） |
+| 报告 | 三档 `export_hq_*_lolv1.json`、`build_hq_*_fp16_tk232.{json,log}`（v3.31 补齐 768/960）、`gate_board_*.json`（v3.31）、`hq_weight_selection.json`、`gate_inputs.json` —— 完整索引见 §9 |
 | 闸口输入 | `docs/evidence/reports/M0-4/gate_input_{512x288,768x432,960x544}.png`（`.npy` 由 §5 重生成） |
 | 编译确认门 | `docs/evidence/M0-2-ab-toolkit-version.md` §11 |
 | 计划与落位 | `docs/plans/M0.md` §3-4 / §3-12；主基准 §4.1 的 v3.23 补注、§11.1-4 / -12 |
+
+---
+
+## 7. 本轮（v3.31）：三档核心推理试验
+
+> **测量条件随行**（规则 `10-evidence.md` §1）：板 **LubanCat-5 V2**（内核 5.10.160）/ 板端 **librknnrt 2.3.2**（`429f97ae6b@2025-04-09`，进程实测加载 `/usr/lib/librknnrt.so`）/ 驱动 **0.9.8** / PC **rknn-toolkit2 2.3.2**（env `rknn232`，`PYTHONNOUSERSITE=1`）/ opset **12** / 权重 **`LOL_v1.pth`** sha256 `9b4810dc…32cd1` / 架构 `RetinexFormer_arch.py` sha256 `1567c89d…87631` / 归一化 `mean=0,std=255` / 固定输入 = `gate_input_<shape>.png`（来自 `refs/pre-research/m0_results/18.png` 的 1080×608 裁剪，`pad_fill=zero`）/ 探测时点 **2026-09-18 08:0x–08:2x CST**（安静板）。
+
+### 7.1 转换与编译（三档齐备）
+
+| 档 | ONNX↔PT（FP32） | ONNX sha256 | `.rknn` FP16 | `.rknn` sha256 |
+|---|---|---|---|---|
+| 512×288 | **3.159e-6** | `855ef58c…43cce` | 21,132,982 B | `b3aa2001…7cbbf4` |
+| 768×432 | **1.189e-5** | `4c413134…eac4b3` | 42,184,694 B | `75f4bef7…3fed1aa` |
+| 960×544 | **2.518e-5** | `64d2cbb9…a8c4e771` | 60,173,686 B | `67bc708a…f99b73c7` |
+
+- **960×544 的 ONNX 导出失败已消解**：本轮**一次成功**（27 s，日志 `0 NONE 0 NOTE 0 WARNING 0 ERROR`）。**原失败未能复现** —— 如实登记为"**环境性、未定位**"，不编根因（规则 `10-evidence.md` §2）。
+- 三档编译均为 `target=rk3588` / `do_quantization=False`（FP16），日志与报告见 §9 索引。
+
+### 7.2 板端推理（core_mask=6 被拒 ⇒ 实际单核 AUTO）
+
+| 档 | wall 中位 | npu_run 中位 | p90 | 模型 internal 内存 | DMA |
+|---|---|---|---|---|---|
+| 512×288 | **3352 ms** | 3332 ms | 3672 | 374.8 MB | 395.6 MB |
+| 768×432 | **6404 ms** | 6373 ms | 7082 | 843.4 MB | 885.1 MB |
+| 960×544 | **10014 ms** | 9977 ms | 10813 | **1327.5 MB** | 1387.3 MB |
+
+- 每次 **5 runs**、安静板、`perf_collect=0`；**不作跨档外推**（§6 定锚纪律）。
+- **`rknn_set_core_mask(6)`（= §4.1 的 `RKNN_NPU_CORE_1_2`）被运行时拒绝**：`Not support core mask: 6, fallback to single core auto mode`，`ret = −1`。**可接受性扫描（修正版）**：
+
+  | mask | 0 | 1 | 2 | 3 | **6** | 7 |
+  |---|---|---|---|---|---|---|
+  | HQ 512×288 | ✅0 | ✅0 | ✅0 | ✅0 | **❌ −1** | ✅0 |
+  | ZDE 480×272（对照） | ✅0 | — | — | ✅0 | **❌ −1** | ✅0 |
+
+  ⇒ **不是 HQ 模型特有**；本版运行时只接受 0/1/2/3/7。**§4.1/§7 的"HQ 绑 core1+2"因此不可执行** → 登记 **O36**。
+- **960×544 编译期另有 22 处核分配失败**：`Failed to config layer: 'Conv:…' using 3Core fallback to single`（分布于 denoiser 的 encoder/decoder/bottleneck 的 `fn/net/net.{2,4}` 卷积）⇒ **核分配是编译期决定的，运行时改不了**，与上面的 mask 被拒自洽。
+
+### 7.3 ①b 与 R9 判定（`tools/hq_eval.py gate`）
+
+| 档 | 纯 FP16 舍入对照（PT→fp16→PT） | 板上 RKNN 张量 max_abs | 对纯舍入的倍率 | 图像域 PSNR（阈 ≥70 dB） | 最大像素差 | `>1 LSB` 占比 | row/col `structure_factor` | 判定 |
+|---|---|---|---|---|---|---|---|---|
+| 512×288 | 4.882e-4 / 86.15 dB | **4.604e-3** | **9.4×** | **67.35 dB** ❌ | 0.72 LSB | 0.0000 | 2.11 / 1.84（对照 3.23） | ❌ 不过（阈 ≤1e-3） |
+| 768×432 | 4.883e-4 / 86.10 dB | **6.465e-3** | **13.2×** | **69.87 dB** ❌ | 0.87 LSB | 0.0000 | 2.17 / 1.81（对照 3.05） | ❌ 不过 |
+| 960×544 | 4.883e-4 / 85.99 dB | **8.929e-3** | **18.3×** | **68.23 dB** ❌ | 1.98 LSB | 0.0001 | 2.40 / 2.17（对照 2.93） | ❌ 不过 |
+
+- 阈值取自 §11.2 M0-①b 的 FP16 档（张量 ≤1e-3 且图像域 ≥70 dB），**未放宽**；注意该阈是以 **ZDE++ 的同板实测**（4.91e-4 / 76.98 dB）为基线标定的。
+- **R9（重影）一侧无异常证据**：最大像素差 ≤2.0 LSB、`>1 LSB` 占比 ≤0.01%，且**结构因子不高于纯舍入对照** ⇒ OK 的失败是"**数值闸口不过**"，**不是**"画质出现重影/条纹"。
+- 差异图已落盘：`docs/evidence/reports/M0-4/<shape>_board_diff20x.png`（另 `_pt_ref` / `_fp16_control` / `_board_out` 三张 PNG）。
+
+### 7.4 复现命令
+
+```
+# 转换（PC, env rknn232, PYTHONNOUSERSITE=1）
+python tools/convert_models.py export --arch hq \
+  --weights refs/pre-research/pretrain_model/LOL_v1.pth \
+  --out models/hq/hq_<W>x<H>.onnx --h <H> --w <W> \
+  --report docs/evidence/reports/M0-4/export_hq_<W>x<H>_lolv1.json \
+  --input-png docs/evidence/reports/M0-4/gate_input_<W>x<H>.png \
+  --dump-input docs/evidence/reports/M0-4/gate_input_<W>x<H>.npy \
+  --dump-pt-ref docs/evidence/reports/M0-4/pt_ref_<W>x<H>.npy
+python tools/convert_models.py build --onnx models/hq/hq_<W>x<H>.onnx \
+  --out models/hq/hq_<W>x<H>_fp16_tk232.rknn --quant fp16 \
+  --report docs/evidence/reports/M0-4/build_hq_<W>x<H>_fp16_tk232.json
+
+# 板端推理（第 9 参 = dump 路径，第 10 参 = core_mask；core_mask=6 会被拒）
+~/rknn_ab/probe/rknn_c_probe ~/rknn_ab/models/hq/hq_<W>x<H>_fp16_tk232.rknn \
+  ~/rknn_ab/data/hq/in_<W>x<H>_nhwc.f32 5 nhwc float nosram f32 noperf \
+  ~/rknn_ab/data/hq/out_hq_<W>x<H>.f32 6
+
+# 判定（PC）
+python tools/hq_eval.py gate --pt-ref docs/evidence/reports/M0-4/pt_ref_<W>x<H>.npy \
+  --shape 1,3,<H>,<W> --tag <W>x<H> \
+  --cand board=docs/evidence/reports/M0-4/out_hq_<W>x<H>.f32 --cand-layout nchw \
+  --out-dir docs/evidence/reports/M0-4 --out docs/evidence/reports/M0-4/gate_board_<W>x<H>.json
+```
+
+---
+
+## 8. 根因调查（v3.31，**进行中**）
+
+### 8.1 已确立的三条
+
+| # | 结论 | 证据 |
+|---|---|---|
+| 1 | **图被切得很碎，且只有注意力部分随分辨率增长**：总算子条目 1300 / 1876 / 2420（512/768/960）；`exMatMul` **332 / 692 / 1032**、`Add` **207 / 423 / 627**（随 H×W 增长），而 `Reshape 204` / `Conv 167` / `exNorm 88` / `Transpose 74` / `Split 48` / `ConvExGelu 72` **三档恒定** | `build_hq_*_fp16_tk232.log`（算子清单） |
+| 2 | **"逐算子 FP16 舍入累积"不是误差来源**：在 PyTorch 里对 **118 个 leaf 模块的输出逐一做 FP16 舍入**（权重保持 FP32），误差仅 **max 2.166e-4 / mean 2.887e-5**，**比板端 4.604e-3 小 21 倍** ⇒ 长链累积解释**不成立** | 本档 §8.2 的作废实验同批（脚本见下） |
+| 3 | **960×544 编译期有 22 处 `3Core → single` 核分配回落**，且运行时 mask=6 被拒（两模型一致）⇒ 核分配在**编译期**确定、运行时不可改 | `build_hq_960x544_fp16_tk232.log` + §7.2 的 mask 扫描 |
+
+**§8.1-2 的复现脚本（内联，无新增工具）**：加载 arch + `LOL_v1.pth` → `xt = 输入/255` → `ref = net(xt)`（FP32）→ 用 `register_forward_hook` 对每个 leaf 模块输出做 `out.half().float()` → 再算 `max|ref−sim|`。
+
+### 8.2 已排除 / 已作废（**不得作为证据引用**）
+
+| 尝试 | 结果 | 处置 |
+|---|---|---|
+| "权重也舍入到 FP16"朴素模拟 | `max = 6.449e-1` | **作废**：朴素 `.half()` 会把 LayerNorm/Softmax 的 `eps` 类小常数在 FP16 下冲成 0 或次正规数 ⇒ 结果被假象污染。**RKNN 编译器并不这样做**——编译日志中 134 条 `need parameter qtype, type is set to float` 正说明**这些常数张量被保留在 float32** |
+| PC 模拟器对照（`rknn_probe.py --backend sim`） | `load_rknn` + `init_runtime` 不支持模拟器 | **不可用**（toolkit2 要求 `load_onnx` + `build` 才能跑模拟器）；如需此叉须另写流程 |
+| 逐层耗时剖析（`PERF_DETAIL`） | 表 383 行仅解析出 154 行 | **本轮不采信**该占比结论（解析噪声未解决），仅留原始表 `reports/M0-4/perf_detail_512.txt` 备查 |
+
+### 8.3 收敛到的待查方向（尚未排除）
+
+1. **算子近似实现**：NPU 对 `ConvExGelu`（GELU）与 Softmax/exp 常用查表或近似 —— 目前**最可疑**（24 个 `ConvExGelu` 层 + 注意力链）；
+2. **中间累加精度**：NPU 内部是否 FP16 累加（而非 FP32）；
+3. **编译期算子融合/重排**改变数值路径（含 `Reshape/Transpose/Split` 造成的中间物化）。
+
+**下一步（已提议）**：**微模型逐算子归因** —— 把 `Conv3×3` / `Conv+GELU` / `LayerNorm` / `MatMul+Softmax` 各做成微型 ONNX，用**同一 FP16 配置**编译上板，逐算子量误差，以把上面三条分开。**在结果出来前，本档不对根因下结论。**
+
+---
+
+## 9. 判定与影响（v3.31）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| **M0-4**（HQ 定版 + R9 闸口） | **不予定版** | 三档对齐全过（§7.1），**但板上 ①b 三档全不过**（§7.3）⇒ `hq.model_id` / `hq.active_shape` / `hq.pad_crop_policy` 若照现状定版等于默认接受"数值闸口不过"，**须先裁定**（**O35**） |
+| **M0-5**（§6.2 耗时） | **实测已否定 ≤2 s** | 512×288 最小档 3.35 s（1.7×）、960×544 10.01 s（5.0×）；且是单核 AUTO 口径 ⇒ **§6.2 预算须重议**（**O37**） |
+| **R9（重影）** | **无异常证据**（暂） | 结构指标不高于纯舍入对照、像素差 ≤2 LSB；**正式阈值标定**（§9.3 要求的"当天用 PT 对照 + 盲评共同标定"）**尚未做** |
+| **M3-③**（HQ 三档对齐回归） | **提前预警** | 按现状跑会**不过**（阈取自 §11.2-①b 的 FP16 档） |
+| **§6.3 内存 / §10.5 加载策略** | **需重议** | 960×544 单模型 internal+DMA ≈ **2.7 GB** ⇒ **三档不可能同时常驻**（**O37** 第 ② 子句） |
+| **保底 CNN（O30）** | **仍挂起** | 未动；HD 路因此**当前没有任何退路**（既无过阈的正式模型，也无保底现货） |
+
+**未决项（本轮登记，须裁定）**：**O35**（HQ FP16 板上误差超 ①b 阈 9~14×）、**O36**（`RKNN_NPU_CORE_1_2` 不可执行）、**O37**（§6.2 时间预算 + 三档常驻内存）。详见主基准 §15。
+
+**报告索引（新增）**：`reports/M0-4/` 下的 `export_hq_960x544_lolv1.{json,log}`、`build_hq_{768x432,960x544}_fp16_tk232.{json,log}`、`gate_board_{512x288,768x432,960x544}.json`、`{512x288,768x432,960x544}_{board_out,board_diff20x,pt_ref,fp16_control}.png`、`out_hq_*.f32`（`.gitignore` 不入库）、`perf_detail_512.txt`。
