@@ -1,0 +1,4 @@
+connector=221 crtc=142 mode=1024x600 1024x600@60
+crtc/connector 均为运行时解析（禁写死 crtc id）
+翻页 60/60  {'configured': True, 'connector_id': 221, 'crtc_id': 142, 'mode_name': '1024x600', 'hdisplay': 1024, 'vdisplay': 600, 'vrefresh': 60, 'canvas_stride': 3072, 'canvas_count': 2, 'flip_count': 60, 'flip_skipped': 0, 'last_submit_ns': 1948837297329, 'last_flip_ns': 1948841723136, 'last_flip_seq': 0, 'last_error': 'ok', 'last_errno': 0}
+末次 vblank 时间戳 = 1948841723136 mono_ns（§6.5：显示时间戳取 vblank 绝对时刻，不取提交时刻）

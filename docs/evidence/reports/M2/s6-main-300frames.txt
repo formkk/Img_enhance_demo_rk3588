@@ -1,0 +1,11 @@
+rga_api version 1.9.2_[1]
+frames=300 estimates=50 flips=300 flip_skipped=0 dropped_stale=0 lease_timeouts=0 discarded_triggers=0
+wall=11.24s  fps=26.7
+配对率=1.0000（已配对 300 / flip 300；未回填丢弃 0；过期帧丢弃 0）
+延迟·采集→提交（应用侧）    P50=124.7 ms  P95=170.5 ms
+延迟·提交→vblank（显示排队）P50=8.7 ms  P95=16.5 ms
+延迟·端到端（采集→vblank）  P50=133.9 ms  P95=177.7 ms
+实测面板刷新周期=16.67 ms（60 Hz）
+M1 空链路基线=缺失（M1 并行产出） ⇒ 超标归因尚不可闭合（§6.5）
+f_est=4.70 Hz  alpha=0.4642
+stream_on_count=1（契约：恒为 1）

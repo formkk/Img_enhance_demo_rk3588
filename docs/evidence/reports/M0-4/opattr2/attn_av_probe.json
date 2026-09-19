@@ -1,0 +1,13 @@
+{"api":"2.3.2 (429f97ae6b@2025-04-09T09:09:27)","drv":"0.9.8",
+"core_mask":0,"core_mask_ret":0,
+"in_elems":1600,"out_elems":5898240,"n_input":1,"n_output":1,
+"in_attr":{"fmt":"NHWC","n_dims":4,"dims":[1,40,40,1],"type":1},
+"out_attr":{"fmt":"NCHW","n_dims":4,"dims":[1,1,40,147456],"type":1},
+"mem":{"weight":11798592,"internal":106299520,"dma":118124544,"sram":0,"sram_free":0},
+"n":3,
+"wall_ms":{"min":218.02,"median":233.49,"p90":323.44,"max":323.44},
+"npu_run_ms":{"min":201.32,"median":210.77,"p90":211.23,"max":211.23},
+"overhead_ms_median":22.71,
+"cfg":{"fmt":"nhwc","want_float":1,"sram":0,"in_type":"float32","perf_collect":0}
+}
+"dump":"/home/cat/rknn_ab/data/opattr2/attn_av_out.f32",

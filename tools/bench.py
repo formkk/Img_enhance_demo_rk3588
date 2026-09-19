@@ -183,8 +183,10 @@ def scenario_apply_micro(args):
     """曲线应用函数级打点（`docs/measurements.md` §3 第一行：各档耗时，含双线性采样）。
 
     `--impl py-ref` 用 tools/enhance_ref.py 的 numpy 参考实现，**只作上限参考、非交付路径**；
-    交付路径是 C/NEON 单遍融合（§3.3「非优化项」），实现后以 `--impl native` 接入。
+    `--impl native` 走交付路径 = `realtime_apply`（C/NEON 单遍融合，§3.3「非优化项」）。
     """
+    if args.impl == 'native':
+        return _apply_micro_native(args)
     if args.impl != 'py-ref':
         rep = base_report(args, 'apply-micro', 'model')
         rep.update({'status': 'not_implemented',
@@ -212,7 +214,150 @@ def scenario_apply_micro(args):
                 'apply_domain': f'{args.w}x{args.h}',
                 'apply': window_stats(samples),
                 'notes': ['结果来自 numpy 参考实现，**不代表交付路径（C/NEON 单遍融合）**，'
-                          '不得用于 §6.1「曲线应用 ≤2 ms」的达标判定']})
+                          '不得用于 §6.1「曲线应用 ≤20 ms」的达标判定（阈值见 v3.26 裁定 O33）']})
+    return emit(rep, args.out)
+
+
+def _apply_micro_native(args):
+    """交付路径（`realtime_apply`，C/NEON 单遍融合）的函数级打点。
+
+    曲线场几何 / 精度取自 §10.4 键表（`pipeline.curve_level` → `curve_geometry.effective`、
+    `pipeline.curve_field_precision`）；**迭代次数 8 是 §3.3 契约值，非 config 键**。
+    同时做一次 NEON vs 标量的逐位对账（§11.2 的数值一致性检查）。
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, repo_root)
+    try:
+        import config as starlight_config
+        import realtime_apply as ra
+    except ImportError as e:
+        raise SystemExit(f'apply-micro --impl native 需要交付链路（realtime_apply + config）：{e}')
+
+    cfg = starlight_config.load()
+    precision = cfg.get('pipeline.curve_field_precision')
+    level = cfg.get('pipeline.curve_level')
+    effective = (cfg.get('pipeline.curve_geometry.effective') or {}).get(level)
+    if not effective:
+        raise SystemExit(f'config 的 curve_geometry.effective 缺档位 {level}')
+    cw, ch = int(effective[0]), int(effective[1])
+
+    ra.shutdown()
+    rc = ra.configure_from_config(cfg)
+    if rc != 0:
+        raise SystemExit(f'realtime_apply.configure_from_config 返回 {rc}')
+
+    rgb = ra.synth_rgb(args.w, args.h, seed=5)
+    curve = ra.synth_curve(cw, ch, precision, seed=13)
+    dst = bytearray(args.w * args.h * 3)
+    ref = bytearray(args.w * args.h * 3)
+
+    for _ in range(10):                                   # 预热
+        ra.apply_window(rgb, curve, dst, args.w, args.h)
+    samples = []
+    for _ in range(args.runs):
+        t0 = mono_ns()
+        ra.apply_window(rgb, curve, dst, args.w, args.h)
+        samples.append(mono_ns() - t0)
+
+    ra.apply_scalar(rgb, curve, ref, args.w, args.h)
+    mismatch = sum(1 for i in range(len(dst)) if dst[i] != ref[i])
+    max_abs = max((abs(dst[i] - ref[i]) for i in range(len(dst))), default=0)
+
+    rep = base_report(args, 'apply-micro', 'model')
+    rep.update({
+        'status': 'ok',
+        'impl': 'native(C/NEON single-pass fusion)',
+        'impl_id': ra.impl_id(),
+        'apply_domain': f'{args.w}x{args.h}',
+        'curve_geometry': f'{cw}x{ch}',
+        'curve_field_precision': precision,
+        'curve_iters': ra.CURVE_ITERS,
+        'apply': window_stats(samples),
+        'selfcheck_neon_vs_scalar': {'mismatch_bytes': mismatch, 'max_abs': max_abs,
+                                     'total': len(dst)},
+        'notes': ['交付路径实测；单遍融合为 §3.3 硬门槛（未融合即判未达标）',
+                  'budget_ref: §6.1 曲线应用 @512×288 ×8 iter ≤20 ms（v3.26 裁定 O33）'],
+    })
+    return emit(rep, args.out)
+
+
+def scenario_osd_micro(args):
+    """O44：OSD 指标区三项计算成本（**统计 / 曲线图 / 直方图**）的函数级打点。
+
+    §3.4 的统计为逐像素操作，**策略已定稿**（降采样 4× + 降频 1 Hz）；本场景只补**实测耗时**，
+    回填落点 = §3.4 + §6.1（O44 裁定：**不新开 `docs/measurements.md` 行**）。
+    本场景**不建 DRM/采集链路**：画布与曲线场用 dma-buf 直接分配 ⇒ **不含 pageflip 与 RGA 画布合成**。
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, repo_root)
+    try:
+        import struct
+        import config as starlight_config
+        import osd as osd_mod
+        import _starlight_native as _n
+    except ImportError as e:
+        raise SystemExit(f'osd-micro 需要交付链路（osd.py + _starlight_native + config）：{e}')
+
+    cfg = starlight_config.load()
+    cw, ch = 1024, 600                                  # §3.4 画布（display.mipi_canvas）
+    win_w, win_h = 512, 288                             # 窗分辨率（§3.4 双窗）
+    level = cfg.get('pipeline.curve_level')
+    effective = (cfg.get('pipeline.curve_geometry.effective') or {}).get(level)
+    if not effective:
+        raise SystemExit(f'config 的 curve_geometry.effective 缺档位 {level}')
+    eff_w, eff_h = int(effective[0]), int(effective[1])
+    precision = cfg.get('pipeline.curve_field_precision')
+
+    r = osd_mod.OsdRenderer(cfg, cw, ch)
+    canvas = _n.alloc(cw * ch * 3)
+    raw = _n.alloc(win_w * win_h * 3)
+    enh = _n.alloc(win_w * win_h * 3)
+    raw.write(bytes((i * 7) & 0xFF for i in range(win_w * win_h * 3)))          # 确定性图案
+    enh.write(bytes((i * 11 + 40) & 0xFF for i in range(win_w * win_h * 3)))
+    n = 3 * eff_w * eff_h
+    field = _n.alloc(n * (2 if precision == 'fp16' else 1))
+    if precision == 'fp16':
+        field.write(struct.pack(f'<{n}e', *[((i % 256) / 255.0) for i in range(n)]))
+    else:
+        field.write(bytes((i * 13) & 0xFF for i in range(n)))
+    st = {'curve_field': field, 'curve_w': eff_w, 'curve_h': eff_h,
+          'curve_precision': precision}
+
+    period = r.stats.period_ns
+    raw_b, enh_b = raw.to_bytes(), enh.to_bytes()
+    stats_ns = []
+    for i in range(args.runs):                          # ① 统计（强制绕过 1 Hz 节流以便逐次计时）
+        t0 = mono_ns()
+        r.stats.maybe_update(raw_b, enh_b, win_w, win_h, now_ns=(i + 1) * period)
+        stats_ns.append(mono_ns() - t0)
+
+    half = cw // 2
+    curve_ns, hist_ns = [], []
+    for _ in range(args.runs):                          # ② 曲线图 / ③ 直方图
+        t0 = mono_ns()
+        r._curve_plot(canvas, 0, osd_mod.PLOT_Y, half, osd_mod.PLOT_H, st)
+        curve_ns.append(mono_ns() - t0)
+        t0 = mono_ns()
+        r._histogram(canvas, half, osd_mod.PLOT_Y, half, osd_mod.PLOT_H)
+        hist_ns.append(mono_ns() - t0)
+
+    rep = base_report(args, 'osd-micro', 'model')
+    rep.update({
+        'status': 'ok',
+        'canvas': f'{cw}x{ch}',
+        'stats_domain': f'{win_w}x{win_h}',
+        'stats_decimate': r.decimate,
+        'stats_hz': r.stats_hz,
+        'stats_samples': r.stats.samples,
+        'curve_geometry': f'{eff_w}x{eff_h}',
+        'curve_field_precision': precision,
+        'osd_stats': window_stats(stats_ns),
+        'osd_curve_plot': window_stats(curve_ns),
+        'osd_histogram': window_stats(hist_ns),
+        'notes': ['O44 三项实测（统计 / 曲线图 / 直方图）；落点 = §3.4 + §6.1',
+                  'scope=model：仅函数级成本，**不含 pageflip 与 RGA 画布合成** ⇒ '
+                  '不得直接作为 §6.1「MIPI 画布合成 + OSD」行的达标依据（该行拆分/重排待裁定）'],
+    })
     return emit(rep, args.out)
 
 
@@ -272,7 +417,8 @@ def main():
     p = argparse.ArgumentParser(description='计量与验收复现入口（M0 骨架）',
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     p.add_argument('--scenario', default='',
-                   choices=['realtime', 'hq', 'step-response', 'idle-link', 'model-infer', 'apply-micro'])
+                   choices=['realtime', 'hq', 'step-response', 'idle-link', 'model-infer',
+                            'apply-micro', 'osd-micro'])
     p.add_argument('--out', default='', help='报告输出路径（默认只打印）')
     p.add_argument('--runs', type=int, default=30)
     p.add_argument('--breakdown', action='store_true', help='延迟分两段上报（§6.5）')
@@ -312,6 +458,8 @@ def main():
         return scenario_model_infer(args)
     if args.scenario == 'apply-micro':
         return scenario_apply_micro(args)
+    if args.scenario == 'osd-micro':
+        return scenario_osd_micro(args)
     p.error('未实现的场景')
 
 

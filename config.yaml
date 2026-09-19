@@ -83,10 +83,11 @@ pipeline:
                                          # scale+CSC blit（不越写 pad 行）（v3.27 裁定 O32）
     output_take: "effective_only"
   curve_field_precision: "fp16"          # 【临时期值】v3.22 裁定 O23 = 全档 FP16；定稿时点 M2
-  apply_scope: null                      # 定稿时点 M2（显示 = 512×288（v3.33 变更）；存盘 = 1920×1080）
-  curve_upsample: null                   # 定稿时点 M2（bilinear_fused）
-  est_freq_hz: null                      # 定稿时点 M2（与 f_est 联动）
-  ema_alpha: null                        # 定稿时点 M2（N = ln0.1/lnα）
+  apply_scope: {display: [512, 288], save: [1920, 1080]}
+                                         # 【M2 定稿】§3.1：曲线应用只做到窗分辨率；1920×1080 满幅仅触发存盘一帧
+  curve_upsample: "bilinear_fused"        # 【M2 定稿】双线性 + 融合进 8iter 单遍；显示域与存盘域同策（§3.1 I1）
+  est_freq_hz: 9.5                       # 【M2 定稿·实测】est_every=6 下实测 9.47 Hz（§11 M2 要求 5~15 Hz）
+  ema_alpha: 0.4642                      # 【M2 定稿·实测】§9.1：N=ln(0.1)/ln(α)=3 ⇒ 收敛 3/9.47=317 ms ≤400 ms
 
 # ── HQ（定稿时点 M2-2，除 shape_ladder；v3.48 裁定 O49 由 M0 顺延）──────────
 hq:
@@ -95,8 +96,8 @@ hq:
                                          # 定稿时点 **M2-2**（v3.48 裁定 O49：随 §11.1-4/-12 顺延）
   shape_ladder: ["960x544", "768x432", "512x288"]
                                          # 定稿时点 M0（取值不受 O49 影响，§10.4 既定梯度）
-  active_shape: null                     # ❌ 空缺：M0-4 三档 R9 闸口当天定版（现为占位，O30 暂挂）
-                                         # 定稿时点 **M2-2**（v3.48 裁定 O49）
+  active_shape: "960x544"                 # v3.58 裁定 O37：取值已定 = 960x544（画质优先；实测 10014 ms / mask=4 10548.8 ms，内存 ≈2.7 GB）
+                                          #   定稿时点仍为 **M2-2**（v3.48 裁定 O49）；若 M2-2 的 O30 改用保底 CNN，本值须按新模型重评
   pad_crop_policy: null                  # ❌ 空缺：随 active_shape 一并定版（同上）
                                          # 定稿时点 **M2-2**（v3.48 裁定 O49）
   hold_policy: null                      # 定稿时点 M3（replace_and_hold）
@@ -112,16 +113,20 @@ trigger:
 
 # ── UI（定稿时点 M2）───────────────────────────────────────────────
 ui:
-  button_layout: null                    # 3 键单行，行高 96 px，各 341 px（v3.33 由 6 键三行精简）
-  hit_area_min_px: null                  # 67（v3.33 变更，原 160；同为 ≈10 mm @170 PPI）
-  reset_hold_ms: null                    # 3000（v3.14 裁定 O6）
-  osd_metrics_px: null                   # 216（v3.33 新增：OSD 指标区总高）
-  osd_status_row_px: null                # 36（v3.33 新增：状态/数值行高）
-  osd_plot_px: null                      # [512, 180]（v3.33 新增：曲线图与直方图各占）
-  osd_status_fields: null                # v3.35：状态行 8 字段与顺序（mode/fps/latency/curve_hz/countdown/mean_orig/mean_enh/dmean）
-  osd_stats_decimate: null               # v3.35：统计降采样率 4（512×288 → 128×72）
-  osd_stats_hz: null                     # v3.35：统计更新频率 1 Hz
-  osd_font_px: null                      # 36/26
+  button_layout:                         # 【M2 定稿】§3.4：按钮区 1024×96（Y 504-599），3 键单行各 341 px
+    rows: 1
+    height_px: 96
+    keys: [{name: trigger_hq, x: 0, w: 341}, {name: save, x: 341, w: 341}, {name: reset_exit, x: 682, w: 341}]
+  hit_area_min_px: 67                    # 【M2 定稿】v3.33 变更（原 160）；≈10 mm @170 PPI
+  reset_hold_ms: 3000                    # 【M2 定稿】v3.14 裁定 O6：长按 ≥3 s 退出进程
+  osd_metrics_px: 216                    # 【M2 定稿】v3.33：OSD 指标区总高（状态行 36 + 图示 180）
+  osd_status_row_px: 36                  # 【M2 定稿】v3.33：状态/数值行高
+  osd_plot_px: [512, 180]                # 【M2 定稿】v3.33：曲线图与直方图各占
+  osd_status_fields: [mode, fps, latency, curve_hz, countdown, mean_orig, mean_enh, dmean]
+                                         # 【M2 定稿】v3.35：状态行 8 字段与顺序
+  osd_stats_decimate: 4                  # 【M2 定稿】v3.35：统计降采样率（512×288 → 128×72 = 9,216 样本）
+  osd_stats_hz: 1                        # 【M2 定稿】v3.35：统计更新频率
+  osd_font_px: [36, 26]                  # 【M2 定稿】状态行 36 px / 次行 26 px
 
 # ── 计量（定稿时点 M1/M2）──────────────────────────────────────────
 metrics:
@@ -129,7 +134,7 @@ metrics:
   timestamp_domain: null                 # 定稿时点 M1（MONOTONIC）
   timestamp_source: null                 # 定稿时点 M1（SOE / EOF，须随报告注明）
   pair_by: null                          # 定稿时点 M1（seq；禁止按时间就近配对）
-  report_breakdown: null                 # 定稿时点 M2（延迟两段分解随报告给出）
+  report_breakdown: true                 # 【M2 定稿】§6.5：延迟两段分解随报告给出
   idle_link_baseline: null               # 定稿时点 M1（空链路 P50/P95；O19 的触发依据）
 
 # ── 存储（定稿时点 M3）─────────────────────────────────────────────
@@ -162,7 +167,7 @@ runtime:
 
 # ── 工程（定稿时点 M2）─────────────────────────────────────────────
 logging:
-  level: null
-  dir: null
-  rotate_mb: null
-  keep_files: null
+  level: "WARN"                          # 【M2 定稿】docs/logging.md §1：演示镜像取 WARN；自检行与降级行强制 INFO
+  dir: "/home/cat/starlight_logs"        # 【M2 定稿·选择】与 storage.dir 分离（§8.3）；storage.dir 属 M3
+  rotate_mb: 8                           # 【M2 定稿】docs/logging.md §2 基线
+  keep_files: 3                          # 【M2 定稿】docs/logging.md §2 基线

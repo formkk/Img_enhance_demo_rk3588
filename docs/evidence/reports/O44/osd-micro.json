@@ -1,0 +1,76 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "osd-micro",
+  "scope": "model",
+  "started_utc": "2026-09-19T02:58:48+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": "480x272",
+    "precision": "fp16",
+    "config_snapshot_hash": "5f7478c13f717e56"
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      0.23,
+      0.41,
+      0.41
+    ]
+  },
+  "soc_temp_c": 42.538,
+  "notes": [
+    "O44 三项实测（统计 / 曲线图 / 直方图）；落点 = §3.4 + §6.1",
+    "scope=model：仅函数级成本，**不含 pageflip 与 RGA 画布合成** ⇒ 不得直接作为 §6.1「MIPI 画布合成 + OSD」行的达标依据（该行拆分/重排待裁定）"
+  ],
+  "status": "ok",
+  "canvas": "1024x600",
+  "stats_domain": "512x288",
+  "stats_decimate": 4,
+  "stats_hz": 1,
+  "stats_samples": 9216,
+  "curve_geometry": "480x270",
+  "curve_field_precision": "fp16",
+  "osd_stats": {
+    "n": 30,
+    "p50_ms": 7.940727,
+    "p95_ms": 7.968436,
+    "max_ms": 8.020062,
+    "mean_ms": 7.927329866666667
+  },
+  "osd_curve_plot": {
+    "n": 30,
+    "p50_ms": 3.77334,
+    "p95_ms": 3.835757,
+    "max_ms": 4.160096,
+    "mean_ms": 3.7863876666666667
+  },
+  "osd_histogram": {
+    "n": 30,
+    "p50_ms": 0.337463,
+    "p95_ms": 0.342129,
+    "max_ms": 0.453839,
+    "mean_ms": 0.34186676666666665
+  }
+}

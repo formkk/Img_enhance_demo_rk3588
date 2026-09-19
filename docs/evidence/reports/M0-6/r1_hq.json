@@ -1,0 +1,15 @@
+{
+"tool":"tools/pipeline_probe.c","mode":"display",
+"geom":{"cap":"1920x1080 NV12","est":"480x272 (eff 480x270)","win":"512x288 RGB888","canvas":"1024x600 RGB888"},
+"params":{"est_every":16,"alpha":0.630,"ema":1,"copy_cap":0,"n_slices":2,"halo":7},
+"counters":{"frames":600,"estimates":38,"flip_skipped":0,"wall_s":11.00,"fps":54.53},
+"selfcheck_neon_vs_scalar":{"mismatch_bytes":0,"max_abs":0,"total":442368},
+"cap_dqbuf_ms":{"n":600,"min":0.003,"median":0.008,"p90":4.337,"max":16.999},
+"rga_est_ms":{"n":590,"min":1.688,"median":1.791,"p90":1.924,"max":3.283},
+"rga_win_ms":{"n":590,"min":1.506,"median":1.653,"p90":1.865,"max":2.315},
+"apply_ms":{"n":590,"min":3.982,"median":7.328,"p90":15.578,"max":23.435},
+"npu_est_ms":{"n":38,"min":18.262,"median":20.784,"p90":32.348,"max":41.983},
+"canvas_ms":{"n":590,"min":0.987,"median":1.373,"p90":1.974,"max":3.566},
+"pageflip_ms":{"n":590,"min":0.012,"median":1.074,"p90":6.269,"max":8.548},
+"frame_ms":{"n":590,"min":8.372,"median":16.791,"p90":25.486,"max":78.847}
+}

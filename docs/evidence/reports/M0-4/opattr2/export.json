@@ -1,0 +1,132 @@
+{
+  "mode": "opattr-export",
+  "dir": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2",
+  "probes": {
+    "norm40": {
+      "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/norm40.onnx",
+      "onnx_sha256": "6534c5084ed38ce3d9f326a833ad938c638f08166c37e8406eafcfd637438a31",
+      "onnx_vs_pt_max_abs": 1.430511474609375e-06,
+      "in_shape": [
+        1,
+        288,
+        512,
+        40
+      ],
+      "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/norm40.fp16.rknn",
+      "mean_std_policy": "identity(mean=0,std=1) x [288]（RKNN 读取各输入的 dims[1]）",
+      "rknn_sha256": "b8bab32a14f8312c3f2ee22572b062455b3b057778326e0ec52994627a348c24"
+    },
+    "conv3x3": {
+      "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/conv3x3.onnx",
+      "onnx_sha256": "6627704a6a7e3f6372d7a8f30b15716646b4e05fbd202b85009bd2ed960583ca",
+      "onnx_vs_pt_max_abs": 3.5762786865234375e-07,
+      "in_shape": [
+        1,
+        3,
+        288,
+        512
+      ],
+      "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/conv3x3.fp16.rknn",
+      "mean_std_policy": "identity(mean=0,std=1) x [3]（RKNN 读取各输入的 dims[1]）",
+      "rknn_sha256": "39681df5d475375d6c2f874b20de5f74450f40f2757a4e96053067abd20a16b9"
+    },
+    "convg": {
+      "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/convg.onnx",
+      "onnx_sha256": "3f611821fdf7c8812285aaaf001696179dcaff6417d0d72b228bd9a1a2b46559",
+      "onnx_vs_pt_max_abs": 2.384185791015625e-07,
+      "in_shape": [
+        1,
+        40,
+        288,
+        512
+      ],
+      "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/convg.fp16.rknn",
+      "mean_std_policy": "identity(mean=0,std=1) x [40]（RKNN 读取各输入的 dims[1]）",
+      "rknn_sha256": "16adc96b22c3edf067872bd2965179f8c38fc5dd3d523af56cb449073cd21d17"
+    },
+    "l2norm_n9216": {
+      "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n9216.onnx",
+      "onnx_sha256": "4e9bc834e471608b40935d67cd6ac2985296039590ca8abfa9eb409935d3855f",
+      "onnx_vs_pt_max_abs": 1.4901161193847656e-08,
+      "in_shape": [
+        1,
+        1,
+        40,
+        9216
+      ],
+      "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n9216.fp16.rknn",
+      "mean_std_policy": "identity(mean=0,std=1) x [1]（RKNN 读取各输入的 dims[1]）",
+      "rknn_sha256": "065ed7c8d44f6b6eb7c261c453c5b397de57ae2551bd80c26e997e6e76ba989e"
+    },
+    "l2norm_n36864": {
+      "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n36864.onnx",
+      "onnx_sha256": "666af1f685d072482f3092b6af75b8d1e7a7504307c0d4432f0483a151ab1e88",
+      "onnx_vs_pt_max_abs": 1.4901161193847656e-08,
+      "in_shape": [
+        1,
+        1,
+        40,
+        36864
+      ],
+      "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n36864.fp16.rknn",
+      "mean_std_policy": "identity(mean=0,std=1) x [1]（RKNN 读取各输入的 dims[1]）",
+      "rknn_sha256": "d6c4bc5e93e7c6b029645ca60f1d608a7ac262e74f6af0edbe9eaf4664b2dcb2"
+    },
+    "l2norm_n147456": {
+      "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n147456.onnx",
+      "onnx_sha256": "91c4bb2bedbb37032e47d4e06af665c846660c320998bd30a8d126615bd20e1c",
+      "onnx_vs_pt_max_abs": 3.725290298461914e-09,
+      "in_shape": [
+        1,
+        1,
+        40,
+        147456
+      ],
+      "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n147456.fp16.rknn",
+      "mean_std_policy": "identity(mean=0,std=1) x [1]（RKNN 读取各输入的 dims[1]）",
+      "rknn_sha256": "cb2d55274cfc1379f11eae0b758cf2a9546f5a07cb47f97d604be5c96a7b6e8c"
+    },
+    "attn_softmax": {
+      "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_softmax.onnx",
+      "onnx_sha256": "031249158a8e3c1ecc16082c74c6a31da46ee105d6e6532bf422fb2d1de2aafd",
+      "onnx_vs_pt_max_abs": 1.1175870895385742e-08,
+      "in_shape": [
+        1,
+        1,
+        40,
+        40
+      ],
+      "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_softmax.fp16.rknn",
+      "mean_std_policy": "identity(mean=0,std=1) x [1]（RKNN 读取各输入的 dims[1]）",
+      "rknn_sha256": "bc5b8c9005e63deac249b99df6a3f2e7d935a7626a06e70d91163113257736d4"
+    },
+    "attn_av": {
+      "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av.onnx",
+      "onnx_sha256": "9a54b7bb035802e48cc16b13f86b4c6e9abb46b909d03b9db51a7cdc16f4ec25",
+      "onnx_vs_pt_max_abs": 1.341104507446289e-07,
+      "in_shape": [
+        1,
+        1,
+        40,
+        40
+      ],
+      "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av.fp16.rknn",
+      "mean_std_policy": "identity(mean=0,std=1) x [1]（RKNN 读取各输入的 dims[1]）",
+      "rknn_sha256": "cd9f7b13802b5820e0af7708fc70f0bf6b72483355ad4b876c9ed383d9f3ff62"
+    },
+    "attn_av2": {
+      "onnx": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av2.onnx",
+      "onnx_sha256": "795ec92562a81ef7746942e5aaf3fe93f62058ef8cdd8750b09a52d112c54c6a",
+      "onnx_vs_pt_max_abs": 1.341104507446289e-07,
+      "in_shape": [
+        1,
+        1,
+        40,
+        40
+      ],
+      "rknn": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av2.fp16.rknn",
+      "mean_std_policy": "identity(mean=0,std=1) x [1, 1]（RKNN 读取各输入的 dims[1]）",
+      "rknn_sha256": "e5c72e8a085e20a53fd02d4d3ec1cce4a41359e574257fb64d008825667f4647"
+    }
+  }
+}

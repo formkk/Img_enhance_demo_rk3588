@@ -1,0 +1,82 @@
+/* drm_core.h —— MIPI 显示内核（TH4）：DRM 单 CRTC（DSI）+ 画布双缓冲 + pageflip
+ *
+ * 来源：tools/pipeline_probe.c 的 drm_open_connector / drm_create_fb_rgb888 / drm_init /
+ *      drm_set_crtc / drm_flip / drm_wait_flip，**实现参数未改**。
+ *
+ * 契约：
+ *   · **DRM 单 CRTC（DSI）**；connector / CRTC **一律运行时解析，禁止写死 crtc id**（§2.3、§11.1-9）；
+ *   · 画布 = RGB888（`DRM_FORMAT_RGB888`），选它而非 XRGB8888 的理由见 pipeline_probe 注
+ *     （RGA 侧 RGB888→RGB888 是同格式 blit，M0-13 已验证）；
+ *   · **显示时间戳取 pageflip 完成的 vblank（drmEvent）**，不取提交时刻（§6.5）；
+ *   · 过期帧丢弃（`compose_flip` 在上一 flip 未完成时不排队）。
+ */
+
+#ifndef STARLIGHT_DRM_CORE_H
+#define STARLIGHT_DRM_CORE_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define DRM_CORE_OK 0
+#define DRM_CORE_E_STATE (-5)
+#define DRM_CORE_E_DRM (-3)
+
+#define DRM_CORE_MAX_BUF 3
+
+typedef struct {
+    char     card[64];        /* 默认 /dev/dri/card0 */
+    uint32_t conn_id;         /* 0 = 运行时按 connector 类型（DSI）解析 */
+    uint32_t canvas_w, canvas_h;
+    uint32_t nbuf;            /* 画布缓冲数（双缓冲 = 2） */
+} drm_cfg_t;
+
+/* 打开卡、`drmSetMaster`、运行时解析 connector/CRTC、建画布 FB。
+   注意：取 master 需桌面已释放（`systemctl isolate multi-user.target`），属**有副作用操作**。 */
+int  drm_configure(const drm_cfg_t* cfg);
+void drm_shutdown(void);
+int  drm_is_configured(void);
+
+/* 合成完成后提交：若上一次 flip 未完成则**丢弃本帧**（返回 1，计入 flip_skipped），不排队。
+   `seq` = 本帧 TH1 分配的 seq（§5-B FrameDesc），经 `drmModePageFlip` 的 user_data 透传，
+   在 pageflip 回调里原样取回 ⇒ **§6.5 的「按 seq 回填配对」**（禁止按时间就近配对）。 */
+int  drm_compose_flip(int buf_idx, uint64_t seq);
+
+/* 阻塞等待在途 flip 完成；返回 0 = 已无在途，-6 = 超时（guard 用尽）。 */
+int  drm_wait_flip(void);
+
+/* 只读查询 */
+uint32_t drm_connector_id(void);
+uint32_t drm_crtc_id(void);
+uint32_t drm_mode_hdisplay(void);
+uint32_t drm_mode_vdisplay(void);
+uint32_t drm_mode_vrefresh(void);
+const char* drm_mode_name(void);
+void*    drm_canvas_va(int idx);
+int      drm_canvas_fd(int idx);
+uint32_t drm_canvas_stride(void);
+uint32_t drm_canvas_count(void);
+
+/* 打点（§6.5 延迟两段分解，全部 CLOCK_MONOTONIC 绝对时刻，单位 ns）：
+     · `drm_last_submit_ns` —— 最近一次 pageflip 的**提交时刻**
+     · `drm_last_flip_ns`   —— 最近一次 pageflip **完成对应的 vblank 事件时刻**（§6.5 的显示时间戳）
+     · 段1「采集→提交」= submit − t_capture_ns（t_capture_ns 由 TH1 的 FrameDesc 给出）
+     · 段2「提交→vblank」= flip − submit
+   注意：`drm_last_flip_ns` 是**绝对时刻**，不是间隔。 */
+uint64_t drm_last_submit_ns(void);
+uint64_t drm_last_flip_ns(void);
+/* 最近一次 pageflip 回调取回的 seq（应与提交时传入的 seq 一致；不一致即配对失败，§6.5） */
+uint64_t drm_last_flip_seq(void);
+uint64_t drm_flip_skipped(void);
+uint64_t drm_flip_count(void);
+/* 最近一次 configure 失败的阶段串与 errno（定位用） */
+const char* drm_last_error(void);
+int drm_last_errno(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* STARLIGHT_DRM_CORE_H */

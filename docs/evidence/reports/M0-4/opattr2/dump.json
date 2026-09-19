@@ -1,0 +1,381 @@
+{
+  "mode": "opattr-dump",
+  "arch_path": "/home/jenkolux/PKU_WH/Img_enhance_demo/refs/pre-research/basicsr/models/archs/RetinexFormer_arch.py",
+  "arch_sha256": "1567c89d55285a3c1a4d4ca33f288b1fd98dc6b6bbdf971eda02d745f9087631",
+  "weights": "/home/jenkolux/PKU_WH/Img_enhance_demo/refs/pre-research/pretrain_model/LOL_v1.pth",
+  "weights_sha256": "9b4810dc51322fab70be8658ee0ad1df64a54aa814497b7849767baa2ff32cd1",
+  "input_png": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/gate_input_512x288.png",
+  "input_hw": [
+    288,
+    512
+  ],
+  "pt_model_out_absmax": 1.8649553060531616,
+  "n_normalize_calls": 16,
+  "normalize_call_shapes": [
+    [
+      1,
+      1,
+      40,
+      147456
+    ],
+    [
+      1,
+      1,
+      40,
+      147456
+    ],
+    [
+      1,
+      2,
+      40,
+      36864
+    ],
+    [
+      1,
+      2,
+      40,
+      36864
+    ],
+    [
+      1,
+      2,
+      40,
+      36864
+    ],
+    [
+      1,
+      2,
+      40,
+      36864
+    ],
+    [
+      1,
+      4,
+      40,
+      9216
+    ],
+    [
+      1,
+      4,
+      40,
+      9216
+    ],
+    [
+      1,
+      4,
+      40,
+      9216
+    ],
+    [
+      1,
+      4,
+      40,
+      9216
+    ],
+    [
+      1,
+      2,
+      40,
+      36864
+    ],
+    [
+      1,
+      2,
+      40,
+      36864
+    ],
+    [
+      1,
+      2,
+      40,
+      36864
+    ],
+    [
+      1,
+      2,
+      40,
+      36864
+    ],
+    [
+      1,
+      1,
+      40,
+      147456
+    ],
+    [
+      1,
+      1,
+      40,
+      147456
+    ]
+  ],
+  "probes": {
+    "norm40": {
+      "note": "r",
+      "in_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/norm40_in.npy",
+      "ref_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/norm40_ref.npy",
+      "in_shape": [
+        1,
+        288,
+        512,
+        40
+      ],
+      "out_shape": [
+        1,
+        288,
+        512,
+        40
+      ],
+      "in_range": [
+        -3.0326690673828125,
+        2.1701033115386963
+      ],
+      "out_range": [
+        -5.738098621368408,
+        5.615018844604492
+      ],
+      "pt_fp16_control_max_abs": 0.0019359588623046875,
+      "pt_fp16_control_mean_abs": 0.00013274437515065074
+    },
+    "conv3x3": {
+      "note": "e",
+      "in_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/conv3x3_in.npy",
+      "ref_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/conv3x3_ref.npy",
+      "in_shape": [
+        1,
+        3,
+        288,
+        512
+      ],
+      "out_shape": [
+        1,
+        40,
+        288,
+        512
+      ],
+      "in_range": [
+        -0.5915302038192749,
+        2.03068208694458
+      ],
+      "out_range": [
+        -1.6261810064315796,
+        1.5491511821746826
+      ],
+      "pt_fp16_control_max_abs": 0.00048828125,
+      "pt_fp16_control_mean_abs": 6.377131740009645e-06
+    },
+    "convg": {
+      "note": "G",
+      "in_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/convg_in.npy",
+      "ref_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/convg_ref.npy",
+      "in_shape": [
+        1,
+        40,
+        288,
+        512
+      ],
+      "out_shape": [
+        1,
+        40,
+        288,
+        512
+      ],
+      "in_range": [
+        -1.719973087310791,
+        1.69646155834198
+      ],
+      "out_range": [
+        -2.498863935470581,
+        1.7071624994277954
+      ],
+      "pt_fp16_control_max_abs": 0.0008893013000488281,
+      "pt_fp16_control_mean_abs": 1.022182345877809e-06
+    },
+    "l2norm_n9216": {
+      "note": "F.normalize(dim=-1,p=2) 归约长度 N=9216（真实 q 张量前 9216 列）",
+      "in_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n9216_in.npy",
+      "ref_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n9216_ref.npy",
+      "in_shape": [
+        1,
+        1,
+        40,
+        9216
+      ],
+      "out_shape": [
+        1,
+        1,
+        40,
+        9216
+      ],
+      "in_range": [
+        -0.9378354549407959,
+        0.9132996201515198
+      ],
+      "out_range": [
+        -0.14376407861709595,
+        0.12396848201751709
+      ],
+      "pt_fp16_control_max_abs": 5.1781535148620605e-05,
+      "pt_fp16_control_mean_abs": 8.228212209360208e-07
+    },
+    "l2norm_n36864": {
+      "note": "F.normalize(dim=-1,p=2) 归约长度 N=36864（真实 q 张量前 36864 列）",
+      "in_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n36864_in.npy",
+      "ref_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n36864_ref.npy",
+      "in_shape": [
+        1,
+        1,
+        40,
+        36864
+      ],
+      "out_shape": [
+        1,
+        1,
+        40,
+        36864
+      ],
+      "in_range": [
+        -2.0326647758483887,
+        1.675606608390808
+      ],
+      "out_range": [
+        -0.09259803593158722,
+        0.089514821767807
+      ],
+      "pt_fp16_control_max_abs": 3.048032522201538e-05,
+      "pt_fp16_control_mean_abs": 3.7637650507349463e-07
+    },
+    "l2norm_n147456": {
+      "note": "F.normalize(dim=-1,p=2) 归约长度 N=147456（真实 q 张量前 147456 列）",
+      "in_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n147456_in.npy",
+      "ref_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/l2norm_n147456_ref.npy",
+      "in_shape": [
+        1,
+        1,
+        40,
+        147456
+      ],
+      "out_shape": [
+        1,
+        1,
+        40,
+        147456
+      ],
+      "in_range": [
+        -2.0326647758483887,
+        1.7266483306884766
+      ],
+      "out_range": [
+        -0.058113258332014084,
+        0.05088891461491585
+      ],
+      "pt_fp16_control_max_abs": 1.5214085578918457e-05,
+      "pt_fp16_control_mean_abs": 2.118502209214057e-07
+    },
+    "attn_softmax": {
+      "note": "注意力 softmax(dim=-1)：输入 = 真实 (k_n @ q_n^T) * rescale，形状 [1,1,40,40]",
+      "in_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_softmax_in.npy",
+      "ref_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_softmax_ref.npy",
+      "in_shape": [
+        1,
+        1,
+        40,
+        40
+      ],
+      "out_shape": [
+        1,
+        1,
+        40,
+        40
+      ],
+      "in_range": [
+        -1.165105938911438,
+        1.1577277183532715
+      ],
+      "out_range": [
+        0.004959557671099901,
+        0.0695786103606224
+      ],
+      "pt_fp16_control_max_abs": 2.7760863304138184e-05,
+      "pt_fp16_control_mean_abs": 4.277119387552375e-06
+    },
+    "attn_av": {
+      "note": "注意力 attn @ v：左操作数 = 真实 softmax 输出（作为模型输入），右操作数 = 真实 v*illu（常量入图），归约长度 40",
+      "in_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av_in.npy",
+      "ref_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av_ref.npy",
+      "in_shape": [
+        1,
+        1,
+        40,
+        40
+      ],
+      "out_shape": [
+        1,
+        1,
+        40,
+        147456
+      ],
+      "in_range": [
+        0.004959557671099901,
+        0.0695786103606224
+      ],
+      "out_range": [
+        -0.6784486174583435,
+        0.30116939544677734
+      ],
+      "pt_fp16_control_max_abs": 0.0002428293228149414,
+      "pt_fp16_control_mean_abs": 5.514351073543367e-07
+    },
+    "attn_av2": {
+      "note": "注意力 attn @ v（**双运行时操作数**：input0 = 真实 softmax 输出 [1,1,40,40]，input1 = 真实 v*illu [1,1,40,147456]，MatMul 归约长度 40）⇒ 预期映射为 exMatMul",
+      "in_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av2_in.npy",
+      "in2_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av2_in2.npy",
+      "ref_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av2_ref.npy",
+      "in_shape": [
+        1,
+        1,
+        40,
+        40
+      ],
+      "in2_shape": [
+        1,
+        1,
+        40,
+        147456
+      ],
+      "out_shape": [
+        1,
+        1,
+        40,
+        147456
+      ],
+      "in_range": [
+        0.004959557671099901,
+        0.0695786103606224
+      ],
+      "in2_range": [
+        -6.807857990264893,
+        6.804956436157227
+      ],
+      "out_range": [
+        -0.6784486174583435,
+        0.30116939544677734
+      ],
+      "pt_fp16_control_max_abs": 0.0002428293228149414,
+      "pt_fp16_control_mean_abs": 5.514351073543367e-07
+    }
+  },
+  "l2norm_source_shape": [
+    1,
+    1,
+    40,
+    147456
+  ],
+  "attn_av_vconst_npy": "/home/jenkolux/PKU_WH/Img_enhance_demo/docs/evidence/reports/M0-4/opattr2/attn_av_vconst.npy",
+  "attn_av2_v_shape": [
+    1,
+    1,
+    40,
+    147456
+  ]
+}

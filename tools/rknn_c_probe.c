@@ -169,6 +169,27 @@ int main(int argc, char** argv) {
     outputs[0].index = 0;
     outputs[0].want_float = want_float ? 1 : 0;
 
+    /* O35（v3.56）：第二个 float32 输入文件（第 12 参）——用于"双运行时操作数 MatMul"微模型。
+     * 与 M0-7 的 rawu8 折张量路径互斥：仅在显式给出该文件且模型确有多输入时生效。 */
+    void* in2_buf = NULL;
+    if (argc > 11 && argv[11][0] && n_in > 1) {
+        FILE* f2 = fopen(argv[11], "rb");
+        if (!f2) { perror("open in2"); return 5; }
+        fseek(f2, 0, SEEK_END);
+        long b2 = ftell(f2);
+        fseek(f2, 0, SEEK_SET);
+        in2_buf = malloc(b2);
+        if (fread(in2_buf, 1, b2, f2) != (size_t)b2) { perror("read in2"); return 5; }
+        fclose(f2);
+        inputs[1].index = 1;
+        inputs[1].buf = in2_buf;
+        inputs[1].size = (uint32_t)b2;
+        inputs[1].pass_through = 0;
+        inputs[1].type = RKNN_TENSOR_FLOAT32;
+        inputs[1].fmt = use_nhwc ? RKNN_TENSOR_NHWC : RKNN_TENSOR_NCHW;
+        n_input_feed = 2;
+    }
+
     double wall[512], runus[512];
     if (runs > 512) runs = 512;
     int ok = 0;
@@ -223,6 +244,7 @@ int main(int argc, char** argv) {
     }
 
     free(in_buf);
+    free(in2_buf);
     free(model);
     rknn_destroy(ctx);
     return 0;
