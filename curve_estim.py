@@ -113,6 +113,16 @@ class CurveEstimator:
         # 条带输入宽：≥ slice_w_out + 2*HALO，按 8 对齐（与 rknn_split_probe 同式）
         slice_w_out = pad_w // N_SLICES
         slice_w_in = ((slice_w_out + 2 * HALO + 7) // 8) * 8
+        # **（v3.84）** HQ 关键帧输入尺寸（TH3 用）：`hq.active_shape`（如 "960x544"）。
+        # RGA 是单例（本类 init 里的 `rga.configure` 是**唯一**一次 configure）⇒ HQ 目标缓冲
+        # 必须并入同一次 configure，故几何在此统一解析（§10.3「几何单一入口」）。
+        # **（v3.86 追加 35）** 按 §3.1 `hq_shape_ladder` 主档规则拆出**内容高**与 **pad 行数**：
+        # 主档 960×544 = 内容 960×540 + 上下各 2 行零 pad（降级档 768×432 / 512×288 原生 16:9 ⇒ pad 0）。
+        # 这是 pad/crop 口径的**唯一来源**（RGA 内核与 TH3 都从这里取，禁在别处重算）。
+        hq_shape = str(cfg.require_final("hq.active_shape"))
+        hq_w, hq_h = (int(v) for v in hq_shape.lower().split("x"))
+        hq_content_h = int(round(hq_w * 9.0 / 16.0))
+        hq_pad_top = (hq_h - hq_content_h) // 2
         self.geom = {
             "cap_w": 1920, "cap_h": 1080,
             "eff_w": eff_w, "eff_h": eff_h,
@@ -123,6 +133,8 @@ class CurveEstimator:
             "core_mask": int(cfg.require_final("rga.core_mask")),
             "n_slices": N_SLICES, "slice_h": pad_h,
             "slice_w_in": slice_w_in, "slice_w_out": slice_w_out,
+            "hq_w": hq_w, "hq_h": hq_h,
+            "hq_content_h": hq_content_h, "hq_pad_top": hq_pad_top,
         }
         return self.geom
 

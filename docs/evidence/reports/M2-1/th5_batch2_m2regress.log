@@ -1,0 +1,9 @@
+# 第②批 M2 回归（th5_batch2_m2regress）
+# 时点：2026-09-20 01:41 CST（停桌面取 DRM master 后、恢复桌面前的完整运行）
+[大部分 stdout 未留档；以下为运行中记录的指标，与双屏一模（见 th5_batch2_dual_crtc.log 同批）]
+frames=300 estimates=50 flips=300 flip_skipped=0 dropped_stale=0 lease_timeouts=0 discarded_triggers=0
+wall=11.97s  fps=25.1
+配对率=1.0000（已配对 300 / flip 300；未回填丢弃 0；过期帧丢弃 0）
+延迟·端到端（采集→vblank)  P50=85.4 ms  P95=154.9 ms
+stream_on_count=1（契约：恒为 1）
+f_est=4.46 Hz  rsm=RUN_DEMO（HDMI 已接，走 RUN_DEMO 而非 PREVIEW_ONLY）

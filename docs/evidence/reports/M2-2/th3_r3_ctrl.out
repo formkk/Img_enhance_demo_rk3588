@@ -1,0 +1,87 @@
+2026-09-20T02:48:56.077Z 42874450497348 INFO main service_start exit_code=0 uptime_s=0
+2026-09-20T02:48:56.077Z 42874450563849 INFO main version_triplet toolkit2=2.3.2 librknnrt=2.3.2 rknpu_driver=0.9.8
+[sensor_lock] /dev/v4l-subdev2 vertical_blanking = 3405（回读一致）⇒ VMAX = 4485 行
+2026-09-20T02:48:56.219Z 42874592537170 INFO capture sensor_lock result=ok code=OK node=/dev/v4l-subdev2 vblank_lines=3405 readback=3405
+2026-09-20T02:48:56.336Z 42874709753659 INFO capture stream_on_once result=ok video_node=/dev/video11 code=OK
+2026-09-20T02:48:56.347Z 42874720461386 INFO main rsm_transition from=BOOT_CHECK to=RUN_DEMO reason=hdmi_ok rsm=RUN_DEMO fsm=IDLE
+2026-09-20T02:48:56.347Z 42874720789224 INFO display_hdmi hotplug connected=true mode=1920x1080
+2026-09-20T02:48:57.545Z 42875918092991 INFO curve_estim curve_publish seq_est=1 f_est=0 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:57.744Z 42876117178661 INFO curve_estim curve_publish seq_est=2 f_est=5.026 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:57.978Z 42876351484929 INFO curve_estim curve_publish seq_est=3 f_est=4.647 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:58.210Z 42876583022868 INFO curve_estim curve_publish seq_est=4 f_est=4.538 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:58.478Z 42876851633929 INFO curve_estim curve_publish seq_est=5 f_est=4.334 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:58.745Z 42877118454175 INFO curve_estim curve_publish seq_est=6 f_est=4.217 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:59.016Z 42877389412059 INFO curve_estim curve_publish seq_est=7 f_est=4.129 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:59.197Z 42877570172567 INFO curve_estim curve_publish seq_est=8 f_est=4.329 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:59.404Z 42877777185427 INFO curve_estim curve_publish seq_est=9 f_est=4.392 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:59.618Z 42877991063962 INFO curve_estim curve_publish seq_est=10 f_est=4.424 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:48:59.842Z 42878214955924 INFO curve_estim curve_publish seq_est=11 f_est=4.428 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:00.073Z 42878446303318 INFO curve_estim curve_publish seq_est=12 f_est=4.418 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:00.289Z 42878661966669 INFO curve_estim curve_publish seq_est=13 f_est=4.436 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:00.479Z 42878852741311 INFO curve_estim curve_publish seq_est=14 f_est=4.498 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:00.678Z 42879051080513 INFO curve_estim curve_publish seq_est=15 f_est=4.537 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:00.952Z 42879325603904 INFO curve_estim curve_publish seq_est=16 f_est=4.478 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:01.169Z 42879542257976 INFO curve_estim curve_publish seq_est=17 f_est=4.486 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:01.434Z 42879807163446 INFO curve_estim curve_publish seq_est=18 f_est=4.444 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:01.682Z 42880054924228 INFO curve_estim curve_publish seq_est=19 f_est=4.422 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:01.906Z 42880279395322 INFO curve_estim curve_publish seq_est=20 f_est=4.423 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:02.141Z 42880514351848 INFO curve_estim curve_publish seq_est=21 f_est=4.415 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:02.336Z 42880709884387 INFO curve_estim curve_publish seq_est=22 f_est=4.448 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:02.606Z 42880979443253 INFO curve_estim curve_publish seq_est=23 f_est=4.415 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:02.845Z 42881218746963 INFO curve_estim curve_publish seq_est=24 f_est=4.405 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:03.097Z 42881470266211 INFO curve_estim curve_publish seq_est=25 f_est=4.387 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:03.367Z 42881739905578 INFO curve_estim curve_publish seq_est=26 f_est=4.36 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:03.569Z 42881942514254 INFO curve_estim curve_publish seq_est=27 f_est=4.382 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:03.763Z 42882136257311 INFO curve_estim curve_publish seq_est=28 f_est=4.41 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:03.971Z 42882343929388 INFO curve_estim curve_publish seq_est=29 f_est=4.425 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:04.203Z 42882576347130 INFO curve_estim curve_publish seq_est=30 f_est=4.421 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:04.405Z 42882778454966 INFO curve_estim curve_publish seq_est=31 f_est=4.438 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:04.640Z 42883013250532 INFO curve_estim curve_publish seq_est=32 f_est=4.433 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:04.853Z 42883226824105 INFO curve_estim curve_publish seq_est=33 f_est=4.44 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:05.033Z 42883406471889 INFO curve_estim curve_publish seq_est=34 f_est=4.475 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:05.236Z 42883609476612 INFO curve_estim curve_publish seq_est=35 f_est=4.488 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:05.450Z 42883823487524 INFO curve_estim curve_publish seq_est=36 f_est=4.493 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:05.663Z 42884036308920 INFO curve_estim curve_publish seq_est=37 f_est=4.499 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:05.972Z 42884345387566 INFO curve_estim curve_publish seq_est=38 f_est=4.465 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:06.182Z 42884555916015 INFO curve_estim curve_publish seq_est=39 f_est=4.472 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:06.369Z 42884742618352 INFO curve_estim curve_publish seq_est=40 f_est=4.495 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:06.640Z 42885013676696 INFO curve_estim curve_publish seq_est=41 f_est=4.475 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:06.873Z 42885245928520 INFO curve_estim curve_publish seq_est=42 f_est=4.471 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:07.141Z 42885514262577 INFO curve_estim curve_publish seq_est=43 f_est=4.453 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:07.373Z 42885746086145 INFO curve_estim curve_publish seq_est=44 f_est=4.45 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:07.701Z 42886074280838 INFO curve_estim curve_publish seq_est=45 f_est=4.418 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:07.970Z 42886342898149 INFO curve_estim curve_publish seq_est=46 f_est=4.402 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:08.189Z 42886561966463 INFO curve_estim curve_publish seq_est=47 f_est=4.406 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:08.406Z 42886779105875 INFO curve_estim curve_publish seq_est=48 f_est=4.41 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:08.616Z 42886989195651 INFO curve_estim curve_publish seq_est=49 f_est=4.417 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:08.910Z 42887282898424 INFO curve_estim curve_publish seq_est=50 f_est=4.397 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:09.144Z 42887517347777 INFO curve_estim curve_publish seq_est=51 f_est=4.394 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:09.398Z 42887770902136 INFO curve_estim curve_publish seq_est=52 f_est=4.385 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:09.628Z 42888001739607 INFO curve_estim curve_publish seq_est=53 f_est=4.384 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:09.851Z 42888224204299 INFO curve_estim curve_publish seq_est=54 f_est=4.386 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:10.141Z 42888514718112 INFO curve_estim curve_publish seq_est=55 f_est=4.369 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:10.402Z 42888775447484 INFO curve_estim curve_publish seq_est=56 f_est=4.359 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:10.692Z 42889064904242 INFO curve_estim curve_publish seq_est=57 f_est=4.343 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:10.971Z 42889344245655 INFO curve_estim curve_publish seq_est=58 f_est=4.33 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:11.176Z 42889549097361 INFO curve_estim curve_publish seq_est=59 f_est=4.339 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:11.412Z 42889784952941 INFO curve_estim curve_publish seq_est=60 f_est=4.337 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:11.607Z 42889980885652 INFO curve_estim curve_publish seq_est=61 f_est=4.35 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:11.831Z 42890204455109 INFO curve_estim curve_publish seq_est=62 f_est=4.341 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:12.081Z 42890454526797 INFO curve_estim curve_publish seq_est=63 f_est=4.337 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:12.333Z 42890706731054 INFO curve_estim curve_publish seq_est=64 f_est=4.331 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:12.545Z 42890918889566 INFO curve_estim curve_publish seq_est=65 f_est=4.347 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:12.821Z 42891194254010 INFO curve_estim curve_publish seq_est=66 f_est=4.345 alpha=0.4642 curve_level=480x272 precision=fp16
+2026-09-20T02:49:13.056Z 42891429551832 INFO curve_estim curve_publish seq_est=67 f_est=4.355 alpha=0.4642 curve_level=480x272 precision=fp16
+frames=400 estimates=67 flips=400 flip_skipped=0 dropped_stale=0 lease_timeouts=0 discarded_triggers=0
+wall=17.71s  fps=22.6
+配对率=1.0000（已配对 400 / flip 400；未回填丢弃 0；过期帧丢弃 0）
+延迟·采集→提交（应用侧）    P50=85.6 ms  P95=152.2 ms
+延迟·提交→vblank（显示排队）P50=7.6 ms  P95=16.4 ms
+延迟·端到端（采集→vblank）  P50=92.7 ms  P95=162.2 ms
+实测面板刷新周期=16.67 ms（60 Hz）
+M1 空链路基线=缺失（M1 并行产出） ⇒ 超标归因尚不可闭合（§6.5）
+f_est=4.35 Hz  alpha=0.4642
+stream_on_count=1（契约：恒为 1）
+TH3: hq_started=0 hq_done=0 hq_flips_delta=0（>0 ⇒ HQ 在途期间 MIPI 仍翻页）
+TH3 info（shutdown 前）: {'model_id': 'models/hq/hq_960x544_fp16_tk232.rknn', 'shape': '960x544', 'core_mask_ret': 0, 'runs': 0, 'last_run_ns': 0, 'last_rc': 0, 'busy': False, 'slot_full': False, 'thread_alive': True}
+rga_api version 1.9.2_[1]

@@ -1,0 +1,11 @@
+# 「增益换可见性」零副作用先验（collect 档 / 1-30s 固定曝光；可见性类指标，非 SNR）
+# 标签             Ymean  p10/p50/p90      dark_mean dark_std  G/R   B/R
+0.2Lux_g8x           Ymean= 14.93  p10/p50/p90=  0.0/ 15.0/ 28.0  dark_mean=  8.67  dark_std= 8.58  G/R=  nan  B/R=  nan
+0.2Lux_g16x          Ymean= 21.58  p10/p50/p90=  0.0/ 22.0/ 41.0  dark_mean= 13.05  dark_std=12.71  G/R= 0.63  B/R= 0.89
+0.2Lux_g33x          Ymean= 29.66  p10/p50/p90=  0.0/ 30.0/ 58.0  dark_mean= 17.49  dark_std=18.78  G/R= 0.72  B/R= 0.80
+1Lux_g8x             Ymean= 22.82  p10/p50/p90=  5.0/ 24.0/ 37.0  dark_mean= 11.43  dark_std= 8.87  G/R= 0.52  B/R= 0.42
+1Lux_g16x            Ymean= 32.38  p10/p50/p90=  7.0/ 34.0/ 53.0  dark_mean= 17.34  dark_std=13.62  G/R= 0.65  B/R= 0.54
+1Lux_g33x            Ymean= 44.42  p10/p50/p90=  7.0/ 47.0/ 73.0  dark_mean= 23.25  dark_std=20.03  G/R= 0.66  B/R= 0.55
+4Lux_g8x             Ymean= 51.31  p10/p50/p90= 20.0/ 52.0/ 82.0  dark_mean= 24.02  dark_std= 8.77  G/R= 0.90  B/R= 0.90
+4Lux_g16x            Ymean= 70.47  p10/p50/p90= 29.0/ 71.0/112.0  dark_mean= 34.25  dark_std=13.34  G/R= 0.91  B/R= 1.00
+4Lux_g33x            Ymean= 96.41  p10/p50/p90= 39.0/ 98.0/153.0  dark_mean= 46.81  dark_std=18.03  G/R= 0.93  B/R= 1.04

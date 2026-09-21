@@ -1,0 +1,23 @@
+2026-09-19T17:08:01.713Z 8020086577738 INFO main rsm_transition from=BOOT_CHECK to=RUN_DEMO reason=hdmi_ok rsm=RUN_DEMO fsm=IDLE
+2026-09-19T17:08:01.713Z 8020086684489 INFO display_hdmi hotplug connected=true mode=1920x1080
+init: rc=0 rsm=RUN_DEMO (期望 RUN_DEMO)
+2026-09-19T17:08:01.713Z 8020086815449 INFO main rsm_transition from=RUN_DEMO to=MIPI_PREVIEW_ONLY reason=hdmi_out rsm=MIPI_PREVIEW_ONLY fsm=IDLE
+2026-09-19T17:08:01.714Z 8020086842575 INFO display_hdmi hotplug connected=false mode=unknown
+轮1 拔: rsm=MIPI_PREVIEW_ONLY (期望 MIPI_PREVIEW_ONLY)
+2026-09-19T17:08:01.714Z 8020086937076 INFO main rsm_transition from=MIPI_PREVIEW_ONLY to=RUN_DEMO reason=hdmi_ok rsm=RUN_DEMO fsm=IDLE
+2026-09-19T17:08:01.714Z 8020086983743 INFO display_hdmi hotplug connected=true mode=1920x1080
+轮1 插: rsm=RUN_DEMO (期望 RUN_DEMO)
+2026-09-19T17:08:01.714Z 8020087076203 INFO main rsm_transition from=RUN_DEMO to=MIPI_PREVIEW_ONLY reason=hdmi_out rsm=MIPI_PREVIEW_ONLY fsm=IDLE
+2026-09-19T17:08:01.714Z 8020087098662 INFO display_hdmi hotplug connected=false mode=unknown
+轮2 拔: rsm=MIPI_PREVIEW_ONLY (期望 MIPI_PREVIEW_ONLY)
+2026-09-19T17:08:01.714Z 8020087184413 INFO main rsm_transition from=MIPI_PREVIEW_ONLY to=RUN_DEMO reason=hdmi_ok rsm=RUN_DEMO fsm=IDLE
+2026-09-19T17:08:01.714Z 8020087225830 INFO display_hdmi hotplug connected=true mode=1920x1080
+轮2 插: rsm=RUN_DEMO (期望 RUN_DEMO)
+2026-09-19T17:08:01.714Z 8020087312748 INFO main rsm_transition from=RUN_DEMO to=MIPI_PREVIEW_ONLY reason=hdmi_out rsm=MIPI_PREVIEW_ONLY fsm=IDLE
+2026-09-19T17:08:01.714Z 8020087334331 INFO display_hdmi hotplug connected=false mode=unknown
+轮3 拔: rsm=MIPI_PREVIEW_ONLY (期望 MIPI_PREVIEW_ONLY)
+2026-09-19T17:08:01.714Z 8020087418041 INFO main rsm_transition from=MIPI_PREVIEW_ONLY to=RUN_DEMO reason=hdmi_ok rsm=RUN_DEMO fsm=IDLE
+2026-09-19T17:08:01.714Z 8020087458000 INFO display_hdmi hotplug connected=true mode=1920x1080
+轮3 插: rsm=RUN_DEMO (期望 RUN_DEMO)
+抖动(仅1次采样): rsm=RUN_DEMO 未迁移=True (期望 True)
+最终 rsm=RUN_DEMO

@@ -1,0 +1,20 @@
+# 第②批：单实例多 CRTC 验证（th5_batch2_dual_crtc）
+# 时点：2026-09-20 01:41–01:42 CST（停桌面取 DRM master 后）
+# 说明：本文件为**结果补录**——原始 stdout 在板上 /tmp 未持久化，以下为运行中实测读数。
+#       同一会话稍后（桌面已恢复）重跑本脚本会因取不到 master 而 rc=-3，属预期。
+
+槽0(DSI) configure rc=0
+  slot0: {'connector_id': 221, 'crtc_id': 142, 'mode_name': '1024x600', 'hdisplay': 1024, 'vdisplay': 600}
+槽1(HDMI) init_canvas rc=0 drm_ok=True
+  slot1: {'connector_id': 207, 'crtc_id': 70, 'mode_name': '1920x1080', 'hdisplay': 1920, 'vdisplay': 1080, 'connector_status': 1}
+  crtc 不同? 142 vs 70 -> True
+槽0 翻页 10/10  槽1 翻页 10/10
+  slot0 flip_count=10  slot1 flip_count=11
+  slot0 flip_skipped=0  slot1 flip_skipped=0
+
+# 补充：crtc_count 语义复核（同一会话，独立脚本）
+仅槽0配置后 crtc_count = 1
+两槽配置后 crtc_count = 2 (期望 2)
+is_configured_slot(0/1) = 1 1
+
+# 判据：两槽 crtc 不同（142 vs 70）⇒ 单实例多 CRTC 成立；两槽各自翻页 10/10 且零丢弃 ⇒ 互不干扰。

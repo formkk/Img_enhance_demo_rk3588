@@ -1,0 +1,7 @@
+# O87 collect vs demo IQ 差异比对（只读）
+# 路径: /etc/iqfiles_sets/{collect,demo}/imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json
+差异条数: 2
+  /main_scene[0]/sub_scene[0]/scene_isp30/bayertnr_v2/TuningPara/enable    collect=0  demo=1
+  /main_scene[1]/sub_scene[0]/scene_isp30/bayertnr_v2/TuningPara/enable    collect=0  demo=1
+判定: 两档差异**仅为 3DNR 使能**（bayertnr_v2/enable 0→1，两个 scene 各一处）
+      ⇒ A/B 的观测差可归因于 3DNR 开关本身，无其它混淆项

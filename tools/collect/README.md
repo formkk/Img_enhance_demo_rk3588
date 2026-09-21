@@ -20,11 +20,19 @@
 | 项 | 说明 |
 |---|---|
 | **对焦能力（已并入）** | `capture_app.py` 页面含**清晰度指标**（Laplacian 类，实时显示"清晰度 / 本次最大"）与**中心 4× 放大窗**（`canvas#c2`，1920×1080）⇒ 对焦核对与采集**同一进程内完成**，无需另开一个取流进程 |
-| **与 `tools/cam_preview.py`（原对焦应用）** | 本目录自包含，**不 import、不修改**该文件（用户 2026-09-19 决定）；取流（GStreamer MJPEG）、multipart 解析、浏览器轮询、`dup_run` 冻帧监控、对焦核对等做法**继承自它**。**功能已并入本工具 ⇒ 二者不必并存**；若仍同时启动，**因默认同一 `/dev/video11` 而互斥**（见下） |
+| **与 `tools/cam_preview.py`（原对焦应用）** | 除仓库根的 `sensor_lock.py`（30 fps 锁定共享实现，见 **§16**）外**不 import 其它文件**；且**不 import、不修改**该文件（用户 2026-09-19 决定）；取流（GStreamer MJPEG）、multipart 解析、浏览器轮询、`dup_run` 冻帧监控、对焦核对等做法**继承自它**。**功能已并入本工具 ⇒ 二者不必并存**；若仍同时启动，**因默认同一 `/dev/video11` 而互斥**（见下） |
 | **与主链路 TH1（交付链路）** | **互斥，不得同时运行**——`tools/collect/capture_app.py` 与主链路 `capture.py`（TH1）**默认同一个 V4L2 节点 `/dev/video11`**（= `config.yaml` 的 `camera.video_node`），而**同一节点不允许同时打开**（见 §9.3）。⇒ **M1 采集期间不得跑演示链路（`main.py`）**，反之亦然 |
 | **端口与"可同时跑"（v3.68 更正）** | ⚠️ 本表原写"与对焦应用端口不同（8090 / 8091）**可同时跑**"——**该表述错误**：端口确实不冲突，但**两者默认同一个 `/dev/video11`**（`cam_preview.py` 第 164 行 / 本工具第 384 行），**同一节点不可双开** ⇒ **实际互斥**。与 §9.3 的"`v4l2src` 同一节点不允许同时打开"一致。**端口错开只解决 HTTP 端口冲突，不解决摄像头争用** |
 
 > **（v3.68）纪律**：本工具的**运行前置** = 板上**无其它取流者**（主链路 TH1 / 原对焦应用 / 任何 `v4l2src`）；**端口不同不代表可同时跑**。
+>
+> **（v3.78）第二条运行前置**：**当前 IQ 必须是"采集档"**（3DNR 关；O40 / O62 ④(ii)）。本工具**启动时校验**，
+> 不通过则**拒绝采集**（预览/对焦仍可用）。档位管理见 **§15**；不通过时页面顶部会显示原因与换档命令。
+>
+> **（v3.79）第三条运行前置**：**1080p@30 锁定必须已施加**（`camera.vblank_lines` = **3405** ⇒ VMAX **4485 行** ⇒ 30 fps）。
+> 本工具**启动时自动施加并回读校验**（调仓库根 `sensor_lock.apply`，见 **§16**），**未生效即拒绝采集**
+> （**fail-closed**；预览/对焦仍可用）。⚠️ **停流即复位 ⇒ 每次启动都要重施**；且**必须在手动档（采集档 / 演示档）下**——
+> stock 档（AE auto）会在流中把 vblank 写回 1154。依据 = §16；证据 = `docs/evidence/M1-collect-tool-board.md` **§12**。
 
 ## 3. 用法
 
@@ -32,6 +40,9 @@
 # 0) 首次部署（v3.71 实测发现：板上 /home/cat/starlight/ 只有交付链路，本工具须单独部署）
 ssh board 'mkdir -p ~/starlight/tools/collect'
 scp tools/collect/capture_app.py board:~/starlight/tools/collect/capture_app.py
+#    （v3.79）**必须同时部署仓库根的 sensor_lock.py**（本工具 import 它；按 __file__ 反推仓库根 ⇒ 须落在上一层）
+#    否则本工具**启动即拒采**（第三条运行前置，见 §2）
+scp sensor_lock.py board:~/starlight/sensor_lock.py
 
 # 板上运行
 python3 tools/collect/capture_app.py --outdir ~/capture_data
@@ -48,8 +59,21 @@ http://<板地址>:8091/
 | `--w` / `--h` | `1920` / `1080` | 依用户决定**按 1080p 采集**（见 §5 的 crop 约束） |
 | `--batch` | 自动 `B<日期>-<时分>` | 采集批次号，写入 sidecar |
 | `--raw-frame-size` | `0`（= `w*h*3/2`） | **（v3.70）** 裸 NV12 单帧字节数；1920×1080 默认 **3110400**（板端实测 `sizeimage`）。仅在驱动改变 `bytesperline`/`sizeimage` 时才需覆盖 |
+| `--vblank-lines` | `3405`（= config `camera.vblank_lines`） | **（v3.79）** 30 fps 锁定的 `vertical_blanking` 目标值（VMAX = 1080 + 3405 = 4485 ⇒ 30 fps）。启动时经 `sensor_lock.apply` 写入并**回读校验**；**停流即复位 ⇒ 每次启动重施**（§2 / §16） |
+| `--sensor-subdev` | 自动（**运行时解析**） | **（v3.79）调试用**：强制指定 sensor subdev 节点。**默认不指定**——按「唯一暴露 `V4L2_CID_VBLANK` 的 v4l-subdev」**语义判据**解析，**禁止写死编号**（§16） |
 
-停止：`ssh board "sudo pkill -9 -f 'capture_ap[p]'"`
+停止（**（v3.82）两步**）：
+
+```bash
+# ① 优先**正常终止**（**不带 `-9`**）——工具的 SIGTERM 处理会自行杀掉 gst 子进程
+ssh board "sudo pkill -f 'capture_ap[p]'"
+# ② 若确认无残留再补杀 gst
+ssh board "pgrep -af 'v4l2src device=/dev/video11'"        # 检查
+ssh board "sudo pkill -f 'v4l2src device=/dev/video11'"    # 必要时
+```
+
+> ⚠️ **（v3.82）实测说明**：**`pkill -9` 只杀父进程会留下孤儿 `gst-launch-1.0` 继续占用 `/dev/video11`**
+> （v3.82 实测，证据 = `docs/evidence/M1-collect-tool-board.md` **§15.3**）。
 
 ## 4. 操作流程（按键语义）
 
@@ -124,9 +148,9 @@ http://<板地址>:8091/
 | `capture_condition`（设备 / 分辨率 / 像素格式 / gst 管线） | ✅ 本应用写入。**（v3.69）无损落盘落地后须增 `stride` / `uv_offset` / `size_bytes`**（裸 NV12 无自描述，**缺此三项开发机侧会按 `W×H×1.5` 错位解析**） |
 | `pair`（配对帧 ID / GT 来源 / 几何对齐方式） | ✅ 本应用写入 |
 | `file`（文件名 / 字节数） | ✅ 本应用写入 |
-| `isp_fingerprint`（gamma / CCM / black level / IQ 文件+哈希 / AWB / NR·3DNR） | ⛔ `null`，需板上 rkisp 侧取数（**未实现**） |
+| `isp_fingerprint` | ⚠️ **部分落地（v3.78）**：`iq_file` / `iq_hash` / `iq_set` / `iq_guard` **已写入**（= O62 ④(i)）；其余子项（gamma / CCM / black level / AWB / NR·3DNR）列在 `isp_fingerprint._pending`，仍需板上 rkisp 侧取数（**未实现**） |
 | `csc`（RGA CSC 矩阵 + range） | ⛔ `null`，本链路为 v4l2 直出、未过 RGA |
-| `sensor_ctrl`（曝光 / 模拟增益 / 数字增益读回） | ⛔ `null`，需 `v4l2-ctl` 取数（**未实现**） |
+| `sensor_ctrl`（曝光 / 模拟增益 / 数字增益读回） | ⛔ `null`，需 `v4l2-ctl` 取数（**未实现**）。**（v3.79）30 fps 锁定的 vblank / 曝光行数回读亦未写入 sidecar**（属未实施项，见 §7） |
 | `illuminance`（实测照度 + 测量方式） | ⛔ `null`，需人工录入（**未实现**） |
 | `optics`（镜头型号 + 对焦判据） | ⛔ `null`，O31 关闭后才有 |
 | `split`（train/val/test） | ⛔ `null`，划分时回填 |
@@ -140,15 +164,18 @@ http://<板地址>:8091/
 1. ~~图像为 JPEG 有损~~ → **已解决（v3.70）**：落盘改走**裸 NV12**（§9），**JPEG 仅供预览、不进数据集**。
 2. ~~sidecar 每场景一份~~ → **已解决（v3.70）**：改为**逐帧一份**（§11），同场景多帧不再互相覆盖。
 3. **无照度录入 UI**：§6.1 的照度字段未实现（**原 d 项已由 §12 的相对光照方案取代**）。
-4. **无 ISP 指纹采集**：见 §6 的 `_pending`（**未实施**，且受 **O54** 阻塞）。
+4. **ISP 指纹仅部分落地**：`iq_file` / `iq_hash` / `iq_set` / `iq_guard` **已写入**（v3.78，= O62 ④(i)）；**其余子项未实施**（见 §6 的 `isp_fingerprint._pending`，且受 **O54** 阻塞）。
 5. **冻帧拦截（v3.70 改口径）**：陈旧判定**跟数据源走**——数据取自路② 裸帧，故以
    **裸帧是否仍在更新**为准（>1 s 未更新即拒绝采集）；`dup_run`（路① JPEG 的重复帧计数）
    **降为页面诊断指标**。理由：`dup_run` 是 `mppjpegenc` 陈旧缓冲的征候、**与路② 数据无关**，
    且**静止画面下会误拦**（原"待确认是否放宽"的顾虑随之消除）。
+6. **（v3.79）sidecar 未记录 30 fps 锁定回读**——vblank（`vertical_blanking`）与曝光行数**均未写入 sidecar**
+   （`sensor_ctrl` 仍为 `null`，见 §6）。⇒ 当前**无法从数据集反查**某帧是否在 30 fps 锁定下采集
+   （锁定由本工具**启动时 fail-closed 施加**保证，但未随图留痕）。属**未实施项**。
 
 ## 8. 登记状态
 
-- 主基准 §10.3 代码结构树：**已登记**（v3.61 落位；见 §14 对应变更行）
+- 主基准 §10.3 代码结构树：**已登记**（v3.61 落位；见 §14 对应变更行）；**（v3.76）本目录新增 `isp_owner.c` 并已登记**（§10.3 + 主基准 §14 v3.76）。**（v3.77）`isp_owner.c` 的登记注释已改判为"调试工具"**（§10.3 + 主基准 §14 v3.77），承载方式改走 **§14.6 纯 IQ 路径**。**（v3.79）新增仓库根共享模块 `sensor_lock.py`（1080p@30 锁定）并已登记**（主基准 §10.3 + §14 v3.79）；**由 TH1（`capture.py`）与采集工具（`capture_app.py`）共同调用**，说明见 **§16**
 - **（v3.70）命名 + 无损落盘 + 逐帧 sidecar 已实施**（`tools/collect/capture_app.py`）；**（v3.71）板上实测通过**——真机双 `fdsink` 共存、路② 帧长 3110400、命名/帧槽/逐帧 sidecar 落盘、裸帧解码目视均符合；**证据 `docs/evidence/M1-collect-tool-board.md`**。主基准已升至 **v3.71**，§10.3 与 §14 已同步
 - `docs/design/dataset.md` §7「工具与实现落点」：**已于 v3.68 补登本工具**（`tools/collect/capture_app.py`），并核对了与三张契约白名单的一致性
 - 本目录文档的**归属仍未落定**：规则 `00-ssot.md` §2 规定设计类文档应置于 `docs/design/<模块>.md`。本 README 的 **§1~§8 属工具用法说明**（可留在原地），但 **§9~§12 是"补法方案"= 设计类内容**（决定"怎么做"），按 §2 应并入 `docs/design/dataset.md`。
@@ -292,8 +319,11 @@ v4l2src → videoconvert(videoconvert 前置拷贝) → tee
 
 ### 10.5 与 O40 的交叉（不属本方案）
 
-`isp.nr_3d_ref_frames` 与 3DNR 帧级延迟**归 O40**（3DNR 采集期与运行期一致性），**尚未裁定**。
-本方案**只留接口位**（sidecar 字段已在），**不代裁定、不填值**。O40 裁定后再补取法。
+`isp.nr_3d_ref_frames` 与 3DNR 帧级延迟归 **O40**（3DNR 采集期与运行期一致性）。**（v3.73 已裁定 = 采集期关闭 3DNR**——实测 IQ 的 `bayertnr_v2/TuningPara/enable = 1` 即现采集期是开着的；**（v3.75 裁定 O62 = 选项 (b) 两套 IQ 文件**：**采集档关 NR / 演示档开 NR，各自记文件名 + sha256**；实现 = 建两套 IQ + 采集档 `enable=0` + `systemctl restart rkaiq_3A.service`，**未执行**）。
+**本工具侧的硬约束（v3.75 新增，实现时必做）**：**采集工具启动时须校验"当前 IQ = 采集档"，否则拒绝采集**（防"忘切"导致**静默污染数据集**）；sidecar 须记 **IQ 文件名 + 哈希**。
+**实现前置阻塞**：§9.5 的"关 AE + 固定曝光/增益"**（v3.76 已落实，见 §14）**——v3.75 实测发现 AE 仍自动跑 ⇒ ISP 参数 A/B 被混淆（证据 = `docs/evidence/M1-collect-tool-board.md` §9）；**v3.76 新增 `tools/collect/isp_owner.c` 自持 ISP 上下文，把 auto 曝光/增益范围钉成一点** ⇒ **该阻塞已解除**（板上实测见该档 §10）。
+本方案**只留接口位**（sidecar 字段已在）、**不代裁定、不填值**；**实现随该前置落实后办**。
+**（v3.76 承载方式修订）** 因 3A 改由**自持进程**持有、**IQ 目录可在 `rkaiq_uapi2_sysctl_init` 参数指定** ⇒ 上文"采集工具启动时须校验'当前 IQ = 采集档'，否则拒绝采集"的**防呆不再需要**（"忘切"通道被结构性消除）；**sidecar 记 IQ 文件名 + 哈希的护栏保留**；**两套 IQ 的实现仍待办**（`isp_owner.c` 目前硬编码 `/etc/iqfiles/`）。
 
 ### 10.6 本方案不解决的
 
@@ -439,6 +469,10 @@ v4l2src → videoconvert(videoconvert 前置拷贝) → tee
 **实施顺序（v3.70 更新）**：**~~c → a → b~~ 中的 b 与 c 已随命名改造同批落地**（§5 / §9 / §11）；
 **剩余 = a（ISP 指纹，受 O54 阻塞）**；**e 建议紧随 §12 一并做**（同属"光照"一族，且 U4 的出口要求依赖它）。
 
+> **（v3.76）新增前置工具**：**§14 的 `isp_owner.c`**（采集期自持 ISP、固定曝光/增益）**已落地并板上实测** ⇒
+> **§9.5 的"关 AE"阻塞解除**；**它与遗留项 a 的关系**——`isp_owner` 只**固定曝光/增益**，
+> **不产出 sidecar 的 `isp_fingerprint` / `sensor_ctrl`**（该两组仍为 `null` + `_pending`，受 O54 阻塞）。
+
 > **（v3.70）** 本目录 §9~§12 的暂缓理由（并行会话占用板资源）**早已消失**，命名 + 无损落盘 + 逐帧 sidecar
 > **已于 v3.70 实施并离线自测通过**；**（v3.71）板上实测已完成并通过**（证据 `docs/evidence/M1-collect-tool-board.md`；
 > 遗留未验项见该档 §6：路② >3 min 长跑、U1 完整动作序列、真实采集目录落盘）。
@@ -466,3 +500,276 @@ v4l2src → videoconvert(videoconvert 前置拷贝) → tee
 **与"无损 → 开发机 → 转格式"路线的衔接**：G2 落地后**板上只写裸 NV12**，**RGB 转换留作开发机侧离线工具**——该工具**必须用与 RGA 完全相同的 CSC / range**（否则**训练域 ≠ 部署域**，直接污染 PSNR/SSIM 结论），故 **G5（CSC 显式化，O54）是该离线工具的正确性前提**。
 
 **已核对、无冲突**：本工具**不读写 `config.yaml`、不发出任何日志 `event`（0 处）、不涉及 §5 返回码** ⇒ 与规则 `20-contracts.md` 三张白名单无冲突；**与主链路 TH1 默认同一 `/dev/video11` ⇒ 互斥**（§2）。
+
+## 14. `isp_owner.c` —— ISP 3A 自持程序（**v3.76 新增、已板上实测；v3.77 改判为调试工具**）
+
+> **地位**：板上辅助程序（**非交付链路**）。**依据** = 主基准 §9.5「固定 ISP 参数与曝光」。
+> **板上实测证据** = `docs/evidence/M1-collect-tool-board.md` **§10**；**主基准 §14 v3.76 / §15 O62 补记 / O63**。
+>
+> ⚠️ **（v3.77 改判）承载方式已改为「纯 IQ 路径」（见 §14.6），本程序自此降为调试工具**——**不再作为采集/演示的 3A 承载**（**不须再停 `rkaiq_3A.service`**）。其**已实测结论**（钉范围口径 / `setExpMode` 失效原因 / 单位 / 效度检查须用 subdev 回读）**仍是 §9.5 的有效依据**。
+
+### 14.1 为什么需要它
+
+曝光/增益**不在 V4L2 节点上**：`/dev/video11` 只有 `pixel_rate`；sensor subdev（`/dev/v4l-subdev2`）
+虽有 `exposure` / `analogue_gain`，但**没有 `auto_exposure` 控制项** ⇒ **AE 完全由 rkaiq 驱动**，
+只能经 rkaiq 的 API 关闭。而 rkaiq 的 uAPI2 是**进程内** API（需 `rk_aiq_sys_ctx_t*`），
+跨进程只有**未公开的 socket 报文通道**（`MessageParser.hpp` 板上缺失、`__RkAiqSocketPacket_s`
+不在 DWARF）⇒ 本程序**自行持有 ISP 上下文**。
+
+**代价（硬约束）**：采集期间 **`rkaiq_3A.service` 必须停止**（同一 ISP 只能有一个持有者）。
+**恢复** = `sudo systemctl start rkaiq_3A.service`，或重启板子。
+**（v3.77）本代价仅在使用本程序时成立**——改走 §14.6 的纯 IQ 路径后**不须停服务**（这正是改判的理由）。
+
+### 14.2 构建与用法
+
+```bash
+# 板上构建（须以系统工具链；-Wall -Wextra 零告警）
+cd ~/starlight/tools/collect
+gcc -O2 -Wall -Wextra -I/usr/include/rkaiq \
+    $(for d in /usr/include/rkaiq/*/; do printf -- "-I%s " "$d"; done) \
+    -o isp_owner isp_owner.c -lrkaiq
+
+# ① 只读探测（不改任何状态；打印当前 AE 模式与曝光/增益范围后即退出）
+sudo ./isp_owner /dev/video11 --probe
+
+# ② 固定曝光/增益（停 3A 服务后；--gain 必填，单位 = 线性倍数）
+sudo systemctl stop rkaiq_3A.service
+sudo ./isp_owner /dev/video11 --exp-us 15000 --gain 4.0     # 前台；Ctrl-C / SIGTERM 退出
+
+# ③ 取流中回读（**效度检查只能走 sensor subdev**）
+v4l2-ctl -d /dev/v4l-subdev2 --get-ctrl exposure,analogue_gain
+```
+
+| 参数 | 说明 |
+|---|---|
+| `<video-node>` | ISP 输出节点，如 `/dev/video11` |
+| `--probe` | 只读：打印 `getExpMode` / `getExpTimeRange` / `getExpGainRange`，**不改状态**，随后退出 |
+| `--exp-us N` | 固定曝光时间，单位**微秒**（默认 33333 = 1/30 s，见 §9.5） |
+| `--gain G` | 固定总增益，单位**线性倍数**；**apply 模式必填**（§10.4 `camera.gain_*` 未定稿，**不由程序臆造取值**） |
+| `--manual` | **调试口**：额外 `setExpMode(OP_MANUAL)` + AE lock——**实测会失控，勿用于采集**（见 14.3） |
+| `--wb-watch` | 每 250 ms 打印 AWB 运行态（生效增益 / CCT / `awbConverged` / 统计增益 / IQ manual 预设）——用于观测 AWB |
+| `--awb-lock` / `--awb-lock-delay S` | 从 **READY 起算**延时 `S` 秒后 `rk_aiq_user_api2_awb_Lock`（默认 5）。**⚠️ 必须在此期间取流**——AWB 只在处理帧时更新，不取流则锁住的是 IQ 初值而非收敛值。**效果未验证**（见 14.5） |
+
+**必须 root 运行**：`librkaiq` 的 `init` 会 `fopen("/tmp/aiq%d.lock","w+")` 后**不检查 NULL** 就调 `fileno()`；
+该文件属 `root:644` ⇒ 以普通用户跑会 **`fileno(NULL)` 段错误**（librkaiq 缺陷）。
+
+### 14.3 三条关键实测口径（**踩坑留档**）
+
+1. **「关 AE」的正解 = 把 auto 范围钉成一点**（`setExpTimeRange` / `setExpGainRange` 传 `min == max`，
+   **不切模式**）。**`setExpMode(OP_MANUAL)` 是反向的**——切 manual 后 AEC 改用 **IQ 的 `stManual` 默认值**
+   （5 点扫描实测恒为 `exposure=405 / analogue_gain=0`，**与请求值无关**）。
+2. **单位**：曝光 = **秒**、增益 = **线性倍数**（`paRange_t` 字段序为 `{max, min}`）；
+   sensor 模拟增益寄存器 = `20·log2(gain)/0.3`（0.3 dB 步进）；**曝光行数 = `exp_us / 7.433`**（行时 **7.433 µs**、行率 **134.5 k lines/s**；**v3.77 更正**，原写 `exp_us × 0.09` **错**——两组独立测点吻合：`5000 µs → 675 lines`、`15000 µs → 2025 lines`。**（v3.79 再更正行时）**：由帧周期反推三个测点 **7.4317 / 7.4355 / 7.4326 µs** ⇒ **7.433 µs**，**v3.77 的 7.41 µs 偏低 0.3%**；证据 = 证据档 **§12**）。
+3. **效度检查只能用 sensor subdev 回读**——`getExpTimeRange` / `getExpGainRange` **不反映设定值**
+   （设定 `0.015 s / 4.0×` 后仍返回 `0.010 / 256..1.0`）。
+
+**已知限制（登记 O63；数值与成因已于 v3.77 更正）**：**曝光上限分两档**——**AE auto 档 = 1350 lines = 10.0 ms**
+（= `getExpTimeRange.max`，是 **AE 策略自身**的上限，**不是** 60 fps 钳制）、**manual 档 = 2242 lines ≈ 16.6 ms**
+（= sensor `exposure` 的 max，受 **sensor VMAX** 限制）。⇒ **§9.5 的「固定曝光 1/30 s」须待主基准 §11 M1 出口标准 #1「暗光 1080p@30 稳定」落实后方可达**；在此之前采集的曝光值定在**可达上限**
+（**manual 档 ≈16.6 ms，比 AE auto 档多 66% 进光量**）并随 sidecar 记实回读。
+**（v3.79 收口）**：**1080p@30 锁定已落地并板上验证**（见 **§16**）⇒ **1/30 s 可达**（30 fps 下 sensor `exposure max` = **4493 行**）；
+但**除物理 30 fps 外还须 IQ 帧率档 `FpsValue=30`**（否则 AE 按帧率把曝光钳到 **2224 行**，见 §15.2）。证据 = `docs/evidence/M1-collect-tool-board.md` **§12**。
+
+### 14.4 与 `capture_app.py` 的关系（**未集成**）
+
+本次为**手工分步验证**（停服务 → 起 `isp_owner` → 取流 → 回读）。**与 `capture_app.py` 的自动集成未做**
+——采集流程中"自动停/起 3A 服务 + 传曝光/增益"仍待实现（M1 采集开工前办）。
+
+### 14.5 AWB 锁定（`--awb-lock`）的验证状态（**v3.76：未验证，登记 O64**）
+
+**结论：`--awb-lock` 的效果既未被证实、也未被否证。** 依据 = `docs/evidence/M1-collect-tool-board.md` §10.6。
+
+- **结构上它是真锁**：`rk_aiq_user_api2_awb_Lock` → `RkAiqAwbHandleInt::lock()` → `rk_aiq_uapiV2_awb_Lock(algoCtx)`；
+  调用 `rc=0`，且**不改变** `wbMode`（恒为 `OP_AUTO`）。
+- **可观测量有效**（已交叉验证）：`QueryWBInfo.gain` 是**实时生效值**——取流前 `stat_gain_glb=0`（LP 滤波未起）、
+  取流后收敛到同值；且它与 IQ 的 manual 预设（`r=1.3270 b=3.3143`）明确不同。
+- **但当前场景无判别力**：AWB 的生效增益从 `LV=0` 到收敛后（`LV=54/57`）**逐位不变**，
+  改总增益档（10× vs 16×）后**仍逐位相同**，图像域 UV 通道 spread 仅 ~6 ⇒ **AWB 本就无需修正**
+  ⇒ 锁与不锁**读数一致**。
+- **纯软件无法构造扰动**：`setMWBGain` 内部会 `SetWpModeAttrib` **切到 manual**，而 manual 下 AWB 不运行
+  ⇒ 构造不出"让 AWB 持续追变"的输入。
+- **要判定需**：**(i)** 板前改变光源色温（推荐；**这正是 M1 采集范式会遇到的真实情形**——调亮/调暗光源同时改变色温），
+  或 **(ii)** 软件注入错值后回 AUTO 看是否拉回（需先验 `setWBMode` 是否清除 lock）。
+  **复现命令见证据档 §10.6(g)**；**判据 = 扰动后生效增益随之改变 ⇒ 未锁住；保持不动 ⇒ 锁住**。
+
+---
+
+## 14.6 纯 IQ 路径：推荐的「关 AE + 固定曝光/增益」承载方式（**v3.77 新增、已板上实测；v3.78 已工具化 ⇒ 正式流程见 §15**）
+
+> **地位**：**替代 §14 自持进程的承载方式**，主基准 §9.5 ⑥ 已裁定为**演示链路（M2）与采集链路同构采用**；
+> `isp_owner.c` **降为调试工具**。**证据** = `docs/evidence/M1-collect-tool-board.md` **§10.7**。
+
+**原理**：IQ 的 `main_scene[0]/sub_scene[0]/scene_isp30/ae_calib/CommCtrl/` **本就有** AEC 工作模式开关与手动档——
+只需把 `AecOpType` 由 `RK_AIQ_OP_MODE_AUTO` 改为 **`RK_AIQ_OP_MODE_MANUAL`**，并把
+`AecManualCtrl/LinearAE/{TimeValue, GainValue, IspDGainValue}` 设为目标值
+（三个 `Manual*En` **本来就是 1**）⇒ **`rkaiq_3A_server` 启动即固定曝光/增益**。
+
+**板上实测**（含备份 / 还原，IQ 原哈希 `4536f96a…` 逐位还原）：`TimeValue=0.015` + `GainValue=4.0`
+⇒ 回读 **`exposure=2025` / `analogue_gain=40`**，**重启服务后两轮逐位一致**；`TimeValue=0.033333`（1/30 s）
+⇒ **2224**（被 manual 档上限 2242 钳制）。对照 = AE auto 同场景 **5 次读数 gain = 67/93/126/132/139，每次不同**。
+**优点 = 不动 `rkaiq_3A.service`、零新增进程**，与 O62 的两套 IQ **天然同构**。
+
+**厂家 schema（一手资料 = 板上头文件 `aec_head.h` / `aec_uapi_head.h`）**：`TimeValue` **单位 = 秒**（range [0,1]，
+默认 0.003）、`GainValue` / `IspDGainValue` = **线性倍数**（range [1,4096]，默认 1）；`RK_AIQ_OP_MODE_MANUAL = 2`；
+**三个增益级要完全钉死须三个都设**（sensor 模拟 `GainValue` + ISP 数字 `IspDGainValue`）。
+
+**实现后果（硬约束，登记 O62 ④(ii)/⑤ 与 O65）**：`rkaiq_3A_server` **硬编码 `/etc/iqfiles/` 且仅支持 `--silent`**
+（板上实测）⇒ **两套 IQ 无法共存于同一 sensor 名** ⇒ 必须**换文件 + `systemctl restart rkaiq_3A.service`**，
+且**采集工具启动时须校验"当前 IQ = 采集档"**（防"忘切"；v3.76 因自持而免除的防呆**随之恢复**）；
+**换档重启对演示的扰动未验**。
+
+**取值 SSOT（规则 `00-ssot.md` §3.1）**：固定曝光/增益的**值只写在 IQ 文件里**；§10.4 的 `camera.exposure_us` /
+`camera.gain_*` **不再单独存值**，改记「IQ 文件名 + sha256 + sensor subdev 实测回读」。
+
+**命令速查**（改副本 → 换文件 → 重启 → 回读 → 还原）：
+
+```bash
+F=/etc/iqfiles/imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json
+sudo cp $F /tmp/iq_backup.json
+python3 - <<'PY'
+import json
+d=json.load(open("/tmp/iq_backup.json"))
+c=d["main_scene"][0]["sub_scene"][0]["scene_isp30"]["ae_calib"]["CommCtrl"]
+c["AecOpType"]="RK_AIQ_OP_MODE_MANUAL"
+l=c["AecManualCtrl"]["LinearAE"]; l["TimeValue"]=0.015; l["GainValue"]=4.0; l["IspDGainValue"]=1.0
+json.dump(d,open("/tmp/iq_manual.json","w"),indent=2)
+PY
+sudo cp /tmp/iq_manual.json $F && sudo systemctl restart rkaiq_3A.service && sleep 6
+sudo v4l2-ctl -d /dev/v4l-subdev2 --get-ctrl exposure,analogue_gain   # 效度检查（只认 subdev 回读）
+# 还原：sudo cp /tmp/iq_backup.json $F && sudo systemctl restart rkaiq_3A.service
+```
+
+> **（v3.78）上例是"手工一次性"的做法，仅用于机制验证。正式流程请用 §15 的 `iq_sets.py`**
+> ——它把上述步骤固化为可复现的子命令，并产出 manifest 供防呆与指纹使用。
+
+---
+
+## 15. `iq_sets.py` —— IQ 两套档位（采集档 / 演示档）的生成、校验与切换（**v3.78 新增，= O62 的实现**）
+
+> **地位**：本目录的板上辅助工具（**非交付链路**）。**依据** = 主基准 §15 **O62**（v3.75 裁定两套 IQ、v3.77 定承载方式为纯 IQ 路径）与 **O40**（采集期关 3DNR）。
+> **证据**：机制验证见 `docs/evidence/M1-collect-tool-board.md` **§10.7**；**本工具的板上实测未做**（仅开发机合成 IQ 自测）。
+
+### 15.1 为什么必须换文件（而不是并存）
+
+`rkaiq_3A_server` 按 **sensor 名**匹配 IQ，且**硬编码 `/etc/iqfiles/`**、**仅支持 `--silent`**
+⇒ **同一 sensor 名下只能存在一份 IQ** ⇒ 采集档与演示档**必须换文件 + 重启 3A**。
+
+### 15.2 两套档位的差异
+
+| 档位 | 3DNR（`bayertnr_v2/TuningPara/enable`） | 用途 |
+|---|---|---|
+| **collect** | **0（关）** | U1/U2/U3/U4 取"纯净底"（O40） |
+| **demo** | **保持出厂值（1，开）** | 运行期观感 / 降噪（§9.2、§3.1 v3.1 ⑧） |
+
+**两档共同点**：`ae_calib/CommCtrl/AecOpType = RK_AIQ_OP_MODE_MANUAL` +
+`AecManualCtrl/LinearAE/{TimeValue, GainValue, IspDGainValue}` 设为目标值
+⇒ **`rkaiq_3A_server` 启动即固定曝光/增益**（**不动服务、零新增进程**）。
+**（v3.79 追加）** 还须写 **`AecFrameRateMode = {isFpsFix: 1, FpsValue: fps}`**（由 `build --fps` 写入）——
+否则即便物理已锁 30 fps，AE 仍按 sensor 默认 **60** 把曝光钳到 **2224 行**（**1/30 s 不可达**；证据 = 证据档 **§12**）。
+
+### 15.3 用法（板上）
+
+```bash
+# 0) 部署（与 capture_app.py 同批）
+ssh board 'mkdir -p ~/starlight/tools/collect'
+scp tools/collect/iq_sets.py board:~/starlight/tools/collect/
+
+# 1) 首次：把当前 /etc/iqfiles/ 的 IQ 固化为**出厂基线**（build 的输入、switch stock 的还原源）
+sudo python3 tools/collect/iq_sets.py import-stock
+
+# 2) 生成两套档位。**取值必须显式给出**（本工具不臆造取值）
+sudo python3 tools/collect/iq_sets.py build --exp-us 33333 --gain 4.0 --fps 30
+#    ⚠️ **（v3.79）`--fps` 为必填**——写 `AecFrameRateMode.{isFpsFix=1, FpsValue=fps}`；
+#       缺它则即便物理锁 30 fps，AE 仍按帧率把 1/30 s 钳到 2224 行（证据 = 证据档 §12）
+#    ⚠️ 固定曝光/增益的**最终取值 = M1 定稿项**（主基准 §15 O63）；**v3.79 起 O63 已收口**，
+#       30 fps 锁定下 1/30 s 可达 ⇒ 两套 IQ 已按 33333/4.0 重建（旧测点 15000/4.0 见 §11 证据）
+
+# 3) 只读：当前 IQ 是哪一档（= 防呆依据）
+python3 tools/collect/iq_sets.py status
+
+# 4) 换档（备份当前 → 复制 → 重启 3A → 回读校验 sha256）
+sudo python3 tools/collect/iq_sets.py switch collect     # 采集前
+sudo python3 tools/collect/iq_sets.py switch demo        # 演示前
+sudo python3 tools/collect/iq_sets.py switch stock       # 还原出厂
+
+# 5) 效度检查（**只认 sensor subdev 回读**；`getExp*` 不回读设定值）
+v4l2-ctl -d /dev/v4l-subdev2 --get-ctrl exposure,analogue_gain
+```
+
+### 15.4 产物布局
+
+```
+/etc/iqfiles_sets/
+├── stock/<sensor>.json     出厂基线（import-stock 落盘）
+├── collect/<sensor>.json   采集档（3DNR 关 + AEC 手动档）
+├── demo/<sensor>.json      演示档（3DNR 开 + AEC 手动档）
+└── manifest.json           文件名 + sha256 + 生成参数（**v3.79 增 `fps` 与 `aec_frame_rate_mode`**）+ 回读值（schema `iqsets/v1`）
+```
+
+**`manifest.json` 是 `iq_sets.py` 与 `capture_app.py` 之间的唯一接口**（后者只读它，不 import 本工具）。
+
+### 15.5 与 `capture_app.py` 的防呆关系（O62 ④(ii)）
+
+`capture_app.py` 启动时比对 manifest 与 `/etc/iqfiles/` 当前文件的 sha256：
+- **一致且 = collect** ⇒ 放行；
+- **否则一律拒采**（**fail-closed**：manifest 缺失 / schema 不符 / 档位不可判定**也拒**）；
+- `--no-iq-guard` 可绕过，但**会记入 sidecar**（`isp_fingerprint.iq_guard = 'bypassed'`）以便审计。
+
+⇒ **采集会话的固定动作序**：`switch collect` → 起 `capture_app.py`（确认页面横幅为绿）→ 采集 → `switch demo`（或 `stock`）。
+
+### 15.6 未验项与边界（如实登记）
+
+1. ~~板上实测未做~~ → **已补齐（v3.78 追加）**：真实 IQ 上 `import-stock` / `build` / `status` / 防呆 / `switch` **完整闭环通过**（`collect` 回读 **`exposure=2025` / `analogue_gain=40`**、60 fps；`switch stock` 还原 `4536f96a…` 逐位一致）。**残留 = 两套 IQ 的取值仍是测点**（`15000 µs` / `4.0×`）——最终取值 = M1 定稿项（O63），定稿后须**重跑 `build`**。证据 = `docs/evidence/M1-collect-tool-board.md` **§11**。**（v3.79 收口）**：O63 收口 ⇒ 两套 IQ 已按 **`--exp-us 33333 --gain 4.0 --fps 30`** 重建（collect sha256 **`7e1ec9da…`**、demo **`968a636d…`**，均 `TimeValue=0.033333` / `GainValue=4.0` / `(isFpsFix,FpsValue)=(1,30)`）；`--fps` 自 v3.79 起**必填**。证据 = 证据档 **§12**。
+2. **`switch` 的重启偶发失败（根因未定，登记 §12 R21）**——一次 `systemctl restart` 返回 0 但 `rkaiq_3A_server` 随退 ⇒ 服务 inactive。**已用 `is-active` 回读校验兜住**（未 active 即报错 + 给恢复命令 + 返回非零），**但不等于已消除**；换档后请确认输出含「服务 active」。
+3. **`switch` 会重启 `rkaiq_3A.service`**（有副作用）——采集与演示本就互斥（§2），故**只在会话前后各一次**，不做运行期热切换（O62 ④(iii)）。
+4. **换档重启对正在运行的取流者的影响未验**（须先停取流再换档；工具已加 `fuser` 前置告警）。
+5. **`manifest.json` 的路径是部署约定**（默认 `/etc/iqfiles_sets/`）——`iq_sets.py` 与 `capture_app.py` 必须一致；改路径须同时改两处的参数/默认值。
+6. **备份保留在 `sets_dir/.prev/`**（每次换档覆盖一份）——**不落在 `/etc/iqfiles/` 内**（旧版缺陷已修）；该目录可随时删，不影响 manifest。
+
+---
+
+## 16. `sensor_lock.py` —— 1080p@30 锁定（**v3.79 新增；仓库根共享模块**）
+
+> **地位**：**仓库根共享模块**（**非交付链路**，但**由交付链路的 TH1 调用**）。**依据** = 主基准 §9.5 ④（1080p@30 锁定）+ §10.4 键表 `camera.vblank_lines`。
+> **证据** = `docs/evidence/M1-collect-tool-board.md` **§12**；**登记** = 主基准 §10.3 + §14 v3.79（本文件 §8）。
+> **本模块不 import 本目录任何文件**；采集工具**只调用它**（§2 的"除 `sensor_lock.py` 外不 import 其它文件"即指此）。
+
+### 16.1 为什么需要它
+
+IMX415 的帧周期 = `VMAX 行数 × 行时`，而 `VMAX = height + vertical_blanking`。设备树**只提供 1080p@60** 的
+overlay（VMAX = 1080 + 1154 = 2234），且 `/dev/video11` **既不枚举帧率也不支持 `set-parm`**（`VIDIOC_G_PARM` = EINVAL，板上实测）
+⇒ **锁定只能走 sensor subdev 的 `V4L2_CID_VBLANK`**。本模块把「解析 subdev → 写 VBLANK → **回读校验**」固化为可复现调用。
+
+### 16.2 实测语义（**硬约束**，证据 = 证据档 §12）
+
+| 语义 | 实测 |
+|---|---|
+| 锁定值 | `vertical_blanking = 3405` ⇒ VMAX = **4485 行** ⇒ **30.0 fps**（行时 **7.433 µs**） |
+| 曝光上限联动 | **`exposure max = VMAX + 8`**（60 fps 时 2242、30 fps 时 4493）⇒ 1/30 s（4485 行）在 30 fps 下**可设** |
+| **停流即复位** | 取流前写入保持；**停流后回读回 1154（60 fps）** ⇒ **每次启动都必须在 `STREAMON` 之前重施** |
+| **必须在手动档下** | **stock 档（AE auto）** 流中 t=3 s 即把 vblank 写回 1154；**手动档（采集 / 演示档）** t=3…12 s 全程稳定 |
+| 第二机制（**IQ 帧率档**） | 物理 VMAX 抬升**不足以**解锁 1/30 s——rkaiq AE（即便手动档）按**帧率**算上界：IQ `AecFrameRateMode = {isFpsFix: 1, FpsValue: 0}` 时 `TimeValue=0.033333` 被钳到 **2224 行**；**`FpsValue=30`** 后回读 **4474 行**（⇒ 见 §15.2 的 `build --fps`） |
+
+### 16.3 用法
+
+```bash
+python3 sensor_lock.py --check                # 只读：运行时解析 sensor subdev + 回读当前 vblank
+sudo python3 sensor_lock.py --apply 3405      # 写入 + 回读校验（须在取流前执行）
+```
+库用法：`import sensor_lock; rc = sensor_lock.apply(3405, logger=log)`（`0` = OK；`-1` = **`E_V4L2`**，**不新增返回码**）。
+写入权限：板上 `/dev/v4l-subdev2` 属 **`root:video`** ⇒ **video 组成员可直接写**（TH1 自检即以用户 `cat` 身份通过）；否则需 root。
+
+### 16.4 调用方（两处）
+
+| 调用方 | 时机 | 失败处置 |
+|---|---|---|
+| **TH1 `capture.py`** | `Capture.init()` 在 `_n.capture.init()` 之后、`stream_on_once()` **之前** | `shutdown()` + RSM **`FAULT_EXIT`**（reason `sensor_lock_failed`） |
+| **采集工具 `capture_app.py`** | 启动 gst **之前** `lock_guard()`（参数 `--vblank-lines` / `--sensor-subdev`，见 §3） | **fail-closed**：**拒绝采集**（预览 / 对焦仍可用）；页面顶部显示锁定横幅；`/stat` 新增 `lock` 字段 |
+
+### 16.5 边界与未验项（如实登记）
+
+1. **依赖手动档 + IQ `FpsValue=30`**（登记主基准 §12 **R22**）——**stock 档下两者同时失效**（vblank 被写回、曝光被钳到 ≈1/60 s）；
+   缓解 = 采集工具 **fail-closed 防呆** + TH1 **强制项**。
+2. **部署硬约束**：采集工具**必须同时部署仓库根的 `sensor_lock.py`**（按 `__file__` 反推仓库根，见 §3），否则**启动即拒采**。
+3. **subdev 编号不写死**——判据 = 「**唯一暴露 `V4L2_CID_VBLANK` 的 v4l-subdev**」（板上 = `/dev/v4l-subdev2`，`m00_b_imx415 1-001a`；其余 4 个均无此控制）。
+4. **长跑（>10 min）稳定性未测**；**演示链路（`main.py`）整链未跑**（证据档 §12.7）。

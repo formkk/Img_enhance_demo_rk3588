@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, List, Optional
 import _starlight_native as _n
 
 import log as starlog
+import sensor_lock
 
 # ── §5 契约的 RSM / 触发 FSM 取值 ──────────────────────────────────────
 RSM_BOOT_CHECK = "BOOT_CHECK"
@@ -135,6 +136,14 @@ class Capture:
             self._transition(RSM_FAULT_EXIT, reason="v4l2_init_failed")
             return rc
         self._inited = True
+        # 1080p@30 锁定（§9.5 ④）：**必须在 STREAMON 之前**施加（停流即复位 ⇒ 每次启动都要重施）。
+        # 失败 = 强制项失败（30 fps 是 §11 M1 出口标准 #1；60 fps 下 1/30 s 曝光不可达，见 O63）
+        # ⇒ FAULT_EXIT，不得带病进演示态（§10.5 启动自检分级）。
+        rc = sensor_lock.apply(self.cfg.require_final("camera.vblank_lines"), logger=self.log)
+        if rc != 0:
+            self.shutdown()
+            self._transition(RSM_FAULT_EXIT, reason="sensor_lock_failed")
+            return rc
         return 0
 
     def stream_on_once(self) -> int:

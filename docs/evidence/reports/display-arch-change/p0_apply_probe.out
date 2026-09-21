@@ -1,0 +1,16 @@
+BUILD_OK
+=== A: 512x288 ===
+{"geom":{"out":"512x288 RGB888","curve":"480x270 x3 f32"},"iters":8,"fused_scalar_ms":{"min":8.815,"median":8.824,"p90":8.841,"max":32.042},
+"fused_neon_ms":{"min":3.991,"median":3.994,"p90":3.999,"max":4.008},
+"neon_vs_scalar":{"mismatch_bytes":0,"max_abs_delta":0,"total":442368},
+"unfused_ms":4.812,
+"ddr":{"frame_bytes":442368,"fused_bytes_per_frame":884736,"fused_MBps_at30":26.5,"unfused_bytes_per_frame":7077888,"unfused_MBps_at30":212.3,"ratio":8.0},
+"impl":"fused_neon"}
+
+=== B: 960x540 ===
+{"geom":{"out":"960x540 RGB888","curve":"480x270 x3 f32"},"iters":8,"fused_scalar_ms":{"min":30.959,"median":30.971,"p90":30.983,"max":31.972},
+"fused_neon_ms":{"min":14.023,"median":14.036,"p90":14.044,"max":14.056},
+"neon_vs_scalar":{"mismatch_bytes":0,"max_abs_delta":0,"total":1555200},
+"unfused_ms":17.340,
+"ddr":{"frame_bytes":1555200,"fused_bytes_per_frame":3110400,"fused_MBps_at30":93.3,"unfused_bytes_per_frame":24883200,"unfused_MBps_at30":746.5,"ratio":8.0},
+"impl":"fused_neon"}

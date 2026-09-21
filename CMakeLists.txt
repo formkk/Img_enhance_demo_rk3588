@@ -85,11 +85,12 @@ add_custom_command(TARGET _realtime_apply POST_BUILD
           "build-info: cmake=${CMAKE_VERSION} cxx=${CMAKE_CXX_COMPILER} pybind11=${pybind11_VERSION} python=${Python3_VERSION} suffix=${PY_EXT_SUFFIX} rknnrt=${RKNNRT_LIB}"
   COMMENT "记录构建版本三元组（§10.4 runtime.*）")
 
-# ── 设备内核扩展：capture(TH1) / rga / rknn / drm ─────────────────────
+# ── 设备内核扩展：capture(TH1) / rga / rknn(ZDE++) / hq(HQ) / drm / osd ─
 add_library(_starlight_native MODULE
   native/v4l2_core.c
   native/rga_core.c
   native/rknn_core.c
+  native/hq_core.c
   native/drm_core.c
   native/osd_core.c
   native/starlight_native_pybind.cpp)
@@ -119,5 +120,5 @@ set_target_properties(_starlight_native PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # 同一浮点收缩纪律（与 apply_core.c 一致；标量参考与 NEON 须逐位一致）
-set_source_files_properties(native/rga_core.c native/rknn_core.c native/v4l2_core.c native/drm_core.c native/osd_core.c
+set_source_files_properties(native/rga_core.c native/rknn_core.c native/hq_core.c native/v4l2_core.c native/drm_core.c native/osd_core.c
   PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")

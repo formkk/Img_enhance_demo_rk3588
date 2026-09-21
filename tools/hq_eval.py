@@ -101,15 +101,34 @@ def row_col_diff(ref, cand):
     return {'row_diff': prof(row), 'col_diff': prof(col)}
 
 
+def _cv2_or_none():
+    """可视化用的 cv2 惰性获取：缺失时返回 None，由调用方**优雅跳过**。
+
+    **理由**：`gate` 的**判定依据是数值**（张量 max / PSNR），与绘图库无关；
+    cv2 只用于输出 diff/预览 PNG。缺 cv2 时不应让整条判定链失败。
+    """
+    try:
+        import cv2
+        return cv2
+    except ImportError:
+        return None
+
+
 def diff_map_png(path, diff, gain=20.0):
-    import cv2
+    cv2 = _cv2_or_none()
+    if cv2 is None:
+        print(f'[warn] 缺 cv2，跳过 diff 可视化：{path}')
+        return
     d = np.clip(diff * gain, 0.0, 1.0)
     rgb = (np.transpose(d, (1, 2, 0)) * 255.0).astype(np.uint8)
     cv2.imwrite(path, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
 
 
 def save_rgb_png(path, img_chw):
-    import cv2
+    cv2 = _cv2_or_none()
+    if cv2 is None:
+        print(f'[warn] 缺 cv2，跳过预览可视化：{path}')
+        return
     rgb = (np.clip(np.transpose(img_chw, (1, 2, 0)), 0.0, 1.0) * 255.0).astype(np.uint8)
     cv2.imwrite(path, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
 
@@ -255,7 +274,14 @@ def cmd_gate(args):
         'image': image_metrics(np.clip(ref, 0, 1), np.clip(control, 0, 1)),
         **row_col_diff(ref, control),
     }
-    thresholds = {'tensor_max_abs_fp16': 1e-3, 'image_psnr_db_fp16': 70.0}
+    # FP16 档阈值按「模型族」取（v3.55 裁定 O35）：ZDE++ 族与 HQ/Retinexformer 族各一套。
+    # 阈值来源 = 主基准 §11.2 M0-①b；本工具**不重定义阈值**，只按族选用。
+    family = getattr(args, 'family', 'zde')
+    if family == 'hq':
+        thresholds = {'tensor_max_abs_fp16': 1.5e-2, 'image_psnr_db_fp16': 64.0}
+    else:
+        thresholds = {'tensor_max_abs_fp16': 1e-3, 'image_psnr_db_fp16': 70.0}
+    report['family'] = family
     report['thresholds'] = thresholds
 
     for spec in args.cand:
@@ -316,6 +342,12 @@ def main():
     pg.add_argument('--out-dir', default='')
     pg.add_argument('--diff-gain', type=float, default=20.0)
     pg.add_argument('--out', default='')
+    # 模型族（v3.55 裁定 O35）：FP16 档的阈按「模型族 × 精度档」细分
+    #   zde = ZDE++ 族（张量 ≤1e-3 且图像域 PSNR ≥70 dB）
+    #   hq  = HQ / Retinexformer 族（张量 ≤1.5e-2 且图像域 PSNR ≥64 dB）
+    # 默认 `zde` 以保持既有行为不变（既有报告均为 ZDE++ 族口径）。
+    pg.add_argument('--family', choices=['zde', 'hq'], default='zde',
+                    help='FP16 档的阈值族（O35）：zde=ZDE++（≤1e-3/≥70dB）；hq=Retinexformer（≤1.5e-2/≥64dB）')
 
     args = p.parse_args()
     if args.mode == 'weights':

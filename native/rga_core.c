@@ -60,9 +60,9 @@ int dma_heap_alloc_system(size_t nbytes, void** va) {
 static struct {
     int   configured;
     rga_cfg_t cfg;
-    int   est_fd, win_fd, enh_fd, zero_fd, stage_fd;
-    void *est_va, *win_va, *enh_va, *zero_va, *stage_va;
-    rga_buffer_t est_full, est_eff, win_full, enh_full, zero_full, stage_full;
+    int   est_fd, win_fd, enh_fd, zero_fd, stage_fd, hq_fd;
+    void *est_va, *win_va, *enh_va, *zero_va, *stage_va, *hq_va;
+    rga_buffer_t est_full, est_eff, win_full, enh_full, zero_full, stage_full, hq_content;
     uint64_t last_blit_ns, last_canvas_ns;
 } g;
 
@@ -84,6 +84,28 @@ int rga_configure(const rga_cfg_t* cfg) {
     if (g.est_fd < 0 || g.win_fd < 0 || g.enh_fd < 0 || g.zero_fd < 0 || g.stage_fd < 0)
         return RGA_E_STATE;
     memset(g.zero_va, 0, est_bytes);
+
+    /* **（v3.84）** HQ 关键帧输入目标（TH3）。`hq_w/hq_h` 为 0 时**不分配**，
+       既有 TH4 调用方行为与改造前完全一致（零回归）。
+       **（v3.86 追加 35）** 按 §3.1 `hq_shape_ladder` 主档：缓冲为 `hq_w×hq_h`（960×544），
+       内容只写第 `hq_pad_top..hq_h-hq_pad_top-1` 行（960×540），上下各 2 行为**零 pad**
+       ——pad 行在下述一次性 memset 后不再被写（`dst_of` 返回内容子视图；哨兵校验见工具
+       `tools/hq_frame_review.py` 的 `pad_rows_zero`）。 */
+    g.hq_fd = -1;
+    g.hq_va = NULL;
+    memset(&g.hq_content, 0, sizeof(g.hq_content));
+    if (cfg->hq_w > 0 && cfg->hq_h > 0) {
+        if (cfg->hq_pad_top * 2u >= cfg->hq_h) return RGA_E_STATE;   /* 内容高必须 > 0 */
+        const size_t hq_bytes = (size_t)cfg->hq_w * cfg->hq_h * 3;
+        g.hq_fd = dma_heap_alloc("system-dma32", hq_bytes, &g.hq_va);
+        if (g.hq_fd < 0) return RGA_E_STATE;
+        memset(g.hq_va, 0, hq_bytes);          /* pad 行 = 零；blit 只写内容子视图 ⇒ 保持零 */
+        /* 内容子视图：偏移基址（drect 的 y 偏移须偶对齐；与 est_eff 同机制，O32） */
+        g.hq_content = wrapbuffer_virtualaddr_t(
+            (uint8_t*)g.hq_va + (size_t)cfg->hq_w * 3 * cfg->hq_pad_top,
+            cfg->hq_w, cfg->hq_h - 2 * cfg->hq_pad_top,
+            cfg->hq_w, cfg->hq_h, RK_FORMAT_RGB_888);
+    }
 
     g.est_full = wrapbuffer_virtualaddr_t(g.est_va, cfg->pad_w, cfg->pad_h,
                                           cfg->pad_w, cfg->pad_h, RK_FORMAT_RGB_888);
@@ -125,20 +147,23 @@ int rga_configure(const rga_cfg_t* cfg) {
 
 void rga_shutdown(void) {
     /* 只解映射；dmabuf fd 不 close（§5 硬契约），随进程释放 */
-    void* vas[] = { g.est_va, g.win_va, g.enh_va, g.zero_va, g.stage_va };
-    size_t lens[5];
+    void* vas[] = { g.est_va, g.win_va, g.enh_va, g.zero_va, g.stage_va, g.hq_va };
+    size_t lens[6];
     lens[0] = (size_t)g.cfg.pad_w * g.cfg.pad_h * 3;
     lens[1] = (size_t)g.cfg.win_w * g.cfg.win_h * 3;
     lens[2] = lens[1];
     lens[3] = lens[0];
     lens[4] = (size_t)g.cfg.cap_w * g.cfg.cap_h * 3 / 2;
-    for (int i = 0; i < 5; i++)
-        if (vas[i]) munmap(vas[i], lens[i]);
+    lens[5] = (size_t)g.cfg.hq_w * g.cfg.hq_h * 3;   /* hq_w/hq_h = 0 时长度 0，munmap 前已判空 */
+    for (int i = 0; i < 6; i++)
+        if (vas[i] && lens[i]) munmap(vas[i], lens[i]);
     memset(&g, 0, sizeof(g));
 }
 
 static rga_buffer_t* dst_of(rga_dst_t dst) {
-    return (dst == RGA_DST_WIN) ? &g.win_full : &g.est_eff;
+    if (dst == RGA_DST_WIN) return &g.win_full;
+    if (dst == RGA_DST_HQ)  return &g.hq_content;   /* 内容子视图（pad 行留零；§3.1） */
+    return &g.est_eff;
 }
 
 static int blit_nv12(rga_buffer_t src, rga_dst_t dst) {
@@ -146,9 +171,15 @@ static int blit_nv12(rga_buffer_t src, rga_dst_t dst) {
     rga_buffer_t pat;
     memset(&pat, 0, sizeof(pat));
     const im_rect srect = {0, 0, (int)g.cfg.cap_w, (int)g.cfg.cap_h};
-    const im_rect drect = {0, 0,
-                           (int)((dst == RGA_DST_WIN) ? g.cfg.win_w : g.cfg.eff_w),
-                           (int)((dst == RGA_DST_WIN) ? g.cfg.win_h : g.cfg.eff_h)};
+    int dw = (int)g.cfg.eff_w, dh = (int)g.cfg.eff_h;
+    if (dst == RGA_DST_WIN) { dw = (int)g.cfg.win_w; dh = (int)g.cfg.win_h; }
+    /* **（v3.86 追加 35）** HQ：目标 = **内容子视图**（`hq_h - 2*hq_pad_top` 行，§3.1 pad 机制）
+       ⇒ 1920×1080 等比缩至内容高（主档 960×540），上下 pad 行留零。 */
+    else if (dst == RGA_DST_HQ) {
+        dw = (int)g.cfg.hq_w;
+        dh = (int)g.cfg.hq_h - 2 * (int)g.cfg.hq_pad_top;
+    }
+    const im_rect drect = {0, 0, dw, dh};
     const uint64_t t0 = mono_ns();
     const IM_STATUS s = improcess(src, *dst_of(dst), pat, srect, drect, prect, IM_SYNC);
     g.last_blit_ns = mono_ns() - t0;
@@ -157,6 +188,7 @@ static int blit_nv12(rga_buffer_t src, rga_dst_t dst) {
 
 int rga_blit_nv12_fd(int src_fd, rga_dst_t dst) {
     if (!g.configured || src_fd < 0) return RGA_E_STATE;
+    if (dst == RGA_DST_HQ && (g.cfg.hq_w == 0 || g.cfg.hq_h == 0)) return RGA_E_STATE;
     rga_buffer_t src = wrapbuffer_fd_t(src_fd, g.cfg.cap_w, g.cfg.cap_h,
                                        g.cfg.cap_w, g.cfg.cap_h, RK_FORMAT_YCbCr_420_SP);
     return blit_nv12(src, dst);
@@ -164,6 +196,7 @@ int rga_blit_nv12_fd(int src_fd, rga_dst_t dst) {
 
 int rga_blit_nv12_va(const void* src_va, rga_dst_t dst) {
     if (!g.configured || !src_va) return RGA_E_STATE;
+    if (dst == RGA_DST_HQ && (g.cfg.hq_w == 0 || g.cfg.hq_h == 0)) return RGA_E_STATE;
     rga_buffer_t src = wrapbuffer_virtualaddr_t((void*)src_va, g.cfg.cap_w, g.cfg.cap_h,
                                                 g.cfg.cap_w, g.cfg.cap_h, RK_FORMAT_YCbCr_420_SP);
     return blit_nv12(src, dst);
@@ -194,6 +227,9 @@ void* rga_enh_va(void)     { return g.enh_va; }
 void* rga_stage_va(void)   { return g.stage_va; }
 int   rga_est_fd(void)     { return g.est_fd; }
 int   rga_win_fd(void)     { return g.win_fd; }
-int   rga_enh_fd(void)     { return g.enh_fd; }
+int   rga_enh_fd(void)   { return g.enh_fd; }
+int   rga_stage_fd(void) { return g.stage_fd; }
+void* rga_hq_va(void)    { return g.hq_va; }
+int   rga_hq_fd(void)    { return g.hq_fd; }
 uint64_t rga_last_blit_ns(void)  { return g.last_blit_ns; }
 uint64_t rga_last_canvas_ns(void){ return g.last_canvas_ns; }

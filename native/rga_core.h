@@ -26,7 +26,9 @@ extern "C" {
 /* 目标缓冲选择 */
 typedef enum {
     RGA_DST_EST = 0,   /* 曲线估计输入（pad 缓冲的有效区子视图） */
-    RGA_DST_WIN = 1    /* 原图窗（win_w×win_h） */
+    RGA_DST_WIN = 1,   /* 原图窗（win_w×win_h） */
+    RGA_DST_HQ  = 2    /* **（v3.84 新增）** HQ 关键帧输入（hq_w×hq_h = `hq.active_shape`）；
+                          **（v3.86 追加 35）** 实际写入其**内容子视图**（§3.1 pad 机制） */
 } rga_dst_t;
 
 typedef struct {
@@ -37,6 +39,14 @@ typedef struct {
     uint32_t win_w, win_h;       /* 应用域/显示窗（512×288） */
     uint32_t canvas_w, canvas_h; /* MIPI 画布（1024×600） */
     uint32_t core_mask;          /* §10.4 rga.core_mask；0 = 不调用 imconfig */
+    /* **（v3.84 新增，追加在末尾以不改既有字段偏移）** HQ 关键帧输入尺寸（= `hq.active_shape`）。
+       0 = 不分配 HQ 目标（既有 TH4 调用方不传时行为与改造前完全一致）。 */
+    uint32_t hq_w, hq_h;
+    /* **（v3.86 追加 35）** HQ 内容区在 `hq_h` 缓冲中的起始行（§3.1 `hq_shape_ladder` 主档：
+       `960×544` = 内容 `960×540` + 上下各 2 行零 pad；降级档 pad_top = 0）。
+       本字段 > 0 时：blit 只写内容子视图（第 `hq_pad_top..hq_h-hq_pad_top-1` 行），
+       pad 行在缓冲池初始化时**一次性 memset 零**并保持零（§3.1 契约 G1 的 pad 机制）。 */
+    uint32_t hq_pad_top;
 } rga_cfg_t;
 
 /* 通用 dma-buf 分配（system-dma32）。供**按精度定尺寸**的发布缓冲使用（如曲线场）。 */
@@ -64,6 +74,10 @@ void* rga_stage_va(void);
 int   rga_est_fd(void);
 int   rga_win_fd(void);
 int   rga_enh_fd(void);
+int   rga_stage_fd(void);   /* **（v3.84 新增）** staging NV12 缓冲的 dmabuf fd（只读查询） */
+/* **（v3.84 新增）** HQ 目标缓冲（仅当 `rga_cfg_t.hq_w/hq_h` 非 0 时有效） */
+void* rga_hq_va(void);
+int   rga_hq_fd(void);
 /* 最近一次 blit 的耗时（ns，CLOCK_MONOTONIC 差值；供函数级打点） */
 uint64_t rga_last_blit_ns(void);
 uint64_t rga_last_canvas_ns(void);

@@ -1,0 +1,60 @@
+{
+  "schema": "capture/v2",
+  "scene_id": "01",
+  "slot": 1,
+  "frame_id": "260921_01_0001_gt",
+  "pair_id": "01",
+  "capture_batch": "B20260921-1232",
+  "kind": "gt",
+  "time": {
+    "mono_ns": 1522144502931,
+    "utc_iso8601": "2026-09-21T04:37:09.737350+00:00"
+  },
+  "capture_condition": {
+    "device": "/dev/video11",
+    "resolution": "1920x1080",
+    "pixel_format": "NV12",
+    "gst_pipeline": "gst-launch-1.0 -q v4l2src device=/dev/video11 ! video/x-raw,format=NV12,width=1920,height=1080 ! videoconvert ! video/x-raw,format=NV12 ! tee name=t t. ! queue ! mppjpegenc ! multipartmux boundary=frame ! fdsink fd=1 t. ! queue leaky=downstream max-size-buffers=2 silent=true ! fdsink fd=4",
+    "stride": 1920,
+    "uv_offset": 2073600,
+    "size_bytes": 3110400
+  },
+  "pair": {
+    "pair_frame_id": "01_0001_dark",
+    "gt_source": "light_source_modulation",
+    "geometry_alignment": "same_frame_no_motion"
+  },
+  "file": {
+    "name": "260921_01_0001_gt.nv12",
+    "bytes": 3110400
+  },
+  "isp_fingerprint": {
+    "iq_file": "imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json",
+    "iq_hash": "ff7fb3e92865eabe53a0f5d4181ab0b3e99672682d54b37da73f9d65f67e2a6c",
+    "iq_set": "collect",
+    "iq_guard": "ok",
+    "_pending": [
+      "gamma_table",
+      "ccm",
+      "black_level",
+      "awb_lock",
+      "nr_2d",
+      "nr_3d",
+      "dpc"
+    ]
+  },
+  "csc": null,
+  "sensor_ctrl": null,
+  "illuminance": null,
+  "optics": null,
+  "split": null,
+  "dataset_version": null,
+  "_pending": [
+    "csc",
+    "sensor_ctrl",
+    "illuminance",
+    "optics",
+    "split",
+    "dataset_version"
+  ]
+}

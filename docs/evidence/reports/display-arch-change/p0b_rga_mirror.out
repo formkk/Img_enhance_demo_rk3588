@@ -1,0 +1,7 @@
+BUILD_OK
+=== 1) mirror 1024x600 -> 1920x1080 ===
+rga_api version 1.9.2_[1]
+{"src":"1024x600 RGB888","dst":"1920x1080 RGB888","runs":30,"core_mask":3,"ms":{"min":1.792,"median":2.009,"p90":2.166,"max":2.227},"ddr":{"frame_bytes":8064000,"fused_MBps_at30":241.9,"fused_MBps_at22":177.4},"warmup":1}
+=== 2) HQ 960x540 -> 1920x1080 ===
+rga_api version 1.9.2_[1]
+{"src":"960x540 RGB888","dst":"1920x1080 RGB888","runs":30,"core_mask":3,"ms":{"min":1.771,"median":1.940,"p90":2.146,"max":2.188},"ddr":{"frame_bytes":7776000,"fused_MBps_at30":233.3,"fused_MBps_at22":171.1},"warmup":1}

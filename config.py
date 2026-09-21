@@ -29,7 +29,7 @@ KEY_TABLE: Tuple[str, ...] = (
     "board.model", "board.cam_port", "board.cam_lanes", "board.overlay",
     # 采集
     "camera.video_node", "camera.rkisp_node", "camera.mainpath_only",
-    "camera.mode_class", "camera.fps", "camera.exposure_us", "camera.gain_*",
+    "camera.mode_class", "camera.fps", "camera.vblank_lines", "camera.exposure_us", "camera.gain_*",
     # ISP
     "isp.presets", "isp.fingerprint", "isp.csc_matrix", "isp.rgb_range",
     "isp.nr_3d_ref_frames",
@@ -44,16 +44,19 @@ KEY_TABLE: Tuple[str, ...] = (
     "pipeline.curve_level", "pipeline.curve_geometry", "pipeline.curve_field_precision",
     "pipeline.apply_scope", "pipeline.curve_upsample", "pipeline.est_freq_hz",
     "pipeline.ema_alpha",
-    # HQ
+    # HQ（**v3.85 裁定 O82**：`hq.hold_policy` / `hq.fade_ms` / `hq.mipi_preview_ms` /
+    #     `hq.mipi_preview_rect` **四键取消**——"替换保持 / 淡入 / 弹层"对象消失，见 §3.5、§10.4）
     "hq.model_id", "hq.shape_ladder", "hq.active_shape", "hq.pad_crop_policy",
-    "hq.hold_policy", "hq.fade_ms", "hq.mipi_preview_ms", "hq.mipi_preview_rect",
-    # 触发
-    "trigger.sources", "trigger.debounce_ms", "trigger.interval_s",
+    # 触发（**v3.85 裁定 O82**：`trigger.sources` / `trigger.interval_s` **两键取消**，
+    #     触发源收敛为单源「指针点击」⇒ 本域仅剩 `debounce_ms`）
+    "trigger.debounce_ms",
     # UI
     "ui.button_layout", "ui.hit_area_min_px", "ui.reset_hold_ms",
     "ui.osd_metrics_px", "ui.osd_status_row_px", "ui.osd_plot_px",
     "ui.osd_status_fields", "ui.osd_stats_decimate", "ui.osd_stats_hz",
     "ui.osd_font_px",
+    # UI（**v3.85 裁定 O79 / O81 新增 2 键**：全屏 HQ 视图兜底退出 / 指针输入鼠标 evdev 节点）
+    "ui.fullscreen_timeout_ms", "ui.pointer_mouse_node",
     # 计量
     "metrics.window_frames", "metrics.timestamp_domain", "metrics.timestamp_source",
     "metrics.pair_by", "metrics.report_breakdown", "metrics.idle_link_baseline",

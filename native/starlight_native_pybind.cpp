@@ -21,6 +21,7 @@
 #include "osd_core.h"
 #include "rga_core.h"
 #include "rknn_core.h"
+#include "hq_core.h"
 #include "v4l2_core.h"
 
 namespace py = pybind11;
@@ -116,6 +117,8 @@ py::dict rga_info() {
 }
 
 /* ── drm ─────────────────────────────────────────────────────────────── */
+/* **（v3.84 第②批）单实例 · 单 master fd · 多 CRTC**：`drm_info()` 反映**槽 0（DSI）**，
+   并新增 `crtc_count` = 已就绪槽数；槽 1（HDMI）的查询走 `*_slot` 系列。 */
 py::dict drm_info() {
     py::dict d;
     d["configured"] = (bool)drm_is_configured();
@@ -132,8 +135,31 @@ py::dict drm_info() {
     d["last_submit_ns"] = drm_last_submit_ns();
     d["last_flip_ns"] = drm_last_flip_ns();
     d["last_flip_seq"] = drm_last_flip_seq();
+    d["crtc_count"] = drm_slot_count();
     d["last_error"] = std::string(drm_last_error());
     d["last_errno"] = drm_last_errno();
+    return d;
+}
+
+/* 槽级 info（`drm_info_slot`）：字段与 `drm_info()` 同构，便于两槽统一上报。 */
+py::dict drm_info_slot(int slot) {
+    py::dict d;
+    d["slot"] = slot;
+    d["configured"] = (bool)drm_is_configured_slot(slot);
+    d["connector_id"] = drm_connector_id_slot(slot);
+    d["crtc_id"] = drm_crtc_id_slot(slot);
+    d["mode_name"] = std::string(drm_mode_name_slot(slot));
+    d["hdisplay"] = drm_mode_hdisplay_slot(slot);
+    d["vdisplay"] = drm_mode_vdisplay_slot(slot);
+    d["vrefresh"] = drm_mode_vrefresh_slot(slot);
+    d["canvas_stride"] = drm_canvas_stride_slot(slot);
+    d["canvas_count"] = drm_canvas_count_slot(slot);
+    d["flip_count"] = drm_flip_count_slot(slot);
+    d["flip_skipped"] = drm_flip_skipped_slot(slot);
+    d["last_submit_ns"] = drm_last_submit_ns_slot(slot);
+    d["last_flip_ns"] = drm_last_flip_ns_slot(slot);
+    d["last_flip_seq"] = drm_last_flip_seq_slot(slot);
+    d["connector_status"] = drm_connector_status(slot);
     return d;
 }
 
@@ -198,11 +224,17 @@ PYBIND11_MODULE(_starlight_native, m) {
         c.canvas_w = d["canvas_w"].cast<uint32_t>();
         c.canvas_h = d["canvas_h"].cast<uint32_t>();
         c.core_mask = d["core_mask"].cast<uint32_t>();
+        /* **（v3.84）** 可选：HQ 关键帧目标尺寸（不传则 0 = 不分配，行为与改造前一致）
+           **（v3.86 追加 35）** 可选：`hq_pad_top` = 内容区在 hq 缓冲中的起始行
+           （§3.1 主档 2 行零 pad；不传则 0 = 内容占满，行为与改造前一致） */
+        c.hq_w = d.contains("hq_w") ? d["hq_w"].cast<uint32_t>() : 0u;
+        c.hq_h = d.contains("hq_h") ? d["hq_h"].cast<uint32_t>() : 0u;
+        c.hq_pad_top = d.contains("hq_pad_top") ? d["hq_pad_top"].cast<uint32_t>() : 0u;
         return rga_configure(&c);
     }, py::arg("cfg"));
     rga.def("is_configured", &rga_is_configured);
     rga.def("blit_nv12_fd", [](int fd, int dst) { return rga_blit_nv12_fd(fd, (rga_dst_t)dst); },
-            py::arg("src_fd"), py::arg("dst"), "dst: 0=EST 1=WIN");
+            py::arg("src_fd"), py::arg("dst"), "dst: 0=EST 1=WIN 2=HQ");
     rga.def("blit_nv12_va", [](Buffer& src, int dst) {
         return rga_blit_nv12_va(src.ptr(), (rga_dst_t)dst);
     }, py::arg("src"), py::arg("dst"), "staging 兜底路径");
@@ -226,6 +258,12 @@ PYBIND11_MODULE(_starlight_native, m) {
     rga.def("stage", [](py::dict cfg) {
         return wrap_va(rga_stage_va(), cfg["cap_w"].cast<size_t>() * cfg["cap_h"].cast<size_t>() * 3 / 2, false);
     }, py::arg("cfg"));
+    /* **（v3.84 新增）** HQ 关键帧输入目标（960×544 RGB888）；需 rga.configure 传 hq_w/hq_h */
+    rga.def("hq", [](py::dict cfg) {
+        return wrap_va(rga_hq_va(), cfg["hq_w"].cast<size_t>() * cfg["hq_h"].cast<size_t>() * 3, false);
+    }, py::arg("cfg"));
+    rga.def("hq_fd", &rga_hq_fd);
+    rga.def("stage_fd", &rga_stage_fd);
     rga.def("win_fd", &rga_win_fd);
     rga.def("enh_fd", &rga_enh_fd);
     rga.def("est_fd", &rga_est_fd);
@@ -260,8 +298,50 @@ PYBIND11_MODULE(_starlight_native, m) {
     rk.def("last_estimate_ns", &rknn_last_estimate_ns);
     rk.def("slice_count", &rknn_slice_count);
 
-    /* ── drm（TH4）────────────────────────────────────────────────── */
-    auto drm = m.def_submodule("drm", "DRM 单 CRTC（DSI）+ 画布双缓冲 + pageflip");
+    /* ── rknn_hq（TH3 关键帧：HQ / Retinexformer 单帧整幅推理）──────────
+       **独立子模块**（不复用 `rknn`）——ZDE++ 与 HQ 是两套模型/两套调用约定，
+       分开可避免 core_mask 语义混淆（ZDE++ = 逐条带数组；HQ = 单核标量）。 */
+    auto hq = m.def_submodule("rknn_hq", "HQ（Retinexformer）关键帧推理：NHWC f32[0,255] → NCHW f32[0,1]");
+    hq.def("init", [](const std::string& model, py::dict d) {
+        hq_cfg_t c;
+        std::memset(&c, 0, sizeof(c));
+        c.w = d["w"].cast<uint32_t>();
+        c.h = d["h"].cast<uint32_t>();
+        c.core_mask = d.contains("core_mask") ? d["core_mask"].cast<int32_t>() : 0;
+        return hq_init(model.c_str(), &c);
+    }, py::arg("model"), py::arg("cfg"));
+    hq.def("deinit", &hq_deinit);
+    hq.def("ready", &hq_ready);
+    hq.def("run", [](py::buffer in_rgb, py::buffer out) {
+        py::buffer_info bi = in_rgb.request();
+        py::buffer_info bo = out.request();
+        const float* pin = (const float*)bi.ptr;
+        float* pout = (float*)bo.ptr;
+        int rc = 0;
+        /* **必须释放 GIL**：HQ 单帧推理 ~8 s，pybind 默认持 GIL ⇒ 会把主 Python 线程
+           （TH4 合成主循环）冻住 8 s，使"独立线程"方案被 GIL 架空（实测：8.3 s 内 MIPI
+           仅翻 1 帧）。取 buffer 指针需持 GIL，故在其后释放、调用完再收回。 */
+        {
+            py::gil_scoped_release rel;
+            rc = hq_run(pin, pout);
+        }
+        return rc;
+    }, py::arg("in_rgb"), py::arg("out"));
+    hq.def("last_run_ns", &hq_last_run_ns);
+    hq.def("core_mask_ret", &hq_core_mask_ret);
+    /* **（v3.84）** RGB888（uint8）→ NHWC float32 [0,255]：RGA 只能出 uint8，模型要 f32 */
+    hq.def("pack_rgb888_nhwc_f32", [](py::buffer rgb, py::buffer out, uint32_t w, uint32_t h) {
+        py::buffer_info bi = rgb.request();
+        py::buffer_info bo = out.request();
+        const uint8_t* pin = (const uint8_t*)bi.ptr;
+        float* pout = (float*)bo.ptr;
+        /* 1.57M 元素的转换循环同样**释放 GIL**（与 `run` 同理由，量级较小但同性质） */
+        py::gil_scoped_release rel;
+        hq_pack_rgb888_nhwc_f32(pin, pout, w, h);
+    }, py::arg("rgb"), py::arg("out"), py::arg("w"), py::arg("h"));
+
+    /* ── drm（TH4 MIPI / TH5 HDMI）───────────────────────────────────── */
+    auto drm = m.def_submodule("drm", "DRM 单实例多 CRTC（slot0=DSI / slot1=HDMI）+ 画布双缓冲 + pageflip");
     drm.def("configure", [](py::dict d) {
         drm_cfg_t c;
         std::memset(&c, 0, sizeof(c));
@@ -273,21 +353,52 @@ PYBIND11_MODULE(_starlight_native, m) {
         c.nbuf = d["nbuf"].cast<uint32_t>();
         return drm_configure(&c);
     }, py::arg("cfg"));
+    /* **（v3.84 新增）** 按槽配置（0 = DSI、1 = HDMI-A）；两槽共用同一 fd 与 master */
+    drm.def("configure_slot", [](int slot, py::dict d) {
+        drm_cfg_t c;
+        std::memset(&c, 0, sizeof(c));
+        const std::string card = d.contains("card") ? d["card"].cast<std::string>() : "/dev/dri/card0";
+        std::snprintf(c.card, sizeof(c.card), "%s", card.c_str());
+        c.conn_id = d.contains("conn_id") ? d["conn_id"].cast<uint32_t>() : 0u;
+        c.canvas_w = d["canvas_w"].cast<uint32_t>();
+        c.canvas_h = d["canvas_h"].cast<uint32_t>();
+        c.nbuf = d["nbuf"].cast<uint32_t>();
+        return drm_configure_slot(slot, &c);
+    }, py::arg("slot"), py::arg("cfg"));
     drm.def("is_configured", &drm_is_configured);
+    drm.def("is_configured_slot", &drm_is_configured_slot, py::arg("slot"));
+    drm.def("slot_count", &drm_slot_count, "已就绪的 CRTC 槽数（供 crtc_count）");
     drm.def("compose_flip", &drm_compose_flip, py::arg("buf_idx"), py::arg("seq") = 0);
+    drm.def("compose_flip_slot", &drm_compose_flip_slot,
+            py::arg("slot"), py::arg("buf_idx"), py::arg("seq") = 0);
     drm.def("wait_flip", &drm_wait_flip);
+    drm.def("wait_flip_slot", &drm_wait_flip_slot, py::arg("slot"));
     drm.def("shutdown", &drm_shutdown);
     drm.def("info", &drm_info);
+    drm.def("info_slot", &drm_info_slot, py::arg("slot"));
+    drm.def("connector_status", &drm_connector_status, py::arg("slot"),
+            "槽对应 connector 的连接状态：1=connected / 0=disconnected / 负值=查询失败");
     drm.def("canvas", [](int idx, py::dict cfg) {
         return wrap_va(drm_canvas_va(idx),
                        cfg["canvas_w"].cast<size_t>() * cfg["canvas_h"].cast<size_t>() * 3, false);
     }, py::arg("index"), py::arg("cfg"));
+    drm.def("canvas_slot", [](int slot, int idx, py::dict cfg) {
+        return wrap_va(drm_canvas_va_slot(slot, idx),
+                       cfg["canvas_w"].cast<size_t>() * cfg["canvas_h"].cast<size_t>() * 3, false);
+    }, py::arg("slot"), py::arg("index"), py::arg("cfg"));
     drm.def("canvas_fd", &drm_canvas_fd, py::arg("index"));
+    drm.def("canvas_fd_slot", &drm_canvas_fd_slot, py::arg("slot"), py::arg("index"));
     /* §6.5：显示时间戳取 pageflip 完成的 vblank，不取提交时刻 —— 供 TH4 上报 */
     drm.def("last_submit_ns", &drm_last_submit_ns);
     drm.def("last_flip_ns", &drm_last_flip_ns);
     /* §6.5：回调取回的 seq，与提交值比对即为「按 seq 回填配对」 */
     drm.def("last_flip_seq", &drm_last_flip_seq);
+    /* **（v3.84 新增）按槽版本**（`drm_last_*` 仍 = 槽 0，语义不变） */
+    drm.def("last_submit_ns_slot", &drm_last_submit_ns_slot, py::arg("slot"));
+    drm.def("last_flip_ns_slot", &drm_last_flip_ns_slot, py::arg("slot"));
+    drm.def("last_flip_seq_slot", &drm_last_flip_seq_slot, py::arg("slot"));
+    drm.def("flip_count_slot", &drm_flip_count_slot, py::arg("slot"));
+    drm.def("flip_skipped_slot", &drm_flip_skipped_slot, py::arg("slot"));
 
     /* ── osd（TH4 的像素原语；布局由 osd.py 决定）────────────────────── */
     auto osd = m.def_submodule("osd", "OSD 绘制原语：矩形 / 线段 / 字形 blit");

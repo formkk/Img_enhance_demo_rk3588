@@ -1,0 +1,243 @@
+[    4.391330] imx415 1-001a: driver version: 00.01.08
+[    4.391363] imx415 1-001a:  Get hdr mode failed! no hdr default
+[    4.391373] imx415 1-001a:  Get data lanes failed! 4 lanes default
+[    4.391383] imx415 1-001a: detect imx415 lane 4
+[    4.391440] imx415 1-001a: Failed to get power-gpios
+[    4.391452] imx415 1-001a: no pinctrl
+[    4.391462] imx415 1-001a: Looking up dvdd-supply from device tree
+[    4.392803] imx415 1-001a: Looking up dovdd-supply from device tree
+[    4.395138] imx415 1-001a: Looking up avdd-supply from device tree
+[    4.468528] imx415 1-001a: Detected imx415 id 0000e0
+[    4.538241] rockchip-csi2-dphy csi2-dcphy0: dphy0 matches m00_b_imx415 1-001a:bus type 5
+[   14.652524] imx415 1-001a: set fmt: cur_mode: 1944x1096, hdr: 0, bpp: 10
+[   14.653578] imx415 1-001a: capture_mode is 1920x1080
+[   14.655394] imx415 1-001a: set vblank 0xd4c vts 4500
+[   14.656387] imx415 1-001a: set analog gain 0x3c
+[   14.657633] imx415 1-001a: set exposure(shr0) 26 = cur_vts(4500) - val(4474)
+[ 6227.420331] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 6227.424524] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[ 6227.424531] imx415 1-001a: write reg array error
+[ 6227.528987] imx415 1-001a: write reg array, sleep 30ms
+[ 6227.530749] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 6227.532253] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[ 6227.533300] imx415 1-001a: set analog gain 0x3c
+[ 6227.934779] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[ 6227.940148] imx415 1-001a: set vblank 0xd4c vts 4500
+[ 6234.595641] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 6234.598650] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[ 6234.598651] imx415 1-001a: write reg array error
+[ 6234.705965] imx415 1-001a: write reg array, sleep 30ms
+[ 6234.707586] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 6234.708926] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[ 6234.709817] imx415 1-001a: set analog gain 0x3c
+[ 6258.149343] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[ 6258.158658] imx415 1-001a: set vblank 0xd4c vts 4500
+[ 6630.352092] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 6630.355217] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[ 6630.355218] imx415 1-001a: write reg array error
+[ 6630.453534] imx415 1-001a: write reg array, sleep 30ms
+[ 6630.454951] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 6630.460244] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[ 6630.461177] imx415 1-001a: set analog gain 0x3c
+[ 6666.806310] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[ 6666.815167] imx415 1-001a: set vblank 0xd4c vts 4500
+[ 6748.567932] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 6748.570880] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[ 6748.570882] imx415 1-001a: write reg array error
+[ 6748.672084] imx415 1-001a: write reg array, sleep 30ms
+[ 6748.673487] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 6748.678397] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[ 6748.679326] imx415 1-001a: set analog gain 0x3c
+[ 6890.444852] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[ 6890.450008] imx415 1-001a: set vblank 0xd4c vts 4500
+[ 7203.752061] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 7203.755181] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[ 7203.755182] imx415 1-001a: write reg array error
+[ 7203.857366] imx415 1-001a: write reg array, sleep 30ms
+[ 7203.859082] imx415 1-001a: set vblank 0xd4d vts 4501
+[ 7203.860592] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[ 7203.861779] imx415 1-001a: set analog gain 0x3c
+[ 7673.295404] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[ 7673.300708] imx415 1-001a: set vblank 0xd4c vts 4500
+[10004.734706] imx415 1-001a: set vblank 0xd4d vts 4501
+[10004.737725] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[10004.737726] imx415 1-001a: write reg array error
+[10004.842265] imx415 1-001a: write reg array, sleep 30ms
+[10004.843670] imx415 1-001a: set vblank 0xd4d vts 4501
+[10004.848555] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[10004.849427] imx415 1-001a: set analog gain 0x3c
+[10016.487570] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[10016.495028] imx415 1-001a: set vblank 0xd4c vts 4500
+[40837.396872] imx415 1-001a: set vblank 0xd4d vts 4501
+[40837.402936] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[40837.402942] imx415 1-001a: write reg array error
+[40837.502761] imx415 1-001a: write reg array, sleep 30ms
+[40837.504165] imx415 1-001a: set vblank 0xd4d vts 4501
+[40837.505835] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[40837.506782] imx415 1-001a: set analog gain 0x3c
+[40850.944229] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[40850.950119] imx415 1-001a: set vblank 0xd4c vts 4500
+[40905.002588] imx415 1-001a: set vblank 0xd4d vts 4501
+[40905.005618] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[40905.005619] imx415 1-001a: write reg array error
+[40905.104015] imx415 1-001a: write reg array, sleep 30ms
+[40905.105461] imx415 1-001a: set vblank 0xd4d vts 4501
+[40905.106788] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[40905.107774] imx415 1-001a: set analog gain 0x3c
+[40918.545019] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[40918.552989] imx415 1-001a: set vblank 0xd4c vts 4500
+[40935.137972] imx415 1-001a: set vblank 0xd4d vts 4501
+[40935.140829] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[40935.140830] imx415 1-001a: write reg array error
+[40935.238848] imx415 1-001a: write reg array, sleep 30ms
+[40935.240208] imx415 1-001a: set vblank 0xd4d vts 4501
+[40935.241543] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[40935.242436] imx415 1-001a: set analog gain 0x3c
+[40947.246152] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[40947.259690] imx415 1-001a: set vblank 0xd4c vts 4500
+[40964.164138] imx415 1-001a: set vblank 0xd4d vts 4501
+[40964.167118] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[40964.167119] imx415 1-001a: write reg array error
+[40964.260004] imx415 1-001a: write reg array, sleep 30ms
+[40964.261638] imx415 1-001a: set vblank 0xd4d vts 4501
+[40964.263074] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[40964.264126] imx415 1-001a: set analog gain 0x3c
+[40970.133087] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[40970.144212] imx415 1-001a: set vblank 0xd4c vts 4500
+[40982.498151] imx415 1-001a: set vblank 0xd4d vts 4501
+[40982.502407] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[40982.502410] imx415 1-001a: write reg array error
+[40982.601152] imx415 1-001a: write reg array, sleep 30ms
+[40982.602577] imx415 1-001a: set vblank 0xd4d vts 4501
+[40982.604057] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[40982.604943] imx415 1-001a: set analog gain 0x3c
+[40988.640576] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[40988.653457] imx415 1-001a: set vblank 0xd4c vts 4500
+[41600.334034] imx415 1-001a: set vblank 0xd4d vts 4501
+[41600.338935] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[41600.338939] imx415 1-001a: write reg array error
+[41600.434166] imx415 1-001a: write reg array, sleep 30ms
+[41600.435558] imx415 1-001a: set vblank 0xd4d vts 4501
+[41600.436806] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[41600.437637] imx415 1-001a: set analog gain 0x3c
+[41614.074619] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[41614.088114] imx415 1-001a: set vblank 0xd4c vts 4500
+[41614.512892] imx415 1-001a: set vblank 0xd4d vts 4501
+[41614.515913] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[41614.515915] imx415 1-001a: write reg array error
+[41614.620790] imx415 1-001a: write reg array, sleep 30ms
+[41614.622399] imx415 1-001a: set vblank 0xd4d vts 4501
+[41614.623728] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[41614.624737] imx415 1-001a: set analog gain 0x3c
+[41628.195171] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[41628.202385] imx415 1-001a: set vblank 0xd4c vts 4500
+[41628.630221] imx415 1-001a: set vblank 0xd4d vts 4501
+[41628.633256] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[41628.633258] imx415 1-001a: write reg array error
+[41628.738620] imx415 1-001a: write reg array, sleep 30ms
+[41628.739965] imx415 1-001a: set vblank 0xd4d vts 4501
+[41628.741388] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[41628.742359] imx415 1-001a: set analog gain 0x3c
+[41642.112659] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[41642.117957] imx415 1-001a: set vblank 0xd4c vts 4500
+[41642.632949] imx415 1-001a: set vblank 0xd4d vts 4501
+[41642.635986] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[41642.635987] imx415 1-001a: write reg array error
+[41642.743035] imx415 1-001a: write reg array, sleep 30ms
+[41642.744582] imx415 1-001a: set vblank 0xd4d vts 4501
+[41642.746397] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[41642.747331] imx415 1-001a: set analog gain 0x3c
+[41654.851310] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[41654.866518] imx415 1-001a: set vblank 0xd4c vts 4500
+[41655.377402] imx415 1-001a: set vblank 0xd4d vts 4501
+[41655.380253] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[41655.380255] imx415 1-001a: write reg array error
+[41655.483088] imx415 1-001a: write reg array, sleep 30ms
+[41655.484709] imx415 1-001a: set vblank 0xd4d vts 4501
+[41655.486095] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[41655.487016] imx415 1-001a: set analog gain 0x3c
+[41667.357846] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[41667.365522] imx415 1-001a: set vblank 0xd4c vts 4500
+[41667.830812] imx415 1-001a: set vblank 0xd4d vts 4501
+[41667.833793] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[41667.833796] imx415 1-001a: write reg array error
+[41667.938620] imx415 1-001a: write reg array, sleep 30ms
+[41667.940021] imx415 1-001a: set vblank 0xd4d vts 4501
+[41667.941792] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[41667.942725] imx415 1-001a: set analog gain 0x3c
+[41679.879794] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[41679.887472] imx415 1-001a: set vblank 0xd4c vts 4500
+[41925.865921] imx415 1-001a: set vblank 0xd4d vts 4501
+[41925.869661] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[41925.869663] imx415 1-001a: write reg array error
+[41925.958619] imx415 1-001a: write reg array, sleep 30ms
+[41925.960172] imx415 1-001a: set vblank 0xd4d vts 4501
+[41925.961970] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[41925.962909] imx415 1-001a: set analog gain 0x3c
+[41952.236235] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[41952.241938] imx415 1-001a: set vblank 0xd4c vts 4500
+[42021.984433] imx415 1-001a: set vblank 0xd4d vts 4501
+[42021.987472] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[42021.987474] imx415 1-001a: write reg array error
+[42022.078766] imx415 1-001a: write reg array, sleep 30ms
+[42022.080244] imx415 1-001a: set vblank 0xd4d vts 4501
+[42022.081543] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[42022.082425] imx415 1-001a: set analog gain 0x3c
+[42038.286748] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[42038.294061] imx415 1-001a: set vblank 0xd4c vts 4500
+[42051.921642] imx415 1-001a: set vblank 0xd4d vts 4501
+[42051.924764] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[42051.924765] imx415 1-001a: write reg array error
+[42052.017224] imx415 1-001a: write reg array, sleep 30ms
+[42052.018733] imx415 1-001a: set vblank 0xd4d vts 4501
+[42052.020135] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[42052.021058] imx415 1-001a: set analog gain 0x3c
+[42065.558469] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[42065.564476] imx415 1-001a: set vblank 0xd4c vts 4500
+[42065.993198] imx415 1-001a: set vblank 0xd4d vts 4501
+[42065.996236] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[42065.996238] imx415 1-001a: write reg array error
+[42066.100170] imx415 1-001a: write reg array, sleep 30ms
+[42066.101575] imx415 1-001a: set vblank 0xd4d vts 4501
+[42066.103338] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[42066.104272] imx415 1-001a: set analog gain 0x3c
+[42079.208067] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[42079.215210] imx415 1-001a: set vblank 0xd4c vts 4500
+[42803.181319] imx415 1-001a: set fmt: cur_mode: 1944x1096, hdr: 0, bpp: 10
+[42803.181320] imx415 1-001a: capture_mode is 1920x1080
+[42832.382353] imx415 1-001a: set vblank 0xd4d vts 4501
+[42832.385465] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[42832.385467] imx415 1-001a: write reg array error
+[42832.487469] imx415 1-001a: write reg array, sleep 30ms
+[42832.489139] imx415 1-001a: set vblank 0xd4d vts 4501
+[42832.490689] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[42832.491784] imx415 1-001a: set analog gain 0x3c
+[42848.496148] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[42848.501685] imx415 1-001a: set vblank 0xd4c vts 4500
+[42857.765949] imx415 1-001a: set vblank 0xd4d vts 4501
+[42857.769052] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[42857.769053] imx415 1-001a: write reg array error
+[42857.875563] imx415 1-001a: write reg array, sleep 30ms
+[42857.876965] imx415 1-001a: set vblank 0xd4d vts 4501
+[42857.878614] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[42857.879516] imx415 1-001a: set analog gain 0x3c
+[42875.650843] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[42875.657382] imx415 1-001a: set vblank 0xd4c vts 4500
+[42876.130824] imx415 1-001a: set vblank 0xd4d vts 4501
+[42876.133930] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[42876.133932] imx415 1-001a: write reg array error
+[42876.240381] imx415 1-001a: write reg array, sleep 30ms
+[42876.242035] imx415 1-001a: set vblank 0xd4d vts 4501
+[42876.243572] imx415 1-001a: set exposure(shr0) 27 = cur_vts(4501) - val(4474)
+[42876.244666] imx415 1-001a: set analog gain 0x3c
+[42893.649438] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10
+[42893.656165] imx415 1-001a: set vblank 0xd4c vts 4500
+[42943.649122] imx415 1-001a: set fmt: cur_mode: 1944x1096, hdr: 0, bpp: 10
+[42943.649124] imx415 1-001a: capture_mode is 1920x1080
+[79903.657070] imx415 1-001a: s_stream: 1. 1944x1096, hdr: 0, bpp: 10
+[79903.657076] imx415 1-001a: write reg array error
+[79903.756914] imx415 1-001a: write reg array, sleep 30ms
+[79903.758550] imx415 1-001a: set vblank 0xd4c vts 4500
+[79903.760043] imx415 1-001a: set exposure(shr0) 26 = cur_vts(4500) - val(4474)
+[79903.761099] imx415 1-001a: set analog gain 0x3c
+[79933.861588] imx415 1-001a: s_stream: 0. 1944x1096, hdr: 0, bpp: 10

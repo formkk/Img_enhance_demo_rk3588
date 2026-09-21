@@ -29,9 +29,38 @@ camera:
   rkisp_node: "/dev/media1"              # rkisp0-vir0；口径已裁定（v3.29 裁定 O34-④）= ISP 的
                                          # media 设备（拓扑/子设备控制），采集出口见 camera.video_node
   mainpath_only: true                    # 只开 mainpath，勿开 rawpath（§3.1）
-  mode_class: null                       # 定稿时点 M1（§3.2 三步实验）
-  fps: null                              # 定稿时点 M1（§3.2；实测 ≈50.6 fps ≠ 30，30 fps 锁定留 M1）
-  exposure_us: null                      # 定稿时点 M1（§3.2、§9.5）
+  mode_class: "binning"                  # **（v3.86 定稿，§3.2 第①步）** = IMX415 **Horizontal/Vertical
+                                         #   2/2-line binning**（相邻 2×2 相加）：板上**取流中寄存器回读**
+                                         #   `0x3020=0x01(HADD)` / `0x3021=0x01(VADD)` / `0x3022=0x01(ADDMODE)` /
+                                         #   `0x30D9=0x02` / `0x30DA=0x01`（待机态为默认值 0x00/0x06 ⇒ 判定必须
+                                         #   在 s_stream=1 下取）；读出窗口 1944×1096（3864×2192 两轴各半）
+                                         #   → 驱动居中裁到 1920×1080。证据 = `docs/evidence/M1-2-isp-mode.md`
+                                         #   + `docs/evidence/reports/M1-2/`。**§3.2 第②步（暗部 σ / 拖影
+                                         #   对照）未做，登记为 §15 的 O86**；本值**不含任何 SNR 数值主张**
+  fps: 15                                # **（v3.86 定稿 O91）帧率档 30 → 15**（§9.5）：演示/采集定稿值
+                                         #   = **66 ms + 20×**（0.85 Lux 下人工目视为"细节↔噪声平衡点"）
+                                         #   设备树只有
+                                         #   1080p@60 的 overlay、`/dev/video11` 无 set-parm 口 ⇒ 只能由
+                                         #   sensor subdev 的 `vertical_blanking` 复位帧周期；两点法实测
+                                         #   30.0 fps（600/1200 帧）⇒ 满足 §11 M1 出口标准 #1
+                                         #   **（v3.86 注）本段为 v3.79 历史留档；现行值见条目头（O91 = 15 fps）**
+  vblank_lines: 7906                     # **（v3.86 定稿 O91）15 fps 的机制值**：VMAX = 1080 + 7906
+                                         #   = 8986 行 ≈ 66.8 ms（行时 7.433 µs）⇒ ≈15.0 fps
+                                         #   （实测 14.78~15.0）；其余机制不变（VMAX =
+                                         #   1080 + 3405 = **4485 行** = 1/30 s 的行数（行时 7.433 µs）；
+                                         #   由 `sensor_lock.py` 在 STREAMON **之前**写 sensor subdev 并回读
+                                         #   校验；**停流即复位 ⇒ 每次启动都要重施**
+                                         #   **（v3.86 注）上述 3405 / 4485 行 / 1-30 s 为 v3.79 历史留档；现行值见条目头（O91 = 7906 行 / 15 fps）**
+  exposure_us: 66666                     # **（v3.86 定稿 O91）镜像值**——取值 SSOT = **IQ 文件**（v3.77 裁定
+                                         #   §9.5 ⑦），本键**仅作审计镜像、不得以本键为准**；1/30 s 在 30 fps
+                                         #   锁定下**可达**（sensor subdev 回读：exposure 上限 4493 行，
+                                         #   设 4485 行 = 33.33 ms 生效）
+                                         # （v3.77 裁定）**取值 SSOT = IQ 文件**（§9.5 ⑦）：固定曝光/增益的
+                                         #   **值只写在 IQ 里**（`ae_calib/CommCtrl/AecOpType=MANUAL` +
+                                         #   `AecManualCtrl/LinearAE/{TimeValue,GainValue,IspDGainValue}`）
+                                         #   ⇒ 本键语义改为「记 IQ 文件名 + sha256 + sensor subdev 实测回读」，
+                                         #   **以 IQ 为准**（本键的值是**镜像**，仅供审计与闸门"零空缺"判定）；
+                                         #   `camera.gain_*` 同此（子键名仍随 M1 定义）
   # `camera.gain_*`：§10.4 为**通配键名**（"实测重标结构"），**子键名未定** ⇒ 无法落盘
   # （禁止自造表外键，规则 20-contracts.md §1）。**v3.29 裁定 O34-③**：该行定稿时点 = **M1**
   # ⇒ 子键名随 M1 的 `v4l2-ctl -L` 实测一并定义；不参与 §11.2 M0-② 的判定
@@ -39,6 +68,11 @@ camera:
 # ── ISP（定稿时点 M1）───────────────────────────────────────────────
 isp:
   presets: null                          # 暗房 / 夜景 / 人脸（§9.2、§9.5）
+                                         # （v3.75 裁定 O62=(b)）采集档 / 演示档 = 两套 IQ 文件，
+                                         #   各自记文件名+sha256，采集工具启动校验"当前IQ=采集档"，否则拒采
+                                         # （v3.77 已实施）两套由 `tools/collect/iq_sets.py` 生成/切换，
+                                         #   落在 /etc/iqfiles_sets/（stock/ + collect/ + demo/ + manifest.json）；
+                                         #   防呆已落地于 capture_app.py（--iq-manifest，fail-closed）
   fingerprint: null                      # iq_file+iq_hash / gamma_table / ccm / black_level /
                                          # awb_lock / nr_2d / nr_3d / dpc（§9.5）
   csc_matrix: null                       # 定稿时点 M1（BT.601/709）
@@ -54,14 +88,17 @@ display:
   screen_plugin: "mipi600p"              # v3.33 变更（原 mipi1080p）：实物为 7" 1024×600 屏（STL7.0-60-132-K）
   dsi_connector: "DSI-1"                 # 自检比对用；CRTC/plane 一律运行时解析，禁止写死 crtc id
   hdmi_connector: "HDMI-A-1"             # 自检比对用；当前实测 disconnected（M0-9 需接显示器）
-  mipi_canvas: [1024, 600]               # 内部合成画布（§3.4；v3.33 变更，横屏 7"）
-  hdmi_canvas: [1920, 1080]              # 内部合成画布（§3.1 两层 SSOT 中的 buffer 尺寸）
+  mipi_canvas: [1024, 600]               # 合成画布（§3.4；v3.33 变更，横屏 7"）；v3.85 裁定 O82：语义不变
+  hdmi_canvas: [1920, 1080]              # **镜像画布**（§3.1/§3.5；v3.85 裁定 O78/O82：语义由"HQ 独占的内部
+                                         #   合成画布"改为"镜像画布"，尺寸不变 1920×1080 = 两层 SSOT 的 buffer 尺寸）；
+                                         #   常规态 = MIPI 画布经 RGA 每帧放大 1.875×、HQ 态 = 集合 D 放大 2.0×
   panel_refresh_hz: 60                   # 实测 1024x600p60（dclk 51668000；51668000/(1354×636)=60.00 Hz）
   mode_htotal: 1354                      # 实测 modetest #0：1024 1184 1194 1354（=1024+160+10+160）
   mode_vtotal: 636                       # 实测 modetest #0：600 612 613 636（=600+12+1+23）
   dsi_lane_rate: 344                     # Mbit/s/lane，dmesg 实测 "DSI-Link bandwidth: 344453 x 4 Kbps"
-  hdmi_mode_selection: null              # 定稿时点 **M2-1**（EDID mode list 优先 1080p，无则 preferred）
-                                         # v3.48 裁定 O49：由 M2 移入 M2-1（需 EDID ⇒ 需 HDMI 显示器接入）
+  hdmi_mode_selection: "edid_prefer_1080p" # 【M2-1 定稿】EDID mode list 优先 1080p，无则 preferred（§10.4）
+                                             # v3.48 裁定 O49：由 M2 移入 M2-1（需 EDID ⇒ 需 HDMI 显示器接入）
+                                             # v3.83 定稿：实测 EDID modes 首位 = 1920x1080，运行时亦落在 1080p（见证据档 §18.4）
 
 # ── 链路（定稿时点见各行）───────────────────────────────────────────
 pipeline:
@@ -100,16 +137,17 @@ hq:
                                           #   定稿时点仍为 **M2-2**（v3.48 裁定 O49）；若 M2-2 的 O30 改用保底 CNN，本值须按新模型重评
   pad_crop_policy: null                  # ❌ 空缺：随 active_shape 一并定版（同上）
                                          # 定稿时点 **M2-2**（v3.48 裁定 O49）
-  hold_policy: null                      # 定稿时点 M3（replace_and_hold）
-  fade_ms: null                          # 定稿时点 M3（300）
-  mipi_preview_ms: null                  # 定稿时点 M3（2500）
-  mipi_preview_rect: null                # 定稿时点 M3（512×288；X 512–1023，Y 0–287）（v3.33 变更）
+                                         # v3.85 裁定 O82：`hq.hold_policy` / `hq.fade_ms` / `hq.mipi_preview_ms` /
+                                         #   `hq.mipi_preview_rect` **四键取消**（"替换保持 / 淡入 / 弹层"对象消失，
+                                         #   见 §3.5 与 §15 的 O67/O68/O82）⇒ 本域**不再有该四键**
 
-# ── 触发（定稿时点 M1）─────────────────────────────────────────────
+# ── 触发（定稿时点 M2-2，v3.84 裁定 O73 由 M1 前移）──────────────────
 trigger:
-  sources: null                          # 触控 / GPIO / 定时 / 串口（§8.1）
-  debounce_ms: null                      # 定稿时点 M1（50）
-  interval_s: null                       # 定稿时点 M1（8；3~30 可配）
+  debounce_ms: 50                        # 【M2-2 定稿】消抖窗；**v3.85 裁定 O82：依据由"§8.1 GPIO 消抖"改为
+                                         #   "指针点击防连发"**（§3.4；§11.2 M2 ① 引用该值）
+                                         # v3.85 裁定 O82：`trigger.sources` / `trigger.interval_s` **两键取消**
+                                         #   （触发源收敛为**单源：指针点击**，无选择空间/无消费者；O73 所定的
+                                         #   四源取值随之作废）⇒ 本域仅剩 `debounce_ms` 一键
 
 # ── UI（定稿时点 M2）───────────────────────────────────────────────
 ui:
@@ -122,11 +160,15 @@ ui:
   osd_metrics_px: 216                    # 【M2 定稿】v3.33：OSD 指标区总高（状态行 36 + 图示 180）
   osd_status_row_px: 36                  # 【M2 定稿】v3.33：状态/数值行高
   osd_plot_px: [512, 180]                # 【M2 定稿】v3.33：曲线图与直方图各占
-  osd_status_fields: [mode, fps, latency, curve_hz, countdown, mean_orig, mean_enh, dmean]
-                                         # 【M2 定稿】v3.35：状态行 8 字段与顺序
+  osd_status_fields: [mode, fps, latency, curve_hz, mean_orig, mean_enh, dmean]
+                                         # 【M2 定稿】v3.35：状态行字段与顺序；**v3.85 裁定 O84：8 → 7 字段
+                                         #   （删 countdown）**——TIMER 已移除，见 §3.4 / §13
   osd_stats_decimate: 4                  # 【M2 定稿】v3.35：统计降采样率（512×288 → 128×72 = 9,216 样本）
   osd_stats_hz: 1                        # 【M2 定稿】v3.35：统计更新频率
   osd_font_px: [36, 26]                  # 【M2 定稿】状态行 36 px / 次行 26 px
+  fullscreen_timeout_ms: 30000           # 【v3.85 新增·裁定 O79】全屏 HQ 视图无操作 30 s 兜底退出（§3.5）
+  pointer_mouse_node: null               # 【v3.85 新增·裁定 O81】鼠标 evdev 设备路径（触控节点沿用既有实现口径）；
+                                         #   **取值为空 = evdev 路径待板端实测**（不得自造值，规则 20-contracts.md §1）
 
 # ── 计量（定稿时点 M1/M2）──────────────────────────────────────────
 metrics:

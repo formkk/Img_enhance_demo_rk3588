@@ -16,9 +16,26 @@ U2（ZDE++ 零参考训练）与 U4（评测）。**不是交付链路**——�
 **术语（主基准 v3.69 裁定 O59）**：本工具的"**场景**"= **取景**（狭义），**2 位编号**
 （00–99，由【更换场景】+1）；它**仅作编号与 dark-gt 配对键**，**不承担表达场景内容**。
 
+**采集前置（硬约束，主基准 §15 O62 ④(ii)）**：**当前 IQ 必须是"采集档"**（3DNR 关；O40）。
+本工具**启动时校验**（比对 `/etc/iqfiles_sets/manifest.json` 与 `/etc/iqfiles/` 当前文件的 sha256），
+**不通过则拒绝采集**（预览/对焦仍可用，页面顶部显示原因）。档位由 `tools/collect/iq_sets.py` 维护：
+
+    sudo python3 tools/collect/iq_sets.py status        # 当前是哪一档
+    sudo python3 tools/collect/iq_sets.py switch collect
+
+**采集前置之二（硬约束，主基准 §9.5 ④）**：**1080p@30 锁定必须已施加**。60 fps 的 VMAX
+（1080+1154 = 2234 行）把 manual 曝光钳到 2242 行 ⇒ 1/30 s（4485 行）不可达（O63），且 VMAX
+改变即改变噪声统计 ⇒ 与演示链路不同构。本工具**在启动 `v4l2src` 之前**调用共享实现
+`sensor_lock.py`（仓库根，§10.3 登记）写 sensor subdev 的 `vertical_blanking`，并**回读校验**；
+**不通过则拒绝采集**（预览/对焦仍可用）。**停流即复位** ⇒ 每次启动都要重施。
+
 用法（板上）：
   python3 tools/collect/capture_app.py --outdir ~/capture_data [--port 8091]
       [--device /dev/video11] [--w 1920] [--h 1080] [--batch B001]
+      [--iq-dir /etc/iqfiles] [--iq-manifest /etc/iqfiles_sets/manifest.json]
+      [--no-iq-guard]        # **调试用**：绕过防呆（会记入 sidecar 以便审计）
+      [--vblank-lines 3405]  # = config `camera.vblank_lines`（§10.4）
+      [--sensor-subdev /dev/v4l-subdev2]   # 调试用；默认运行时解析
 手机/PC 浏览器打开： http://<板地址>:8091/
 
 落盘约定（`--outdir` 下，命名见主基准 v3.69 / `docs/design/dataset.md` §5.2.8）：
@@ -48,6 +65,7 @@ U2（ZDE++ 零参考训练）与 U4（评测）。**不是交付链路**——�
 """
 
 import argparse
+import hashlib
 import http.server
 import json
 import os
@@ -60,6 +78,20 @@ import urllib.parse
 import zlib
 from datetime import datetime, timezone
 
+# ── 1080p@30 锁定的**共享实现**（主基准 §9.5 ④ / §10.4 `camera.vblank_lines`）──────
+# 机制只有一份 SSOT（`sensor_lock.py`，登记于 §10.3），**不在本文件复制**：
+# 本工具部署于 `<repo>/tools/collect/`，故按 `__file__` 反推仓库根并置入 `sys.path`。
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+try:
+    import sensor_lock
+except ImportError as _e:                                     # 部署缺件 ⇒ 采集 fail-closed
+    sensor_lock = None
+    _SENSOR_LOCK_IMPORT_ERR = str(_e)
+else:
+    _SENSOR_LOCK_IMPORT_ERR = ''
+
 # 采集档位。命名见主基准 v3.69：<日期>_<场景2位>_<帧序号>_<档位>.<后缀>
 KINDS = ('dark', 'gt')          # dark = 暗帧（输入域）/ gt = 亮帧（配对 GT）
 
@@ -68,6 +100,97 @@ RAW = {'stride': 0, 'uv_offset': 0, 'frame_bytes': 0}
 
 # gst 命令行（main() 里落值；模块级先置空，避免引用未定义）
 GST_CMD = []
+
+# ── ISP IQ 档位防呆（主基准 §15 **O62 ④(ii)**）────────────────────────────
+# 采集**必须发生在"采集档"下**（3DNR 关；O40）。档位由 `tools/collect/iq_sets.py` 维护，
+# 其产物 `manifest.json` 是本模块与换档工具之间的**唯一接口**（schema 见下）。
+# `manifest.json` 的位置是**部署约定**（两工具须一致；约定本身见 `tools/collect/README.md`）。
+IQ_MANIFEST_SCHEMA = 'iqsets/v1'
+IQ_COLLECT_TAG = 'collect'
+IQ = {'tag': 'unknown', 'sha256': None, 'file': None, 'guard': 'blocked', 'why': '尚未校验'}
+
+
+def _sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for blk in iter(lambda: f.read(1 << 20), b''):
+            h.update(blk)
+    return h.hexdigest()
+
+
+def iq_guard(iq_dir, manifest_path, bypass=False):
+    """校验「当前 IQ = 采集档」（O62 ④(ii)）。
+
+    **fail-closed**：manifest 缺失 / schema 不符 / 当前 IQ 无法判定 ⇒ 一律**不通过**
+    （宁可拒采，也不静默污染数据集——O62 ④(ii) 的原话是"防'忘切'导致静默污染数据集"）。
+    `bypass=True` 仅供调试，**会记入 sidecar**（`isp_fingerprint.iq_guard = 'bypassed'`）以便审计。
+    """
+    IQ['guard'] = 'blocked'
+    try:
+        with open(manifest_path) as f:
+            m = json.load(f)
+    except Exception as e:
+        IQ.update(tag='unknown', sha256=None, file=None,
+                  why='无法读取 manifest（%s）：%s' % (manifest_path, e))
+        return False
+    if m.get('schema') != IQ_MANIFEST_SCHEMA:
+        IQ.update(tag='unknown', sha256=None, file=None,
+                  why='manifest schema 不符（期望 %r，实得 %r）'
+                      % (IQ_MANIFEST_SCHEMA, m.get('schema')))
+        return False
+    name = m.get('sensor_file')
+    cur = os.path.join(iq_dir, name or '')
+    if not name or not os.path.exists(cur):
+        IQ.update(tag='unknown', sha256=None, file=name, why='当前 IQ 文件不存在：%s' % cur)
+        return False
+    h = _sha256_file(cur)
+    tag = 'unknown'
+    if h == (m.get('stock') or {}).get('sha256'):
+        tag = 'stock'
+    for s, e in (m.get('sets') or {}).items():
+        if h == (e or {}).get('sha256'):
+            tag = s
+    IQ.update(file=name, sha256=h, tag=tag)
+    if tag == IQ_COLLECT_TAG:
+        IQ.update(guard='ok', why='')
+        return True
+    IQ['why'] = ('当前 IQ = %s 档，**不是采集档**（采集须在 collect 档下进行；'
+                 '换档 = `sudo python3 tools/collect/iq_sets.py switch collect`）' % tag)
+    if bypass:
+        IQ['guard'] = 'bypassed'
+        return True
+    return False
+
+# ── 1080p@30 锁定防呆（主基准 §9.5 ④ / §10.4 `camera.vblank_lines`）─────────────
+# 采集**必须发生在 30 fps 锁定下**：60 fps 的 VMAX（1080+1154 = 2234 行）把 manual 曝光钳到
+# 2242 行 ⇒ 1/30 s（4485 行）不可达（O63）；且 VMAX 改变即改变噪声统计 ⇒ 与演示链路不同构。
+LOCK = {'ok': False, 'node': None, 'vblank_lines': None, 'readback': None, 'why': '尚未施加'}
+
+
+def lock_guard(vblank_lines, node=None):
+    """施加 1080p@30 锁定（共享实现 `sensor_lock.apply`）——**必须在 `v4l2src` 开流之前**。
+
+    **fail-closed**：缺件 / subdev 解析失败 / 回读校验不符 ⇒ 一律**不通过**（拒采）。
+    理由与 IQ 防呆同构：宁可拒采，也不静默产出与演示链路不同构的数据集。
+    """
+    if sensor_lock is None:
+        LOCK.update(ok=False, why='无法导入 sensor_lock（%s）——部署须含仓库根的 `sensor_lock.py`'
+                                 % _SENSOR_LOCK_IMPORT_ERR)
+        return False
+    try:
+        dev = sensor_lock.resolve(node)
+    except sensor_lock.SensorLockError as e:
+        LOCK.update(ok=False, why=str(e))
+        return False
+    if sensor_lock.apply(vblank_lines, dev) != 0:
+        LOCK.update(ok=False, node=dev,
+                    why='sensor_lock.apply 返回 E_V4L2（见 stdout 的 [sensor_lock] 行；'
+                        '需对该 subdev 有写权限 = 板上 `video` 组成员）')
+        return False
+    LOCK.update(ok=True, node=dev, vblank_lines=vblank_lines,
+                readback=sensor_lock.read_vblank(dev), why='')
+    return True
+
 
 STATE = {
     'jpg': None, 'seq': 0, 'bytes': 0, 'err': '', 'crc': 0, 'dup_run': 0,
@@ -220,8 +343,8 @@ def _sidecar(scene, slot, kind, path, raw_bytes, a):
     mono = time.monotonic_ns()                       # 计量域，唯一可比较的时钟
     utc = datetime.now(timezone.utc).isoformat()     # 仅供人读
     pending = [
-        'isp_fingerprint',      # §6.1「ISP 指纹」全项：gamma 表 / CCM / black level / IQ 文件+哈希 /
-                                #   AWB 锁定 / NR·3DNR 档 —— 需板上 rkisp 侧取数（未实现）
+        # 「ISP 指纹」**已部分落地**（O62 ④(i)：IQ 文件名 + 哈希 + 档位）⇒ 不再整项列此，
+        # 其余子项见 `isp_fingerprint._pending`。
         'csc',                  # RGA CSC 矩阵 + range —— 本链路未过 RGA，取流为 v4l2 直出
         'sensor_ctrl',          # 曝光 / 模拟增益 / 数字增益 实测读回值 —— 需 v4l2-ctl 取数（未实现）
         'illuminance',          # 实测照度 + 测量方式（照度计型号/位置）—— 需人工录入（未实现）
@@ -256,7 +379,16 @@ def _sidecar(scene, slot, kind, path, raw_bytes, a):
             'geometry_alignment': 'same_frame_no_motion',   # 同机位、仅改光源 ⇒ 天然对齐
         },
         'file': {'name': os.path.basename(path), 'bytes': len(raw_bytes)},
-        'isp_fingerprint': None,
+        # ISP 指纹**部分落地**（主基准 §15 O62 ④(i)）：IQ 文件名 + sha256 + 档位 = 本应用可确知项；
+        # 其余子项仍需板上 rkisp 侧取数（未实现）⇒ 置 `_pending`，**不填占位假值**。
+        'isp_fingerprint': {
+            'iq_file': IQ['file'],                   # 当前 /etc/iqfiles/ 下的 IQ 文件名
+            'iq_hash': IQ['sha256'],                 # 该文件 sha256（= §9.5 指纹的 iq_hash）
+            'iq_set': IQ['tag'],                     # collect / demo / stock / unknown
+            'iq_guard': IQ['guard'],                 # ok（= 采集档）/ bypassed（人工绕过，须审计）
+            '_pending': ['gamma_table', 'ccm', 'black_level', 'awb_lock',
+                         'nr_2d', 'nr_3d', 'dpc'],
+        },
         'csc': None,
         'sensor_ctrl': None,
         'illuminance': None,
@@ -269,6 +401,12 @@ def _sidecar(scene, slot, kind, path, raw_bytes, a):
 
 def do_capture(kind, a):
     """抓当前**无损裸 NV12**帧落盘。返回 (ok, 文案)。"""
+    # O62 ④(ii) 防呆：**非采集档一律拒采**（fail-closed，防"忘切"静默污染数据集）
+    if IQ['guard'] == 'blocked':
+        return False, '拒绝采集（O62 ④(ii) IQ 档位防呆）：%s' % IQ['why']
+    # 1080p@30 锁定防呆（§9.5 ④）：未锁定即 60 fps ⇒ 曝光域与演示链路不同构
+    if not LOCK['ok']:
+        return False, '拒绝采集（1080p@30 锁定未生效）：%s' % LOCK['why']
     with STATE['lock']:
         raw = STATE['raw']
         raw_t = STATE['raw_t']
@@ -340,6 +478,10 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .st{font-size:15px}
  .ok{color:#8f8}.no{color:#f88}
  .msg{padding:8px 10px;background:#161616;color:#7fd1ff;min-height:22px;white-space:pre-wrap}
+ .iq{padding:8px 10px;background:#3a1d1d;color:#fbb;white-space:pre-wrap;display:none}
+ .iq.ok{background:#1d3a1d;color:#bfb}
+ .lk{padding:8px 10px;background:#3a2a1d;color:#fdb;white-space:pre-wrap;display:none}
+ .lk.ok{background:#1d3a2d;color:#bfb}
  .wrap{display:flex;flex-wrap:wrap;gap:8px;padding:8px}
  .pane{flex:1 1 46%;min-width:300px}
  canvas{width:100%;background:#000;display:block}
@@ -353,6 +495,8 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  &nbsp; JPEG <b id="kb">-</b> KB &nbsp; 重复帧 <b id="d">-</b> &nbsp; 刷新 <b id="f">-</b> fps
  &nbsp; 清晰度 <b id="s">-</b> &nbsp; 本次最大 <b id="mx">-</b>
 </div>
+<div class="iq" id="iq"></div>
+<div class="lk" id="lk"></div>
 <div class="ctl">
  <button class="gt" id="bgt">采集亮帧 GT</button>
  <button id="bdk">采集暗帧</button>
@@ -371,7 +515,8 @@ const im=document.getElementById('im'),c1=document.getElementById('c1'),c2=docum
       q=document.getElementById('q'),f=document.getElementById('f'),kb=document.getElementById('kb'),
       d=document.getElementById('d'),sc=document.getElementById('sc'),dk=document.getElementById('dk'),
       gt=document.getElementById('gt'),ba=document.getElementById('ba'),msg=document.getElementById('msg'),
-      sl=document.getElementById('sl'),rq=document.getElementById('rq');
+      sl=document.getElementById('sl'),rq=document.getElementById('rq'),iq=document.getElementById('iq'),
+      lk=document.getElementById('lk');
 let best=0,n=0,t0=performance.now();
 
 function mark(el,on){ el.textContent = on?'已采':'未采'; el.className = on?'ok':'no'; }
@@ -412,6 +557,21 @@ async function loop(){
     d.textContent=j.dup_run;
     sc.textContent=j.scene_id; sl.textContent=('0000'+j.slot).slice(-4); ba.textContent=j.batch;
     mark(dk, j.cur.dark); mark(gt, j.cur.gt);
+    if(j.iq){
+      iq.style.display='block';
+      iq.className='iq'+(j.iq.guard==='ok'?' ok':'');
+      iq.textContent='IQ 档位：'+(j.iq.set||'?')+'　'
+        +(j.iq.guard==='ok' ? '✓ 采集档，可采集'
+          : j.iq.guard==='bypassed' ? '⚠ 已人工绕过防呆（--no-iq-guard），采集将留痕'
+          : '✗ 拒绝采集')+(j.iq.why?'　—　'+j.iq.why:'');
+    }
+    if(j.lock){
+      lk.style.display='block';
+      lk.className='lk'+(j.lock.ok?' ok':'');
+      lk.textContent='30 fps 锁定：'+(j.lock.ok
+          ? '✓ 已施加（'+j.lock.node+' vertical_blanking='+j.lock.readback+' ⇒ VMAX '+(j.lock.readback+1080)+' 行），可采集'
+          : '✗ 未生效，拒绝采集')+(j.lock.why?'　—　'+j.lock.why:'');
+    }
   }catch(e){}
   n++; const el=(performance.now()-t0)/1000;
   if(el>1){ f.textContent=(n/el).toFixed(1); n=0; t0=performance.now(); }
@@ -459,6 +619,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         'scene_id': scene, 'slot': st.get('slot', 1),
                         'batch': STATE['batch'],
                         'cur': {'dark': bool(has.get('dark')), 'gt': bool(has.get('gt'))},
+                        'iq': {'set': IQ['tag'], 'guard': IQ['guard'],
+                               'file': IQ['file'], 'sha256': IQ['sha256'], 'why': IQ['why']},
+                        'lock': {'ok': LOCK['ok'], 'node': LOCK['node'],
+                                 'vblank_lines': LOCK['vblank_lines'], 'readback': LOCK['readback'],
+                                 'why': LOCK['why']},
                         'last': STATE['last']})
         else:
             self._send(PAGE.encode(), 'text/html; charset=utf-8')
@@ -492,6 +657,18 @@ def main():
     ap.add_argument('--batch', default='', help='采集批次号，留空自动生成')
     ap.add_argument('--raw-frame-size', type=int, default=0,
                     help='裸 NV12 单帧字节数；0 = 按 w*h*3/2 推算（默认；板端 1920x1080 实测 3110400）')
+    ap.add_argument('--iq-dir', default='/etc/iqfiles',
+                    help='3A 的 IQ 加载目录（**不可配置**，仅为便于离线演练而留）')
+    ap.add_argument('--iq-manifest', default='/etc/iqfiles_sets/manifest.json',
+                    help='IQ 档位 manifest（由 `tools/collect/iq_sets.py` 生成）')
+    ap.add_argument('--no-iq-guard', action='store_true',
+                    help='**调试用**：绕过 O62 ④(ii) 的"当前 IQ = 采集档"防呆。'
+                         '绕过会记入 sidecar（isp_fingerprint.iq_guard = bypassed）以便审计')
+    ap.add_argument('--vblank-lines', type=int, default=3405,
+                    help='1080p@30 锁定的 `vertical_blanking` 值 = config `camera.vblank_lines`'
+                         '（§10.4；默认 3405 ⇒ VMAX 4485 行 = 1/30 s）。**须在取流前施加**')
+    ap.add_argument('--sensor-subdev', default=None,
+                    help='显式指定 sensor subdev（调试用；默认按"唯一暴露 V4L2_CID_VBLANK"运行时解析）')
     a = ap.parse_args()
 
     os.makedirs(a.outdir, exist_ok=True)
@@ -499,6 +676,29 @@ def main():
     STATE['batch'] = a.batch or datetime.now().strftime('B%Y%m%d-%H%M')
     _state_load()
     Handler.ARGS = a
+
+    # O62 ④(ii) 防呆：**启动即校验**「当前 IQ = 采集档」；不通过则**拒绝采集**（预览/对焦仍可用）
+    ok_iq = iq_guard(a.iq_dir, a.iq_manifest, bypass=a.no_iq_guard)
+    if ok_iq and IQ['guard'] == 'ok':
+        print('[capture] IQ 防呆：**通过**（档位 = %s，sha256 = %s）' % (IQ['tag'], IQ['sha256']))
+    elif ok_iq:
+        print('[capture] ⚠ IQ 防呆：**已人工绕过**（--no-iq-guard）——%s\n'
+              '[capture] ⚠ 本会话采集的 sidecar 会记 iq_guard=bypassed，须在证据中说明'
+              % IQ['why'])
+    else:
+        print('[capture] ✗ IQ 防呆：**拒绝采集**——%s\n'
+              '[capture]   预览/对焦仍可用；换档后重启本工具即可解除' % IQ['why'])
+    sys.stdout.flush()
+
+    # 1080p@30 锁定（§9.5 ④）：**必须在 v4l2src 开流之前**施加（停流即复位 ⇒ 每次启动都要重施）
+    if lock_guard(a.vblank_lines, a.sensor_subdev):
+        print('[capture] 30 fps 锁定：**已施加**（%s vertical_blanking=%d，回读 %s ⇒ VMAX %d 行）'
+              % (LOCK['node'], LOCK['vblank_lines'], LOCK['readback'],
+                 LOCK['readback'] + a.h))
+    else:
+        print('[capture] ✗ 30 fps 锁定：**未生效**——%s\n'
+              '[capture]   预览/对焦仍可用；**采集会被拒绝**（见页面提示）' % LOCK['why'])
+    sys.stdout.flush()
 
     # 裸 NV12 几何：rkisp mainpath 实测单平面 continuous、bytesperline = w、sizeimage = w*h*3/2
     # （`environment/board-lubancat5.md` §7）。侧记入 sidecar，供开发机侧正确解析。

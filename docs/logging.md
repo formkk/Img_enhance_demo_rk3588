@@ -60,16 +60,18 @@
 | main | `version_triplet` | `toolkit2=` · `librknnrt=` · `rknpu_driver=` |
 | main | `isp_fingerprint` | `iq_hash=` · `gamma=` · `ccm=` · `black_level=` · `csc_matrix=` · `rgb_range=` · `awb_lock=` |
 | capture | `stream_on_once` | `result=` · `video_node=` |
+| capture | `sensor_lock` | `result=` · `node=` · `vblank_lines=` · `readback=`（**v3.79 新增**：IMX415 1080p@30 锁定施加结果，主基准 §9.5 ⑧） |
 | capture | `lease_timeout` | `lease_id=` · `seq=` · `buffer_index=` · `generation=` |
 | capture | `timestamp_source_changed` | `source=` · `seq=` · `window_invalidated=true`（口径：不停机、该窗口指标作废，主文档 §6.5） |
-| capture | `trigger_accept` / `trigger_discard` | `source=` · `seq_src=` · `discarded_triggers=` |
+| capture | `trigger_accept` / `trigger_discard` | `source=`（**v3.85 裁定 O84：唯一源 = 指针点击**） · `seq_src=` · `discarded_triggers=` |
+| capture | `pointer_device` | `kind=touch / mouse` · `node=` · `present=`（**v3.85 裁定 O81 新增**：指针输入设备接入情况；触控 + 鼠标） |
 | curve_estim | `curve_publish` | `seq_est=` · `f_est=` · `alpha=` · `curve_level=` · `precision=` |
 | keyframe_infer | `hq_start` / `hq_done` | `seq_src=` · `model_id=` · `active_shape=` · `done_ns=` |
 | keyframe_infer | `save_set` | `seq_src=` · `items=` · `bytes=` · `dir=` |
 | keyframe_infer | `save_fail` | `seq_src=` · `items=` · `code=E_IO` · `reason=` |
-| display_hdmi | `hotplug` | `connected=` · `mode=`（EDID 选定结果） |
-| display_hdmi | `fade_start` / `fade_done` | `frames=` |
+| display_hdmi | `hotplug` | `connected=` · `mode=`（EDID 选定结果）。**（v3.85 裁定 O80）只记日志、不再驱动 RSM 迁移** |
 | display_mipi | `freeze_enter` / `freeze_exit` | `seq=` |
+| display_mipi | `fullscreen_enter` / `fullscreen_exit` | `seq=` · `reason=click / timeout`（**v3.85 裁定 O79 新增**：全屏 HQ 视图进出；`display_hdmi/fade_start` / `fade_done` 两事件**随 O82 取消**） |
 | display_mipi | `reset_key` | `press=short / long` · `seq=`（短按软复位 → 触发 `rsm_transition`；长按 → `service_exit`，主文档 §10.6-C） |
 | 任意 | `degrade_action` | `trigger=` · `action=`（动作名同主文档 §10.5 矩阵"降级动作"列） |
 

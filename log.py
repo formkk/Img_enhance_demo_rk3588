@@ -56,6 +56,7 @@ EVENT_TABLE: Dict[Tuple[str, str], Tuple[str, ...]] = {
         "iq_hash", "gamma", "ccm", "black_level", "csc_matrix", "rgb_range", "awb_lock",
     ),
     ("capture", "stream_on_once"): ("result", "video_node"),
+    ("capture", "sensor_lock"): ("result", "node", "vblank_lines", "readback"),
     ("capture", "lease_timeout"): ("lease_id", "seq", "buffer_index", "generation"),
     ("capture", "timestamp_source_changed"): ("source", "seq", "window_invalidated"),
     ("capture", "trigger_accept"): ("source", "seq_src", "discarded_triggers"),
@@ -217,8 +218,11 @@ class Logger:
         level = str(level).upper()
         if level not in _LEVEL_ORDER:
             raise LogError(f"非法日志级别 {level}")
-        effective = "INFO" if event in FORCED_INFO_EVENTS else level
-        if _LEVEL_ORDER[effective] < _LEVEL_ORDER[self.level]:
+        # §1：自检行与降级行**强制 INFO**，不得被级别过滤掉 —— 故强制类事件**直接绕过**阈值比较，
+        # 而不是「把 effective 改成 INFO 后再比较」（后者在 level=WARN 时仍会被滤掉：INFO < WARN）。
+        forced = event in FORCED_INFO_EVENTS
+        effective = "INFO" if forced else level
+        if not forced and _LEVEL_ORDER[effective] < _LEVEL_ORDER[self.level]:
             return
 
         parts = [f"{k}={_fmt_value(v)}" for k, v in fields.items()]
