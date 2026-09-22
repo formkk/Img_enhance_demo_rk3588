@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=启动极暗光增强演示
+GenericName=Starlight Demo
+Comment=关闭桌面并启动 RK3588 极暗光增强实时演示（ZDE++ 实时链 + HQ 关键帧链）；长按屏上 EXIT 键 3 秒可退回桌面
+Exec=/opt/starlight/launch-demo.sh
+Icon=camera-video
+Terminal=false
+Categories=Utility;AudioVideo;
+StartupNotify=false

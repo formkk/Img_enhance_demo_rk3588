@@ -60,6 +60,12 @@ int32_t  hq_core_mask_ret(void);
    **放在 C 层**：960×544×3 ≈ 1.57M 次转换，Python 侧逐元素做不可接受。 */
 void hq_pack_rgb888_nhwc_f32(const uint8_t* rgb, float* out, uint32_t w, uint32_t h);
 
+/* NCHW f32 [0,1] → RGB888（uint8，HWC 紧凑），只取行区间 [y0, y1)（用于裁掉 §3.1 的 pad 行）。
+   值域映射 = clip(0,1)*255 截断取整（与 tools/hq_frame_review.py 的 f32_nchw_to_rgb888 逐位同口径，
+   **无任何非线性后处理**）。返回 0 = OK，非 0 = 入参非法。 */
+int hq_nchw_f32_to_rgb888(const float* nchw, uint8_t* rgb, uint32_t w, uint32_t h,
+                          uint32_t y0, uint32_t y1);
+
 #ifdef __cplusplus
 }
 #endif

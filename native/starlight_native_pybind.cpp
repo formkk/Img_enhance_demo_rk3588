@@ -241,6 +241,18 @@ PYBIND11_MODULE(_starlight_native, m) {
     rga.def("canvas_compose_to", [](Buffer& canvas, uint32_t w, uint32_t h) {
         return rga_canvas_compose_to(canvas.ptr(), w, h);
     }, py::arg("canvas"), py::arg("w"), py::arg("h"));
+    /* RGB888 → RGB888 缩放（HDMI 镜像画布放大 / 全屏 HQ 放大）；src/dst 均为可写 Buffer */
+    rga.def("scale_rgb888", [](Buffer& src, uint32_t src_w, uint32_t src_h,
+                               Buffer& dst, uint32_t dst_w, uint32_t dst_h) {
+        return rga_scale_rgb888(src.ptr(), src_w, src_h, dst.ptr(), dst_w, dst_h);
+    }, py::arg("src"), py::arg("src_w"), py::arg("src_h"),
+       py::arg("dst"), py::arg("dst_w"), py::arg("dst_h"));
+    /* **fd 包裹**版本（dma-buf）：v3.86 A/B 实测比 VA 包裹快 1.2~1.6 ms ⇒ 镜像路径用它
+       （`display_hdmi.mirror` 传 `drm.canvas_fd_slot(...)`）。 */
+    rga.def("scale_rgb888_fd", &rga_scale_rgb888_fd,
+            py::arg("src_fd"), py::arg("src_w"), py::arg("src_h"),
+            py::arg("dst_fd"), py::arg("dst_w"), py::arg("dst_h"));
+    rga.def("last_scale_ns", &rga_last_scale_ns);
     rga.def("shutdown", &rga_shutdown);
     rga.def("info", &rga_info);
     rga.def("est", [](py::dict cfg) {
@@ -290,8 +302,17 @@ PYBIND11_MODULE(_starlight_native, m) {
     rk.def("ready", &rknn_estimate_ready);
     rk.def("estimate", [](Buffer& est_rgb, Buffer& dst, int dst_prec,
                           float alpha, bool use_ema, bool first) {
-        return rknn_estimate((const uint8_t*)est_rgb.ptr(), dst.ptr(), dst_prec,
-                             alpha, use_ema ? 1 : 0, first ? 1 : 0);
+        /* **（v3.86 裁定 O123）本绑定必须释放 GIL**：一次调用 ≈16 ms（NPU 双条带 + EMA），
+           pybind 默认持 GIL ⇒ 会把「TH2a 独立线程」架空（先冻住主 Python 线程 / TH4 合成主循环），
+           收益归零。实测先例 = `hq.run` 的注释（不释放时 8.3 s 内 MIPI 仅翻 1 帧）。
+           取 buffer 指针需持 GIL，故在其后释放、调用完再收回。 */
+        int rc = 0;
+        {
+            py::gil_scoped_release rel;
+            rc = rknn_estimate((const uint8_t*)est_rgb.ptr(), dst.ptr(), dst_prec,
+                               alpha, use_ema ? 1 : 0, first ? 1 : 0);
+        }
+        return rc;
     }, py::arg("est_rgb"), py::arg("curve_out"), py::arg("dst_prec"),
        py::arg("alpha"), py::arg("use_ema") = true, py::arg("first") = false);
     rk.def("slice_mask_ret", &rknn_slice_mask_ret, py::arg("idx"));
@@ -339,6 +360,28 @@ PYBIND11_MODULE(_starlight_native, m) {
         py::gil_scoped_release rel;
         hq_pack_rgb888_nhwc_f32(pin, pout, w, h);
     }, py::arg("rgb"), py::arg("out"), py::arg("w"), py::arg("h"));
+    /* **（HQ 通路）** NCHW f32 [0,1] → RGB888（uint8，HWC 紧凑），只取行区间 [y0, y1)（裁 §3.1 pad 行） */
+    hq.def("to_rgb888", [](py::buffer nchw, py::buffer out_rgb, uint32_t w, uint32_t h,
+                           uint32_t y0, uint32_t y1) {
+        py::buffer_info bi = nchw.request();
+        py::buffer_info bo = out_rgb.request();
+        const float* pin = (const float*)bi.ptr;
+        uint8_t* pout = (uint8_t*)bo.ptr;
+        /* 长度校验：入 ≥ 3·w·h·4 字节；出 ≥ (y1-y0)·w·3 字节（越界即返错，不触内存） */
+        const size_t in_bytes  = (size_t)bi.size * (size_t)bi.itemsize;
+        const size_t out_bytes = (size_t)bo.size * (size_t)bo.itemsize;
+        if (w == 0 || h == 0 || y0 >= y1 || y1 > h) return (int)HQ_CORE_E_STATE;
+        if (in_bytes  < (size_t)w * h * 3 * sizeof(float)) return (int)HQ_CORE_E_STATE;
+        if (out_bytes < (size_t)(y1 - y0) * w * 3)         return (int)HQ_CORE_E_STATE;
+        /* 1.57M 次转换同样**释放 GIL**（与 `run` / `pack_rgb888_nhwc_f32` 同理由） */
+        int rc = 0;
+        {
+            py::gil_scoped_release rel;
+            rc = hq_nchw_f32_to_rgb888(pin, pout, w, h, y0, y1);
+        }
+        return rc;
+    }, py::arg("nchw"), py::arg("out_rgb"), py::arg("w"), py::arg("h"),
+       py::arg("y0"), py::arg("y1"));
 
     /* ── drm（TH4 MIPI / TH5 HDMI）───────────────────────────────────── */
     auto drm = m.def_submodule("drm", "DRM 单实例多 CRTC（slot0=DSI / slot1=HDMI）+ 画布双缓冲 + pageflip");
@@ -373,6 +416,12 @@ PYBIND11_MODULE(_starlight_native, m) {
             py::arg("slot"), py::arg("buf_idx"), py::arg("seq") = 0);
     drm.def("wait_flip", &drm_wait_flip);
     drm.def("wait_flip_slot", &drm_wait_flip_slot, py::arg("slot"));
+    /* **（v3.86 裁定 O122）** 外部 modeset 抢 CRTC 后的有界自愈（`display_mipi.py` 调用；
+       失败阶段串经既有 `drm.info()["last_error"]` 读出，**不新增读接口**） */
+    drm.def("recover", &drm_recover,
+            "外部 modeset 抢 CRTC 后以当前画布 fb 重发 SetCrtc 自愈（槽 0 = DSI / TH4）");
+    drm.def("recover_slot", &drm_recover_slot, py::arg("slot"),
+            "同上，按槽（槽 1 = HDMI）；调用方负责有界重试与丢弃本帧");
     drm.def("shutdown", &drm_shutdown);
     drm.def("info", &drm_info);
     drm.def("info_slot", &drm_info_slot, py::arg("slot"));

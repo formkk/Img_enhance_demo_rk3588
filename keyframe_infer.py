@@ -4,13 +4,12 @@
 契约（§5 契约 C 节）：
     `request(uint64 seq_src, const FrameDesc*) -> int`   0 / E_STATE / E_NPU
     `pop_result(HqResult*) -> int`                       0 / E_TIMEOUT
-    `save_set_abcd(uint64 seq_src, const SaveRequest*) -> int`  0 / E_IO / E_STATE
+    ~~`save_set_abcd(uint64 seq_src, const SaveRequest*) -> int`~~  **（v3.86 裁定 O102）随「存图」整体取消而移除**
 
 **本版实现范围（v3.84）**：
   · **已实现** `request()` / `pop_result()`——触发 → 缩放 → HQ 推理 → 替换式结果槽。
-  · **未实现** `save_set_abcd()`——它经 `realtime_apply.apply_full()` 走 §8.3 集合 B（满幅应用），
-    而 `apply_full` 依赖 `isp.csc_matrix` / `isp.rgb_range`（**O54 未定稿**，现为 `null` ⇒ 返 `E_STATE`）。
-    **登记为 O72，随 O54 一并落地**；**签名保留、不写空壳**。
+  · **（v3.86 裁定 O102）** 原 `save_set_abcd()`（触发存盘集合 A~D，经 `realtime_apply.apply_full()`
+    走满幅应用）**随「存图」功能整体取消而移除**（§8.3 整节取消；**O72 ① 因对象消失而关闭**）。
 
 数据流（§5 TH3 段 + **v3.86 追加 35 的 §3.1 口径**）：
     触发暗帧（FrameDesc 的 dmabuf）→ **RGA** 缩放到 `hq.active_shape` 的**内容区**（主档 960×540，
@@ -59,7 +58,6 @@ import log as starlog
 E_NPU = -2
 E_STATE = -5
 E_TIMEOUT = -6
-E_IO = -4
 
 # RGA 目标枚举（与 native/rga_core.h 的 rga_dst_t 一致）
 RGA_DST_HQ = 2
@@ -264,11 +262,6 @@ class KeyframeInfer:
             self._slot = None
             return r
 
-    def save_set_abcd(self, seq_src: int, req: Dict[str, Any]) -> int:
-        """**未实现（O72）**——依赖 `apply_full`，而它卡 O54（`isp.csc_matrix` / `rgb_range` 未定稿）。
-
-        §8.3 集合 B（满幅 1920×1080 应用）须经 `realtime_apply.apply_full()`，该内核在
-        `isp.csc_matrix` / `isp.rgb_range` 为 `null` 时**返 `E_STATE`**（源码明写"不得猜测取值"）。
-        ⇒ **本版不写空壳**（只会留死代码），**签名保留**，随 **O54** 定稿一并落地。
-        """
-        return E_STATE
+    # **（v3.86 裁定 O102）** 原 `save_set_abcd()`（§5-C 签名）随「存图」功能整体取消而移除：
+    # 其唯一路径是经 `realtime_apply.apply_full()` 做满幅 1920×1080 应用（§8.3 集合 B），
+    # 而 `apply_full` 与 §8.3 均已随之取消 ⇒ **无对象，不保留空壳**。

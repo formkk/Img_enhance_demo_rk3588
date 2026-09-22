@@ -61,16 +61,21 @@ EVENT_TABLE: Dict[Tuple[str, str], Tuple[str, ...]] = {
     ("capture", "timestamp_source_changed"): ("source", "seq", "window_invalidated"),
     ("capture", "trigger_accept"): ("source", "seq_src", "discarded_triggers"),
     ("capture", "trigger_discard"): ("source", "seq_src", "discarded_triggers"),
+    # v3.85 裁定 O81 已在 §4 登记、但本节遗漏（v3.86 补登，**不是自造事件**）
+    ("capture", "pointer_device"): ("kind", "node", "present"),
     ("curve_estim", "curve_publish"): ("seq_est", "f_est", "alpha", "curve_level", "precision"),
     ("keyframe_infer", "hq_start"): ("seq_src", "model_id", "active_shape", "done_ns"),
     ("keyframe_infer", "hq_done"): ("seq_src", "model_id", "active_shape", "done_ns"),
-    ("keyframe_infer", "save_set"): ("seq_src", "items", "bytes", "dir"),
-    ("keyframe_infer", "save_fail"): ("seq_src", "items", "code", "reason"),
+    # **（v3.86 裁定 O102）** `keyframe_infer/save_set` 与 `keyframe_infer/save_fail` 两事件
+    # 随「存图」功能整体取消而移除（`docs/logging.md` §4 同步删行）
     ("display_hdmi", "hotplug"): ("connected", "mode"),
     ("display_hdmi", "fade_start"): ("frames",),
     ("display_hdmi", "fade_done"): ("frames",),
     ("display_mipi", "freeze_enter"): ("seq",),
     ("display_mipi", "freeze_exit"): ("seq",),
+    # v3.85 裁定 O79 已在 §4 登记、但本节遗漏（v3.86 补登，**不是自造事件**）
+    ("display_mipi", "fullscreen_enter"): ("seq", "reason"),
+    ("display_mipi", "fullscreen_exit"): ("seq", "reason"),
     ("display_mipi", "reset_key"): ("press", "seq"),
     ("*", "degrade_action"): ("trigger", "action"),
 }
@@ -81,7 +86,15 @@ STATE_EVENTS: Tuple[str, ...] = (
 )
 
 # §1：自检行与降级行**强制 INFO**，不得被级别过滤掉
-FORCED_INFO_EVENTS: Tuple[str, ...] = ("boot_check_item", "degrade_action", "rsm_transition")
+# **（v3.86 裁定 O117 收口）** 追加 `service_exit` 与 `reset_key` 两条**退出取证事件**：
+# 演示档 `logging.level = "WARN"`（§10.4 定稿值）下，这两条**均非自检行、也非降级行** ⇒ 会被级别
+# 过滤 ⇒ **§13「部署与自启动」行的取证要求（记录 `reset_key` 与退出码）在演示档下不可达**，
+# §11.2 M4 ⑤ 亦以其成对为判据。⇒ 裁定把它们**一并列为强制 INFO**（**不新增事件 / 不新增字段**）。
+# 依据 = 实测：2026-09-22 的长按退出与桌面恢复，因这两条被过滤而**只能靠 Xorg 启停反证**。
+FORCED_INFO_EVENTS: Tuple[str, ...] = (
+    "boot_check_item", "degrade_action", "rsm_transition",
+    "service_exit", "reset_key",
+)
 
 
 class LogError(Exception):
@@ -252,12 +265,13 @@ class Logger:
 
 
 def from_config(cfg: Any, stream: Any = None) -> Logger:
-    """按 §10.4 的 `logging.*` 建日志器。键未定稿时退化为 INFO + 仅 stdout。"""
+    """按 §10.4 的 `logging.*` 建日志器。键未定稿时退化为 INFO + 仅 stdout。
+
+    **（v3.86 裁定 O102）** 原「`logging.dir` 缺失时退回 `storage.dir/logs`」的兜底已移除
+    （`storage.*` 六键随「存图」整体取消）⇒ `logging.dir` 缺失即仅 stdout。
+    """
     level = cfg.get("logging.level") or "INFO"
     directory = cfg.get("logging.dir")
-    if not directory:
-        storage = cfg.get("storage.dir")
-        directory = os.path.join(storage, "logs") if storage else None
     return Logger(
         level=level,
         directory=directory,

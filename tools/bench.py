@@ -15,10 +15,12 @@
   - 运行方式：§10.6-B —— bench **SSH 前台运行、不进 systemd**（避免生命周期污染计量窗）
 
 成熟度（诚实标注，勿误用）：
-  ✅ 可跑：`model-infer`（模型级测速，包装 C 探针）、`curve-diff-fp16`（曲线场逐像素闸口）、
-          `apply-micro --impl py-ref`（numpy 参考实现，**非交付路径**）、`validate-report`（字段校验）
-  待链路：`realtime` / `hq` / `step-response` / `idle-link`（M1 起；当前无采集/显示链路，
-          调用即明确报错，**不产出占位数字**）
+  ✅ 可跑：`realtime`（§13「实时帧率」/「端到端延迟」：≥300 帧滑窗 × 3 轮，每轮独立进程）、
+          `hq`（§13「HQ 响应」：同进程驱动 `main.Demo` + 时间注入 ≥10 次触发）、
+          `model-infer`（模型级测速，包装 C 探针）、`curve-diff-fp16`（曲线场逐像素闸口）、
+          `apply-micro --impl py-ref`（numpy 参考实现，**非交付路径**）、
+          `apply-micro --impl native`（交付内核）、`osd-micro`、`validate-report`（字段校验）
+  待链路：`step-response` / `idle-link`（入口未接；调用即明确报错，**不产出占位数字**）
 """
 
 import argparse
@@ -28,6 +30,7 @@ import platform
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 
@@ -39,7 +42,7 @@ REQUIRED_FIELDS_FRAME = [
     'func_timing', 'f_est', 'alpha', 'soc_temp_c', 'discarded_triggers', 'freeze_window',
     'latency_segments', 'panel_refresh_ms', 'idle_link_baseline', 'scheduling',
 ]
-CHAIN_SCENARIOS = ['realtime', 'hq', 'step-response', 'idle-link']
+CHAIN_SCENARIOS = ['step-response', 'idle-link']
 
 
 def mono_ns():
@@ -60,6 +63,11 @@ def window_stats(samples_ns):
     ms = [s / 1e6 for s in samples_ns]
     return {'n': len(ms), 'p50_ms': pct(ms, 50), 'p95_ms': pct(ms, 95),
             'max_ms': max(ms), 'mean_ms': statistics.fmean(ms)}
+
+
+def window_stats_ms(samples_ms):
+    """毫秒样本 → `window_stats` 口径（内部按 ns 存放，此处换算以复用同一分位实现）。"""
+    return window_stats([v * 1e6 for v in samples_ms])
 
 
 def soc_temp_c():
@@ -141,6 +149,232 @@ def scenario_chain(args):
                   '按纪律不产出任何占位数字（规则 10-evidence §2）。',
         'requires': 'M1（采集链路）/ M2（实时闭环）之后；复现命令见主基准 §13 对应行',
     })
+    return emit(rep, args.out)
+
+
+def scenario_hq(args):
+    """§13「HQ 响应」行：**触发 → MIPI OSD ≤50 ms**；**触发 → 全屏 HQ 视图出图 ≤12 s**。
+
+    复现命令 = `python3 tools/bench.py --scenario hq --seq-log`（**≥10 次触发**，`--runs`）。
+    链路 = **同进程驱动 `main.Demo`**（TH1 采集 → TH2 曲线 → TH3 HQ 推理 → TH4 MIPI → TH5 HDMI）；
+    触发注入走 `main.py` 的既有验证钩子（与 `--trigger-times` 同源，**不新增 config 键 / 事件**）。
+
+    **前置**：TH4 取 DRM master ⇒ 须先 `sudo systemctl isolate multi-user.target` 停桌面（恢复见 R20）。
+    §6.5：时刻比对只用 `mono_ns`；出图时点取 **pageflip 的 vblank**，不取提交时刻；冻结窗单独开窗、
+    并从 fps / 延迟 / 配对窗**排除**（O90）。
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, repo_root)
+    triggers = int(args.runs)
+    if triggers < 10:
+        raise SystemExit('§13「HQ 响应」行要求 ≥10 次触发 ⇒ `--runs`（= 触发次数）须 ≥10')
+    try:
+        import config as starlight_config
+        import log as starlog
+        import main as main_mod
+    except ImportError as e:
+        raise SystemExit(f'hq 场景需要交付链路（main.py + config + log）：{e}')
+
+    cfg = starlight_config.load(args.config or None)
+    logger = starlog.from_config(cfg)
+    dump_dir = str(args.dump_canvas_dir or '')
+    if args.capture_mipi and not dump_dir:
+        # §13「OSD」行的 `--capture-mipi`：常态 1 张 + HQ 期 1 张（**链路原样**、零色调后处理）。
+        # 证据位置落 `reports/`（规则 10-evidence §4；**v3.86 裁定 O102 后 `storage.dir` 已取消**）。
+        dump_dir = os.path.join(repo_root, 'reports', 'hq_path_canvas')
+
+    d = main_mod.Demo(cfg, logger, frames=int(args.frames),
+                      trigger_times=triggers, trigger_interval_s=float(args.trigger_interval_s),
+                      dump_canvas_dir=dump_dir)
+    rep = base_report(args, 'hq', 'frame')
+    rep.update({'entry': 'bench.py --scenario hq --seq-log（同进程驱动 main.Demo；链路 = TH1…TH5）',
+                'hq_active_shape': str(cfg.require_final('hq.active_shape')),
+                'triggers_requested': triggers,
+                'dump_canvas_dir': dump_dir or None})
+    t0 = time.monotonic()
+    d._t_start = t0
+    rc = d.boot()
+    if rc != 0:
+        rep.update({'status': 'boot_failed', 'rc': rc,
+                    'reason': 'TH4 取 DRM master 失败（先 `sudo systemctl isolate multi-user.target`）'})
+        emit(rep, args.out)
+        return 1
+    try:
+        d.run()
+    finally:
+        # TH3 / TH5 的 `info()` 须在 `shutdown()` **之前**取（shutdown 会 deinit 模型）
+        th3 = d.kf.info() if d.kf is not None else {}
+        th5 = d.hdmi.info() if d.hdmi is not None else {}
+        d.shutdown()
+
+    wall = max(1e-6, time.monotonic() - t0)
+    c = d.counters
+    ts = d.trig_summary()
+    paired_unpaired = c['flips'] - d.pair_ok
+    osd_ok = sum(1 for r in d.trig_log if r['osd_flip_seq'] == r['seq_src'])
+    fs_ok = sum(1 for r in d.trig_log if r['fs_mipi_seq'] == r['seq_src'])
+    osd_p95, fs_p95 = pct(ts['osd_ms'], 95), pct(ts['fullscreen_mipi_ms'], 95)
+
+    rep.update({
+        'status': 'ok',
+        'cycles_completed': ts['cycles'],
+        'trigger_response': {
+            'osd': window_stats_ms(ts['osd_ms']),
+            'fullscreen_mipi': window_stats_ms(ts['fullscreen_mipi_ms']),
+            'fullscreen_hdmi': window_stats_ms(ts['fullscreen_hdmi_ms']),
+            'budget': {'osd_ms': 50.0, 'fullscreen_ms': 12000.0},
+            'pass': {'osd_p95_le_50ms': None if osd_p95 is None else osd_p95 <= 50.0,
+                     'fullscreen_mipi_p95_le_12s': None if fs_p95 is None else fs_p95 <= 12000.0},
+            'exit_reasons': ts['exit_reasons'],
+        },
+        'seq_coverage': {'triggers': ts['cycles'], 'osd_flip_seq_pair_ok': osd_ok,
+                         'fullscreen_mipi_seq_pair_ok': fs_ok},
+        'pairing_rate': d.pair_ok / max(1, c['flips']),
+        'paired_flips': d.pair_ok,
+        'discarded_frames': {'flip_skipped': c['flip_skipped'], 'unpaired': paired_unpaired,
+                             'dropped_stale': c['dropped_stale']},
+        'fps': {'frames': c['frames'], 'wall_s': wall, 'frozen_s': d.freeze_ns / 1e9,
+                'active_window_fps': (c['frames'] / max(1e-6, wall - d.freeze_ns / 1e9)),
+                'floor_ref': 14.99},
+        'latency': window_stats_ms(d.lat),
+        'latency_segments': {'capture_to_submit': window_stats_ms(d.lat_app),
+                             'submit_to_vblank': window_stats_ms(d.lat_submit)},
+        'func_timing': {'hq_last_run_ns': th3.get('last_run_ns'), 'hq_runs': th3.get('runs'),
+                        'hq_core_mask_ret': th3.get('core_mask_ret'),
+                        'hdmi_mirror_rga_last_ns': th5.get('last_scale_ns'),
+                        'hdmi_mirror_rga': th5.get('scale'),      # §6.1 镜像行：n / P50 / P90（≤3 ms）
+                        'note': '本场景只含 TH3 推理与 TH5 放大两处函数级打点；'
+                                'RGA 合成 / OSD / 曲线应用的逐函数耗时见 realtime / osd-micro 场景'},
+        'f_est': d.est.f_est if d.est else None,
+        'alpha': d.est.alpha if d.est else None,
+        'discarded_triggers': c['discarded_triggers'],
+        'freeze_window': {'cycles': len(ts['freeze_ms']), 'total_ms': sum(ts['freeze_ms']),
+                          'per_cycle_ms': ts['freeze_ms'],
+                          'marker': 'display_mipi/freeze_enter|freeze_exit',
+                          'excluded_from': ['fps', 'latency', 'pairing']},
+        'panel_refresh_ms': 1000.0 / float(cfg.require_final('display.panel_refresh_hz')),
+        'idle_link_baseline': cfg.get('metrics.idle_link_baseline'),
+        'counters': c,
+        'th3_info': th3,
+        'th5_info': th5,
+        'notes': [
+            '判据 = §13「HQ 响应」行：触发→MIPI OSD ≤50 ms；触发→全屏 HQ 视图出图 ≤12 s'
+            '（v3.58 裁定 O37 重排、v3.85 裁定 O83 语义改「两屏同时」）；判定 = 实现者',
+            'O90：HQ 期间实时链冻结 ⇒ fps 取**活动窗口径**（冻结窗已从分母排除）；'
+            '`hq_flips_delta` 随 O90 作废，改记 `freeze_window`',
+            '§6.5：时钟只用 `mono_ns`；出图时点 = pageflip 的 vblank；配对按 `seq` 回填，禁止时间就近配对',
+            '本场景报告随带配对率与丢弃帧数；`--seq-log` 给出每周期 seq 级明细',
+        ],
+    })
+    if d.trig_log:
+        rep['notes'].append('触发→OSD / 全屏 的 P95 判据见 trigger_response.pass')
+    if rep['idle_link_baseline'] is None:
+        rep['notes'].append('`metrics.idle_link_baseline` 缺失 ⇒ 超标归因不可闭合（§6.5）')
+    if args.seq_log:
+        rep['seq_log'] = d.trig_log
+    return emit(rep, args.out)
+
+
+def scenario_realtime(args):
+    """§13「实时帧率」/「端到端延迟」行的复现入口（**无 HQ**）：`--scenario realtime`。
+
+    复现方式（§13 该两行）= **`bench.py --scenario realtime`；≥300 帧滑窗 × 3 轮**
+    ⇒ 默认 `--rounds 3` / `--frames 300`。判定口径 = §6.5（`mono_ns`、按 `seq` 回填配对、≥300 帧滑窗、
+    HQ 与冻结窗单独开窗、配对率与丢弃帧数随报告给出、延迟两段分解 + 空链路基线对比）。
+
+    **每轮起一个独立进程**（`main.py --report-json`）——机房纪律：**全生命周期只 `stream on` 一次**
+    （规则 `30-board-safety.md` §1）⇒ **不把 3 轮塞进同一进程**（那会让 `stream_on_count` 变成 3）。
+    **前置**：TH4 需 DRM master（先 `sudo systemctl isolate multi-user.target`）。
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, repo_root)
+    rounds = max(1, int(args.rounds))
+    frames = int(args.frames) or 300
+    per = []
+    for r in range(rounds):
+        tmp = os.path.join(tempfile.gettempdir(), f'bench_rt_r{r + 1}.json')
+        cmd = [sys.executable, os.path.join(repo_root, 'main.py'),
+               '--frames', str(frames), '--report-json', tmp]
+        if args.config:
+            cmd += ['--config', args.config]
+        proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
+        if proc.returncode != 0 or not os.path.exists(tmp):
+            rep = base_report(args, 'realtime', 'frame')
+            rep.update({'status': 'round_failed', 'round': r + 1, 'rc': proc.returncode,
+                        'cmd': cmd, 'stdout_tail': proc.stdout.strip()[-1500:],
+                        'stderr_tail': proc.stderr.strip()[-1500:],
+                        'reason': 'TH4 取 DRM master 失败（先 `sudo systemctl isolate multi-user.target`）'
+                                  '或链路启动失败'})
+            return emit(rep, args.out)
+        with open(tmp) as f:
+            per.append(json.load(f))
+
+    def col(key):
+        return [p.get(key) for p in per]
+
+    def med(vals):
+        v = sorted(x for x in vals if x is not None)
+        return v[len(v) // 2] if v else None
+
+    lat = [x for p in per for x in (p.get('lat_all_ms') or [])]
+    lat_app = [x for p in per for x in (p.get('lat_app_all_ms') or [])]
+    lat_sub = [x for p in per for x in (p.get('lat_submit_all_ms') or [])]
+    frames_all = sum(int(p.get('frames') or 0) for p in per)
+    flips_all = sum(int(p.get('flips') or 0) for p in per)
+    paired_all = sum(int(p.get('paired') or 0) for p in per)
+    baseline = per[0].get('idle_link_baseline')
+    fps_vals = [p.get('fps_active') for p in per]
+    rep = base_report(args, 'realtime', 'frame')
+    rep.update({
+        'status': 'ok',
+        'entry': 'bench.py --scenario realtime（每轮一个独立进程跑 `main.py --report-json`；链路 = TH1…TH5）',
+        'rounds': rounds, 'frames_per_round': frames,
+        'fps': {'per_round': fps_vals, 'median': med(fps_vals), 'n': len(per),
+                'frames_total': frames_all, 'floor_ref': 14.99,
+                # **同源第二口径**（分母扣进程启动）：两值并报，**口径以何为准待裁定**
+                'steady_per_round': col('fps_steady'), 'steady_median': med(col('fps_steady')),
+                'boot_s_per_round': col('boot_s'),
+                'note': '`per_round`/`median` = 现行口径（wall 含进程启动；§11.2 回归基线同口径）；'
+                        '`steady_*` = 分母扣 boot 的口径（§6.5 的"帧滑窗"不含启动）'},
+        'latency': window_stats_ms(lat),
+        'latency_segments': {'capture_to_submit': window_stats_ms(lat_app),
+                             'submit_to_vblank': window_stats_ms(lat_sub)},
+        'pairing_rate': paired_all / max(1, flips_all), 'paired_flips': paired_all,
+        'seq_coverage': {'flips': flips_all, 'paired': paired_all,
+                         'unpaired': flips_all - paired_all},
+        'discarded_frames': {
+            'flip_skipped': sum(int(p['counters'].get('flip_skipped', 0)) for p in per),
+            'unpaired': flips_all - paired_all,
+            'dropped_stale': sum(int(p['counters'].get('dropped_stale', 0)) for p in per),
+            'lease_timeouts': sum(int(p['counters'].get('lease_timeouts', 0)) for p in per)},
+        'freeze_window': {'total_ms': sum(int(p.get('freeze_ns') or 0) for p in per) / 1e6,
+                          'marker': 'display_mipi/freeze_enter|freeze_exit',
+                          'excluded_from': ['fps', 'latency', 'pairing'],
+                          'note': '本场景不注入触发 ⇒ 期望恒为 0'},
+        'func_timing': {'hdmi_mirror_rga': per[0].get('mirror_scale'),   # §6.1 镜像行：n / P50 / P90（≤3 ms）
+                        'stream_on_count': col('stream_on_count'),
+                        'note': '本场景（无 HQ）的函数级打点只含 TH5 放大；RGA 合成 / OSD / 曲线应用'
+                                '见 osd-micro 等场景'},
+        'f_est': med(col('f_est')), 'alpha': med(col('alpha')),
+        'discarded_triggers': sum(int(p['counters'].get('discarded_triggers', 0)) for p in per),
+        'panel_refresh_ms': med(col('panel_refresh_ms')),
+        'idle_link_baseline': baseline,
+        'rounds_detail': [{'round': i + 1, 'fps_active': p.get('fps_active'),
+                           'fps_steady': p.get('fps_steady'), 'boot_s': p.get('boot_s'),
+                           'wall_s': p.get('wall_s'), 'frames': p.get('frames'),
+                           'lat_p50_ms': p.get('lat_p50_ms'), 'lat_p95_ms': p.get('lat_p95_ms'),
+                           'pairing_rate': p.get('pairing_rate'),
+                           'stream_on_count': p.get('stream_on_count'),
+                           'mirror_scale': p.get('mirror_scale')}
+                          for i, p in enumerate(per)],
+        'notes': ['判据 = §13「实时帧率」行（无 HQ：≥14.99 FPS，O89/O93）与「端到端延迟」行'
+                  '（采集→MIPI 显示 P95 ≤80 ms，两段分解随报告给出）；判定 = 实现者 / 验收人',
+                  '§6.5：时钟只用 `mono_ns`；配对按 `seq` 回填；≥300 帧滑窗 × 3 轮'
+                  '（每轮一个独立进程 ⇒ `stream_on_count` 恒为 1）',
+                  '杠杆：HDMI 镜像耗时（§6.1 O85 行 ≤3 ms）取 `func_timing.hdmi_mirror_rga` 的 n / P50 / P90'],
+    })
+    if baseline is None:
+        rep['notes'].append('`metrics.idle_link_baseline` 缺失 ⇒ 超标归因不可闭合（§6.5 / O19）')
     return emit(rep, args.out)
 
 
@@ -293,13 +527,16 @@ def scenario_osd_micro(args):
     try:
         import struct
         import config as starlight_config
+        import curve_estim as curve_mod                 # 几何单源（O58）
         import osd as osd_mod
         import _starlight_native as _n
     except ImportError as e:
         raise SystemExit(f'osd-micro 需要交付链路（osd.py + _starlight_native + config）：{e}')
 
     cfg = starlight_config.load()
-    cw, ch = 1024, 600                                  # §3.4 画布（display.mipi_canvas）
+    g = curve_mod.resolve_geometry(cfg)                 # **几何唯一来源**（O58：禁止第二处常量）
+    cw, ch = int(g['canvas_w']), int(g['canvas_h'])
+    plot_y, plot_h = int(g['plot_y']), int(g['plot_h'])
     win_w, win_h = 512, 288                             # 窗分辨率（§3.4 双窗）
     level = cfg.get('pipeline.curve_level')
     effective = (cfg.get('pipeline.curve_geometry.effective') or {}).get(level)
@@ -321,7 +558,10 @@ def scenario_osd_micro(args):
     else:
         field.write(bytes((i * 13) & 0xFF for i in range(n)))
     st = {'curve_field': field, 'curve_w': eff_w, 'curve_h': eff_h,
-          'curve_precision': precision}
+          'curve_precision': precision,
+          # **（v3.86 裁定 O105）** 实时工作点需要 `mean_orig`（0..255 域）；给出确定性非零值，
+          # 使本场景的计时**含**工作点标记的绘制成本。
+          'mean_orig': 13.7}
 
     period = r.stats.period_ns
     raw_b, enh_b = raw.to_bytes(), enh.to_bytes()
@@ -335,10 +575,10 @@ def scenario_osd_micro(args):
     curve_ns, hist_ns = [], []
     for _ in range(args.runs):                          # ② 曲线图 / ③ 直方图
         t0 = mono_ns()
-        r._curve_plot(canvas, 0, osd_mod.PLOT_Y, half, osd_mod.PLOT_H, st)
+        r._curve_plot(canvas, 0, plot_y, half, plot_h, st)
         curve_ns.append(mono_ns() - t0)
         t0 = mono_ns()
-        r._histogram(canvas, half, osd_mod.PLOT_Y, half, osd_mod.PLOT_H)
+        r._histogram(canvas, half, plot_y, half, plot_h)
         hist_ns.append(mono_ns() - t0)
 
     rep = base_report(args, 'osd-micro', 'model')
@@ -420,7 +660,17 @@ def main():
                    choices=['realtime', 'hq', 'step-response', 'idle-link', 'model-infer',
                             'apply-micro', 'osd-micro'])
     p.add_argument('--out', default='', help='报告输出路径（默认只打印）')
-    p.add_argument('--runs', type=int, default=30)
+    p.add_argument('--runs', type=int, default=30,
+                   help='apply-micro 的重复次数；hq 场景 = **触发次数**（§13 要求 ≥10）')
+    p.add_argument('--config', default='', help='config.yaml 路径（缺省 = 仓库根）')
+    p.add_argument('--rounds', type=int, default=3,
+                   help='realtime 场景的轮数（§13 复现方式 = ≥300 帧滑窗 × **3 轮**；每轮独立进程）')
+    p.add_argument('--frames', type=int, default=0,
+                   help='hq / realtime 场景的每轮帧数（0 = hq 注入触发跑完即收尾 / realtime 取 300）')
+    p.add_argument('--trigger-interval-s', type=float, default=15.0,
+                   help='hq 场景的触发注入间隔（秒；须 ≥ HQ 单次耗时）')
+    p.add_argument('--dump-canvas-dir', default='',
+                   help='hq 场景导图目录（链路原样 PNG；缺省 + `--capture-mipi` 时落 reports/hq_path_canvas）')
     p.add_argument('--breakdown', action='store_true', help='延迟分两段上报（§6.5）')
     p.add_argument('--seq-log', action='store_true', help='记 seq 级明细（HQ 响应）')
     p.add_argument('--capture-mipi', action='store_true', help='抓 MIPI 截图（常态 + HQ）')
@@ -452,6 +702,10 @@ def main():
         return scenario_curve_diff(args)
     if not args.scenario:
         p.error('需指定 --scenario（或 --curve-diff-fp16 / --validate-report）')
+    if args.scenario == 'hq':
+        return scenario_hq(args)
+    if args.scenario == 'realtime':
+        return scenario_realtime(args)
     if args.scenario in CHAIN_SCENARIOS:
         return scenario_chain(args)
     if args.scenario == 'model-infer':

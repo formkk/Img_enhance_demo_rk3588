@@ -10,7 +10,8 @@
   · 无可用缓冲时丢**最旧的未签发 lease** 帧；**禁止强制回收仍在使用的 lease**。
 
 状态机（§5）：
-  RSM  = BOOT_CHECK → RUN_DEMO ⇄ MIPI_PREVIEW_ONLY → SHUTDOWN / FAULT_EXIT
+  RSM  = BOOT_CHECK → RUN_DEMO → SHUTDOWN / FAULT_EXIT（**v3.85 裁定 O80**：四态，
+         `MIPI_PREVIEW_ONLY` 作废；HDMI 拔出不再迁移，`on_hotplug` 只记日志）
   FSM  = IDLE → DEBOUNCE → HQ_BUSY → IDLE；`HQ_BUSY` 期间触发**一律丢弃并计数**（不排队、无 pending 位）
 
 设备 I/O 与 NPU/RGA/DRM 全部在同目录 `_starlight_native` 扩展内完成；本文件只做编排与状态机。
@@ -26,16 +27,21 @@ from typing import Any, Callable, Dict, List, Optional
 
 import _starlight_native as _n
 
+# `input_event` 结构尺寸（`struct timeval` 16 + type 2 + code 2 + value 4 = 24 B）
+# **v3.86**：`TouchReader.read_events()` 必须按此尺寸步进（原按 16 B 步进 ⇒ 解析错位且读满一批时越界）。
+EV_SIZE = struct.calcsize("llHHi")
+
 import log as starlog
 import sensor_lock
 
 # ── §5 契约的 RSM / 触发 FSM 取值 ──────────────────────────────────────
 RSM_BOOT_CHECK = "BOOT_CHECK"
 RSM_RUN_DEMO = "RUN_DEMO"
-RSM_MIPI_PREVIEW_ONLY = "MIPI_PREVIEW_ONLY"
 RSM_SHUTDOWN = "SHUTDOWN"
 RSM_FAULT_EXIT = "FAULT_EXIT"
-RSM_ALL = (RSM_BOOT_CHECK, RSM_RUN_DEMO, RSM_MIPI_PREVIEW_ONLY, RSM_SHUTDOWN, RSM_FAULT_EXIT)
+# **（v3.85 裁定 O80）**`MIPI_PREVIEW_ONLY` **作废**（镜像化后 HDMI 拔出不再降级任何东西；
+# 全屏 HQ 视图在 MIPI 上照常可用）⇒ RSM 收敛为**四态**。
+RSM_ALL = (RSM_BOOT_CHECK, RSM_RUN_DEMO, RSM_SHUTDOWN, RSM_FAULT_EXIT)
 
 FSM_IDLE = "IDLE"
 FSM_DEBOUNCE = "DEBOUNCE"
@@ -43,10 +49,11 @@ FSM_HQ_BUSY = "HQ_BUSY"
 FSM_ALL = (FSM_IDLE, FSM_DEBOUNCE, FSM_HQ_BUSY)
 
 # §5 的合法 RSM 迁移（非法迁移一律 E_STATE，禁止绕过状态机直接改状态）
+# **（v3.85 裁定 O80）**：HDMI 拔出**不再迁移**（`on_hotplug` 只记日志）；
+# `RUN_DEMO → BOOT_CHECK` = 软复位路径（重跑启动自检，§10.6-C）。
 RSM_LEGAL = {
-    RSM_BOOT_CHECK: (RSM_RUN_DEMO, RSM_MIPI_PREVIEW_ONLY, RSM_FAULT_EXIT),
-    RSM_RUN_DEMO: (RSM_MIPI_PREVIEW_ONLY, RSM_SHUTDOWN),
-    RSM_MIPI_PREVIEW_ONLY: (RSM_RUN_DEMO, RSM_SHUTDOWN),
+    RSM_BOOT_CHECK: (RSM_RUN_DEMO, RSM_FAULT_EXIT),
+    RSM_RUN_DEMO: (RSM_BOOT_CHECK, RSM_SHUTDOWN, RSM_FAULT_EXIT),
     RSM_SHUTDOWN: (),
     RSM_FAULT_EXIT: (),
 }
@@ -57,9 +64,8 @@ E_TIMEOUT = -6
 # 触发源（§5 TriggerEvent.source）
 SRC_TOUCH, SRC_GPIO, SRC_TIMER, SRC_UART = "TOUCH", "GPIO", "TIMER", "UART"
 
-# MIPI 按钮区 3 键（§3.4）；命中区下限由 `ui.hit_area_min_px` 给出
+# MIPI 按钮区 2 键（§3.4；**v3.86 裁定 O101：取消 save 键**）；命中区下限由 `ui.hit_area_min_px` 给出
 BTN_TRIGGER_HQ = "trigger_hq"
-BTN_SAVE = "save"
 BTN_RESET_EXIT = "reset_exit"
 
 
@@ -90,7 +96,16 @@ class TouchReader:
         return True
 
     def read_events(self) -> List[tuple]:
-        """返回 [(type, code, value)]；每事件 16 字节（timeval 8 + type/code/value 各 2/2/4）。"""
+        """返回 [(type, code, value)]；**每个 `input_event` 为 24 字节**
+        （`struct timeval` 16 + type 2 + code 2 + value 4 = `struct.calcsize("llHHi")`）。
+
+        **v3.86 修正（人工测试首轮暴露）**：原实现 `for off in range(0, len(data) - 15, 16)` **按 16 字节
+        步进**并把上界写成 `len-15` ⇒ 读满一批时**越界抛 `struct.error`**（实测：1008 B 批 → `off=992`
+        需 1016 B）⇒ 主循环异常 → 进程退出 → DRM master 释放（屏幕被 tty 接管）；**且即便不越界，16 字节
+        步进也会使每个事件的 type/code/value 解析错位**（点击因此从未被受理）。
+        现行 = **按完整事件数解析**（`EV_SIZE` 步进）；evdev 的 `read()` 只返回整事件，
+        故尾部不会有半事件；读取上限改为 `EV_SIZE × 64`（= 1536 B，与批大小配合）。
+        """
         if self.fd is None:
             return []
         out = []
@@ -98,10 +113,10 @@ class TouchReader:
             r, _, _ = select.select([self.fd], [], [], 0)
             if not r:
                 return []
-            data = os.read(self.fd, 16 * 64)
+            data = os.read(self.fd, EV_SIZE * 64)
         except OSError:
             return []
-        for off in range(0, len(data) - 15, 16):
+        for off in range(0, len(data) - EV_SIZE + 1, EV_SIZE):
             _sec, _usec, etype, code, value = struct.unpack_from("llHHi", data, off)
             out.append((etype, code, value))
         return out
@@ -197,7 +212,7 @@ class Capture:
         """四源共用的触发入口。返回 `seq_src`（>0 表示受理），0 表示丢弃。"""
         if source not in (SRC_TOUCH, SRC_GPIO, SRC_TIMER, SRC_UART):
             raise CaptureError(f"未知触发源 {source}")
-        if self.rsm not in (RSM_RUN_DEMO, RSM_MIPI_PREVIEW_ONLY):
+        if self.rsm != RSM_RUN_DEMO:
             self._discard(source, reason="rsm_not_accepting")
             return 0
         if self.fsm == FSM_HQ_BUSY:

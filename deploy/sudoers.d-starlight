@@ -1,0 +1,10 @@
+# starlight —— 演示启动器的免密授权（主基准 §10.6-D；v3.86 裁定 O116）
+#
+# **最小权限**：只授权桌面图标真正需要的那一条命令（关桌面 ⇒ 释放 DRM master，
+# 演示单元 `WantedBy=multi-user.target` 随之被 systemd 拉起）。不授权 `start` / `stop` /
+# `restart` / `set-default` 等任何其它 systemctl 动作。
+#
+# 安装：安装到 /etc/sudoers.d/starlight，权限 0440（root:root），并用 `visudo -c` 校验。
+# 恢复：`rm /etc/sudoers.d/starlight`（删掉即失去免密，图标点击会要求输密码）。
+
+cat ALL=(root) NOPASSWD: /usr/bin/systemctl isolate --no-block multi-user.target

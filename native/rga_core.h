@@ -65,6 +65,21 @@ int rga_blit_nv12_va(const void* src_va, rga_dst_t dst);
    **画布缓冲由 drm_core 持有**（它才是 DRM FB 的所有者），本函数只往调用方给的 VA 上合成。 */
 int rga_canvas_compose_to(void* canvas_va, uint32_t canvas_w, uint32_t canvas_h);
 
+/* RGB888 → RGB888 缩放（源/目标均为虚拟地址；用于 HDMI 镜像与全屏 HQ 放大）。
+   `src_va`/`dst_va` 必须已按 RGBA8888/RGB888 的 stride 排布（本项目画布 = RGB888 紧凑排布）。
+   返回 RGA_OK / RGA_E_STATE（未 configure 或入参为零）/ RGA_E_RGA（RGA 调用失败）。 */
+int rga_scale_rgb888(const void* src_va, uint32_t src_w, uint32_t src_h,
+                     void* dst_va, uint32_t dst_w, uint32_t dst_h);
+
+/* 同上，但源/目标为 **dma-buf fd**（`fd` 包裹）。
+   v3.86 实测（`docs/evidence/reports/display-arch-change/rga_scale_transport_probe.c`，
+   cma / system-dma32 / system-uncached 三堆 × 1024×600→1920×1080 与 960×540→1920×1080）：
+   **fd 包裹中位 1.70~1.85 ms / p90 1.73~1.88 ms**，**VA 包裹中位 3.04~3.36 ms / p90 3.06~3.36 ms**
+   ⇒ 差 1.2~1.6 ms 全部来自包裹方式（与内存类型无关）⇒ **镜像路径必须走 fd**（§6.1 O85 行 ≤3 ms）。
+   计时同样写入 `rga_last_scale_ns()`。 */
+int rga_scale_rgb888_fd(int src_fd, uint32_t src_w, uint32_t src_h,
+                        int dst_fd, uint32_t dst_w, uint32_t dst_h);
+
 /* 缓冲访问（虚拟地址；Python 侧以只读缓冲读取或转交扩展） */
 void* rga_est_va(void);        /* pad 缓冲整幅 */
 void* rga_est_eff_va(void);    /* 有效区子视图基址（= est + pad_top 行） */
@@ -81,6 +96,8 @@ int   rga_hq_fd(void);
 /* 最近一次 blit 的耗时（ns，CLOCK_MONOTONIC 差值；供函数级打点） */
 uint64_t rga_last_blit_ns(void);
 uint64_t rga_last_canvas_ns(void);
+/* 最近一次 scale 的耗时（ns，CLOCK_MONOTONIC 差值）；未调用过为 0。 */
+uint64_t rga_last_scale_ns(void);
 
 #ifdef __cplusplus
 }

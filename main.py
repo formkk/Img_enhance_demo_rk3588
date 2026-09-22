@@ -14,6 +14,8 @@
 **退出序（§5）**：先停发新 lease → 等在途 lease/fence 有界清空 → TH1 `STREAMOFF` 并释放 DMABUF 池
                 → TH4 释放 CRTC/plane
 **软复位（O26）**：只做退出序前两段，**不 STREAMOFF、不释放池与 CRTC/plane**。
+**退回桌面（O114）**：「复位·退出」键长按 ≥3 s ⇒ 退出序之后 `isolate graphical.target`（§10.6-C）；
+该动作**只挂本键**，bench / `--frames` / 信号退出不回桌面（见 `_restore_desktop()`）。
 
 运行模式（§10.6-B，**不设 `runtime.mode` 键**）：
     演示 = systemd 拉起本文件；bench = SSH 前台跑 `tools/bench.py`；调试 = 前台 + `logging.level=DEBUG`
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -37,25 +40,99 @@ import display_hdmi as hdmi_mod
 import display_mipi as display_mod
 import keyframe_infer as kf_mod
 import log as starlog
+import pointer as pointer_mod
 import realtime_apply as ra
 import ui_buttons as ui_mod
 
 # 曲线场精度档 → 扩展取值
 WIN_W, WIN_H = curve_mod.WIN_W, curve_mod.WIN_H
 
+# **（v3.86 裁定 O108）** OSD 帧率的统计窗长（秒）：屏上帧率取**最近 1 s 滑窗**（见 `_fps()`）。
+FPS_WINDOW_S = 1.0
+
+# **（v3.86 裁定 O115）** 屏上「端延时」的可读性口径：旧实现**逐帧**取「最近一次配对的总计」
+# （O108）⇒ 每帧一个新值，**人眼读不出**。现改为 **最近 `LAT_WINDOW_S` 内已配对帧的 P50**，
+# 且**每 `LAT_REFRESH_S` 才刷新一次**（窗长与「帧率」同口径、刷新频率与统计降频 1 Hz 同频）。
+# 该值**只作现场判读**，不构成验收口径（验收仍只看 `bench.py` 报告，§6.5）。
+LAT_WINDOW_S = 1.0
+LAT_REFRESH_S = 1.0
+
+# **（v3.86 裁定 O114）** 退出键 = **退回桌面**：退出序（`d.shutdown()` 释放 DRM master）完成后
+# 切回图形 target，桌面即回来（§10.6-C）。桌面是用 `isolate multi-user.target` 切走的（§2.3），
+# 故恢复 = `isolate graphical.target`（**已实测往返可恢复**，见 `docs/evidence/M2-2-hq-align.md`）。
+# **只由「复位·退出」键长按路径触发**（`Demo._restore_desktop` 置位）—— bench / `--frames` /
+# SIGINT 等其它退出路径**不**回桌面，否则会污染计量窗口与取证（§6.5）。
+# 目标名是**机制值、非 config 键**（同 §10.6-A 的 `ExecStartPre` 口径）。
+DESKTOP_TARGET = "graphical.target"
+
+
+def _restore_desktop() -> None:
+    """退回桌面（§10.6-C / 裁定 O114）：`systemctl isolate graphical.target`。
+
+    桌面缺席是**可降级项**（规则 `30-board-safety.md` §2）⇒ 失败**只提示、不阻塞退出、不改返回码**；
+    提示走 stdout（**不新增日志事件**——§4 事件清单无对应项，不自行造事件）。
+    """
+    try:
+        r = subprocess.run(["systemctl", "isolate", DESKTOP_TARGET],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"退回桌面失败（isolate {DESKTOP_TARGET}）：{e}；屏将停在最后一帧")
+        return
+    if r.returncode != 0:
+        msg = r.stderr.decode(errors="replace").strip() if r.stderr else ""
+        print(f"退回桌面失败（isolate {DESKTOP_TARGET} rc={r.returncode}）：{msg}；屏将停在最后一帧")
+
 
 class Demo:
-    def __init__(self, cfg: Any, logger: starlog.Logger, frames: int = 0, est_every: int = 6,
-                 hdmi_every: int = 6, trigger_at: int = 0):
+    def __init__(self, cfg: Any, logger: starlog.Logger, frames: int = 0, est_every: int = 2,
+                 hdmi_every: int = 6, trigger_at: int = 0, trigger_times: int = 0,
+                 trigger_interval_s: float = 15.0, touch_node: str = "", mouse_node: str = "",
+                 dump_canvas_dir: str = "", dump_canvas_frames: int = 0,
+                 dump_after: int = 0):
         self.cfg = cfg
         self.log = logger
         self.max_frames = frames
         self.est_every = max(1, est_every)
         # TH5 热插拔低频步进周期（帧）：与 `est_every` 同风格；6 帧 ≈ 200 ms @30 fps
         self.hdmi_every = max(1, hdmi_every)
-        # **[验证钩子]** 第 N 帧注入一次 TOUCH 触发（0 = 不注入）；生产触发源是触控 evdev
+        # **[验证钩子]** 触发注入（生产触发源 = 指针；O84 单源）：
+        #   `trigger_at` = 第 N 个**活动帧**注入 1 次（兼容旧用法）；`trigger_times` = 时间驱动注入 N 次
         self.trigger_at = trigger_at
+        self.trig_left = max(0, trigger_times) + (1 if trigger_at else 0)
+        self.trig_interval_s = max(1.0, float(trigger_interval_s))
+        self.trig_frame_at = trigger_at
+        self._next_trig_t = 0.0
         self._triggered = False
+        self.touch_node = touch_node
+        self.mouse_node = mouse_node
+        self.dump_canvas_dir = dump_canvas_dir
+        # **[取证钩子]** 常规态**逐帧**导图的有界上限（0 = 关闭，既有行为不变）。
+        # `_dump_n` = 已导出的**成功翻页序号**（0 起），与 `DisplayMipi.cur` 的奇偶一致
+        # ⇒ `_dump_n % 2` 即该帧所用画布缓冲的索引（供两缓冲一致性分析）。
+        self.dump_canvas_frames = max(0, int(dump_canvas_frames))
+        # **[取证钩子] 预热帧数**（v3.86 追加 50）：跳过前 `dump_after` 个**成功翻页**后才开始逐帧转储
+        # ⇒ 用于取**稳态**画面（否则转储本身的 PNG 压缩开销会把帧率/延迟拖垮，得到的是"负载态"）。
+        self.dump_after = max(0, int(dump_after))
+        self._dump_n = 0
+        # ── 指针 / 视图态 / HQ 结果与冻结（§3.5、O79、O81、O90）──────────
+        self.ptr = None
+        self.cursor = None
+        self.view = "normal"                 # normal | fullscreen_hq（§3.5 两态）
+        self.frozen = False
+        self.fs_enter_ns = 0
+        self.freeze_ns = 0                   # 累计冻结窗（fps 用活动窗口径，O90）
+        self._frozen_since = 0
+        self.hq_seq = 0
+        self.hq_rgb = None                   # HQ 960×540 RGB888 常驻缓冲（O79 全屏视图内容）
+        self._dumped_normal = False          # 常规态导图只做一次
+        # §13「HQ 响应」行的 **seq 级明细**（`bench.py --scenario hq --seq-log` 的数据源）：
+        # 每个触发周期一条记录（触发受理 → OSD 提示 → 全屏出图 → 退出），时刻一律 `mono_ns`。
+        self.trig_log: list = []
+        self._cur_trig: Optional[Dict[str, Any]] = None
+        self._inject_fired = 0               # 已注入的触发次数（自动收尾判据，见 `run()`）
+        self._reset_press_ns = 0             # 「复位·退出」键按下时刻（0 = 未按下；§10.6-C 短按/长按）
+        # **（v3.86 裁定 O114）** 退出键 = 退回桌面：仅本路径置位（`main()` 退出序后 `isolate`）
+        self._restore_desktop = False
         self.stop = threading.Event()
         self.cap: Optional[capture_mod.Capture] = None
         self.est: Optional[curve_mod.CurveEstimator] = None
@@ -67,13 +144,33 @@ class Demo:
         self.counters: Dict[str, Any] = {"frames": 0, "estimates": 0, "flips": 0,
                                          "flip_skipped": 0, "dropped_stale": 0,
                                          "lease_timeouts": 0, "discarded_triggers": 0,
-                                         "hq_started": 0, "hq_done": 0, "hq_flips_delta": 0}
+                                         # **（v3.86 裁定 O122）** 翻页**负值**帧数（自愈后仍未成）
+                                         # ——O122 前该分支**不计数**，负值被静默吞掉（49 min / 5 flip）
+                                         "pageflip_fail": 0,
+                                         "hq_started": 0, "hq_done": 0,
+                                         "freeze_enter": 0, "freeze_exit": 0, "freeze_flips": 0,
+                                         "fullscreen_enter": 0, "fullscreen_exit": 0}
+        # **（v3.86 裁定 O122）** 显示失联 / 已恢复的**边沿**去重（与 TH4 的边沿计数比对，
+        # 只在**翻转时**记 `degrade_action`，失联态内不刷屏）。
+        self._pf_lost_seen = 0
+        self._pf_rec_seen = 0
         # §6.5 延迟两段分解 + 按 seq 回填配对：`lat` = 端到端总计（采集→vblank），
         # `lat_app` = 采集→提交（应用侧），`lat_submit` = 提交→vblank（显示排队）。
         self.lat: list = []
         self.lat_app: list = []
         self.lat_submit: list = []
         self.pair_ok = 0
+        # **（v3.86 裁定 O106）** OSD「延迟两段」的屏上取值：来自**最近一次成功配对**
+        # （`display_mipi.lat_pair()`，按 `seq` 回填）⇒ 屏上显示**滞后一帧**（配对完成后才有值）。
+        # 原实现的第一段是**写死的 0.0**（屏上该段从未真实测量），第二段是「本帧处理→提交」，
+        # 与 §3.4/§6.5 定义的「采集→提交 / 提交→vblank」不是同一个量 ⇒ 一并改正。
+        self._lat_cap_ms = 0.0
+        self._lat_sub_ms = 0.0
+        self._lat_total_ms = 0.0       # O108：屏上「端延时」= 单值显示；**O115：= 1 s 滑窗 P50、1 Hz 刷新**
+        self._lat_win: list = []       # O115：窗内**已配对**样本 `(mono_s, total_ms)`
+        self._lat_last_ms = 0.0        # O115：最近一次配对值（**窗内无样本时的回退值**）
+        self._lat_refresh_s = 0.0      # O115：屏上值上次刷新时刻（`monotonic` 秒）
+        self._fps_ts: list = []        # O108：屏上帧率的**最近 1 s 滑窗**（见 `_fps()`）
 
     # ── 启动序 ─────────────────────────────────────────────────────────
     def boot(self) -> int:
@@ -90,6 +187,12 @@ class Demo:
             self.log.event("main", "boot_check_item", item="TH4", result="fail",
                            code=starlog.code_name(rc))
             return rc
+        # **（v3.86 裁定 O121）** TH4 若**经有界重试才取到 DRM master** ⇒ 单独记一行
+        # `result=degraded`（`code=` 仍是取 master 失败时的登记码 `E_DRM`）——
+        # **不新增事件 / 不新增字段**；首拍即成功（`master_retries == 0`）时**不记**，保持日志干净。
+        if self.disp.master_retries > 0:
+            self.log.event("main", "boot_check_item", item="TH4", result="degraded",
+                           code=starlog.code_name(display_mod.E_DRM))
         self.buttons = ui_mod.ButtonHit(cfg)
 
         # ② TH2：曲线估计（RGA + NPU）
@@ -138,6 +241,23 @@ class Demo:
         if rc != 0:
             self.log.event("main", "boot_check_item", item="TH3", result="fail",
                            code=starlog.code_name(rc))
+
+        # ⑥ 指针输入（O81）：触控 + 鼠标两源；无设备不阻塞（规则 30 §2 可降级）
+        self.ptr = pointer_mod.Pointer(cfg, self.log,
+                                       touch_node=self.touch_node or None,
+                                       mouse_node=self.mouse_node or None)
+        self.ptr.init()
+
+        # ⑦ 运行态：自检过且至少一个显示口可用（TH4 已 init 成功）⇒ BOOT_CHECK → RUN_DEMO（§5）
+        rc_rsm = self.cap.set_rsm(capture_mod.RSM_RUN_DEMO, reason="boot_ok")
+        if rc_rsm != 0:
+            self.log.event("main", "boot_check_item", item="RSM", result="fail",
+                           code=starlog.code_name(rc_rsm))
+            return rc_rsm
+
+        # ⑧ HQ 结果上屏的**常驻缓冲**（全屏视图内容；一次性分配，O79/§3.5）
+        g = self.est.geom
+        self.hq_rgb = _n.alloc(int(g["hq_w"]) * int(g["hq_content_h"]) * 3)
         return 0
 
     # ── 主循环（TH2b + 编排；TH2a 与 TH4 在此串行推进，M2 单进程内可接受）──
@@ -148,6 +268,13 @@ class Demo:
         enh = _n.rga.enh(g)
         i = 0
         while not self.stop.is_set():
+            # ── 指针（O81/O84 单源）+ 验证注入 + **HQ 冻结/全屏态**（O90）——每轮都跑 ──
+            self._pump_pointer()
+            self._pump_keys()             # 「复位·退出」键长按（§10.6-C；不依赖抬起边沿）
+            self._pump_injection()
+            if self._pump_hq_lifecycle():
+                time.sleep(0.02)          # 冻结期/全屏期：**不取帧、不估计、不应用**（O90）
+                continue
             t0 = time.monotonic_ns()
             f = self.cap.acquire(1, 500)
             if f is None:
@@ -159,26 +286,28 @@ class Demo:
             # 原图窗（RGA：NV12 → 512×288 RGB888）
             _n.rga.blit_nv12_fd(int(f["dmabuf_fd"]), 1)
 
-            # TH2a：低频估计（每 est_every 帧一次）
+            # TH2a：低频估计（每 est_every 帧一次）——**（v3.86 裁定 O123）改为「请求 + 独立线程」**：
+            # `request()` 在本线程只同步做 RGA 缩放（持帧时长 = 一次 RGA），NPU 双条带 + EMA 在
+            # TH2a worker 内跑 ⇒ **曲线估计不再落在帧路径上**（§6.1 第 413 / 415 行的契约位置）。
+            # 曲线场按「最近一次已发布」非阻塞取用；worker 忙时本轮请求跳过（不含等待）。
             if i % self.est_every == 0:
-                if self.est.estimate(f, alpha=self.est.alpha) == 0:
-                    self.curve = self.est.publish()
+                if self.est.request(f) == 0:
                     self.counters["estimates"] += 1
+            # 首拍（第 0 帧）等一次发布——与 O123 之前"首帧即持有有效曲线场"的行为一致；
+            # 此后一律 `latest()` 非阻塞取值，**帧路径不再等 worker**。
+            self.curve = self.est.wait_first() if i == 0 else self.est.latest()
 
             # TH5：低频热插拔步进（每 hdmi_every 帧一次；§5 写"线程"⇒ 已登记偏离）
             if self.hdmi is not None and i % self.hdmi_every == 0:
                 self.hdmi.poll()
 
-            # **[验证钩子]** 第 N 帧注入一次 TOUCH 触发（生产触发源 = 触控 evdev）
-            if self.trigger_at and not self._triggered and self.counters["frames"] >= self.trigger_at:
-                self._triggered = True
-                self.cap.submit_trigger(capture_mod.SRC_TOUCH)
-
-            # TH3 编排（§5）：① 消抖期满则受理触发 → 用**本帧**作触发暗帧投递 HQ；
-            # ② HQ 完成（worker 空闲）则回 IDLE。**`request` 只同步做 RGA 缩放**（复制源帧），
-            # 推理在 TH3 worker 线程内跑（~8 s），故此处**不阻塞主循环**。
+            # TH3 编排（§5）：① 消抖期满则受理触发 → 用**本帧**作触发暗帧投递 HQ（= 冻结起点，O90）；
+            # ② HQ 完成与全屏视图的推进在 `_pump_hq_lifecycle()`（每轮开头）处理。
+            # **`request` 只同步做 RGA 缩放**（复制源帧），推理在 TH3 worker 线程内跑（~8 s）。
             ev = self.cap.poll_trigger()
             if ev is not None and self.kf is not None:
+                # 「触发」时点 = TH1 FSM 受理（§13「HQ 响应」行的计时起点，`mono_ns`）
+                t_trig = time.monotonic_ns()
                 # `request` 返回后本帧即可释放 lease（§5-C：先复制源帧再释放）
                 rc_kf = self.kf.request(ev["seq_src"], f)
                 if rc_kf != 0:
@@ -187,14 +316,14 @@ class Demo:
                     self.cap.hq_done()          # 受理失败即回 IDLE，避免 FSM 卡在 HQ_BUSY
                 else:
                     self.counters["hq_started"] += 1
-                    self._hq_flips_at_start = self.counters["flips"]
-            elif self.cap.fsm == capture_mod.FSM_HQ_BUSY and self.kf is not None \
-                    and not self.kf.busy():
-                self.cap.hq_done()              # HQ 完成 → 回 IDLE
-                self.counters["hq_done"] += 1
-                # §5 关键约束的证据：HQ 在途期间 MIPI 仍翻页（TH4 未被冻结）
-                self.counters["hq_flips_delta"] = (
-                    self.counters["flips"] - getattr(self, "_hq_flips_at_start", 0))
+                    self._cur_trig = {
+                        "seq_src": int(ev["seq_src"]), "t_trigger_ns": t_trig,
+                        "t_freeze_enter_ns": 0, "osd_flip_ns": 0, "osd_flip_seq": 0,
+                        "t_fullscreen_ns": 0, "fs_mipi_flip_ns": 0, "fs_mipi_seq": 0,
+                        "fs_hdmi_flip_ns": 0, "t_freeze_exit_ns": 0, "exit_reason": "",
+                        "hq_model_id": "", "hq_active_shape": 0, "hq_done_ns": 0,
+                    }
+                    self._freeze_enter(ev["seq_src"])
 
             # 释放 lease（TH1 引用计数归零后 QBUF 回池）
             self.cap.release(f["lease_id"])
@@ -209,11 +338,8 @@ class Demo:
 
             # TH4：合成 + OSD + pageflip
             st = {
-                "mode": self.cap.rsm,
-                "fps": self._fps(),
-                "lat_capture_ms": 0.0,
-                "lat_submit_ms": (time.monotonic_ns() - t0) / 1e6,
-                "curve_hz": self.est.f_est,
+                "fps": self._fps(),          # O108：**最近 1 s 滑窗**（O107 已删 `mode`；O108 已删 `curve_hz`）
+                "lat_total_ms": self._lat_osd(),   # O115：端延时（**1 s 滑窗 P50、1 Hz 刷新**，单值定宽显示）
                 "countdown_s": 0,
                 "seq": int(f["seq"]),                 # §5-B ControlState（O56）：供 TH4 seq 回填配对
                 "t_capture_ns": int(f["t_capture_ns"]),
@@ -222,21 +348,68 @@ class Demo:
                 "curve_field": self.curve.field,
                 "curve_w": g["eff_w"], "curve_h": g["eff_h"],
                 "curve_precision": self.est.precision(),
+                "view": self.view,                    # §3.5 视图态（O79）
+                "cursor_pos": self.cursor,            # O81：光标每帧画进画布
             }
             r = self.disp.compose_flip(enh, win, st)
             if r == 0:
                 self.counters["flips"] += 1
+                # TH5 镜像（§3.5 常规态"两屏同画面"；§6.1 O85 行 ≤3 ms，**单列**不计入帧路径合计）
+                if self.hdmi is not None:
+                    self.hdmi.mirror(int(f["seq"]), self.disp.last_flip_idx())
+                if self.dump_canvas_dir and not self._dumped_normal:
+                    self._dumped_normal = True
+                    self._dump_canvas("normal")           # 常规态**链路原样**导图（一次即可）
+                # **[取证钩子]** 常规态逐帧导图（有界：仅前 `--dump-canvas-frames` 帧；默认 0 = 关）。
+                # 位置在镜像之后 ⇒ 槽 1 已是**本帧**内容，可做槽 0/槽 1 同帧对拍。
+                if self.dump_canvas_dir and self.dump_canvas_frames:
+                    n = self._dump_n
+                    if self.dump_after <= n < self.dump_after + self.dump_canvas_frames:
+                        self._dump_frame(n)
+                    self._dump_n += 1
                 lp = self.disp.lat_pair()
                 if lp is not None:
                     self.lat.append(lp["total_ms"])
                     self.lat_app.append(lp["seg_capture_submit_ms"])
                     self.lat_submit.append(lp["seg_submit_vblank_ms"])
+                    # **（v3.86 裁定 O106）** 屏上「延迟两段」= 本次配对的真实两段
+                    self._lat_cap_ms = lp["seg_capture_submit_ms"]
+                    self._lat_sub_ms = lp["seg_submit_vblank_ms"]
+                    # **（v3.86 裁定 O115）** 屏上「端延时」改取**滑窗 P50**：此处只**入窗**，
+                    # 屏上取值与刷新节奏交给 `_lat_osd()`（窗内无样本时回退到本值）。
+                    self._lat_win.append((time.monotonic(), lp["total_ms"]))
+                    self._lat_last_ms = lp["total_ms"]
                     self.pair_ok += 1
             elif r == 1:
                 self.counters["flip_skipped"] += 1
+            else:
+                # **（v3.86 裁定 O122）** 负值 = 显示层翻页失败（TH4 已先做有界自愈）⇒ **显式计数**，
+                # 不再静默吞掉（旧实现该情形既不计数也不记日志，实测导致 49 min 只翻 5 帧）。
+                self.counters["pageflip_fail"] += 1
+
+            # **（v3.86 裁定 O122）** 显示**失联 / 已恢复**的**边沿**登记：用既有 `degrade_action`
+            # 事件（`action=crtc_recover` 取自 §10.5 矩阵「降级动作」列），带 `rsm=` / `fsm=`（§3 要求）。
+            # 只在边沿记一次（失联态内不刷屏）⇒ **不新增事件 / 字段 / 返回码**。
+            if self.disp.lost_edges != self._pf_lost_seen:
+                self._pf_lost_seen = self.disp.lost_edges
+                self.log.event("main", "degrade_action", trigger="pageflip_fail",
+                               action="crtc_recover",
+                               rsm=self.cap.rsm, fsm=self.cap.fsm)
+            if self.disp.recover_edges != self._pf_rec_seen:
+                self._pf_rec_seen = self.disp.recover_edges
+                self.log.event("main", "degrade_action", trigger="pageflip_recover",
+                               action="crtc_recover",
+                               rsm=self.cap.rsm, fsm=self.cap.fsm)
 
             i += 1
             if self.max_frames and i >= self.max_frames:
+                break
+            # **[验证钩子]** 注入的触发全部跑完（每个周期都回到常规态）⇒ 自动收尾，
+            # 使 `bench.py --scenario hq` 可确定地终止。生产路径 `_inject_fired == 0` 不受影响。
+            if (not self.max_frames and self._inject_fired > 0
+                    and len(self.trig_log) >= self._inject_fired
+                    and self.cap.fsm == capture_mod.FSM_IDLE
+                    and self.view == "normal" and not self.frozen):
                 break
 
         c = self.cap.counters()
@@ -245,15 +418,269 @@ class Demo:
         self.counters["discarded_triggers"] = c["discarded_triggers"]
         return 0
 
+    # ── 指针 / 注入 / 冻结 / 全屏（**v3.86 落地 O79 / O81 / O84 / O90**）──────
+    def _pump_pointer(self) -> None:
+        """指针轮询（O81）：常规态判命中区（**增强窗 ≡ 底栏「触发HQ」**，§3.4）；全屏态任意点击退出；
+        **「复位·退出」键只保留长按退出**（**v3.86 就地裁定 O98**：短按软复位自演示 UI 移除）。
+
+        **全屏态退出时丢弃本批剩余点击**（v3.86 修正）：`_exit_fullscreen()` 会把 `view` 立即置回
+        `normal`，若同批还有点击事件，它们会走"常规态"分支 ⇒ **可能立刻又触发一次 HQ**（多指 / 触控
+        与鼠标同批时）。故退出后 `break`——本批剩余点击一律丢弃。
+
+        长按**不依赖抬起事件**：主循环每轮由 `_pump_keys()` 检查按下是否已达阈值。
+        """
+        if self.ptr is None:
+            return
+        self.cursor = self.ptr.cursor_pos()
+        for c in self.ptr.poll():
+            edge = c.get("edge", "down")
+            if edge == "up":
+                # 抬起只结束按压窗（**短按无动作**，裁定 O98）；是否长按已由 `_pump_keys()` 判定
+                self._reset_press_ns = 0
+                continue
+            if self.view == "fullscreen_hq":
+                self._exit_fullscreen(reason="click")      # §3.5：内容区任意处点击即退出
+                break                                      # 本批剩余点击丢弃（防立即再触发）
+            key = self.buttons.hit(c["x"], c["y"]) if self.buttons is not None else None
+            if key is None and self.disp is not None:
+                x0, _y0, ww, wh = (int(v) for v in self.disp._geom()["win_enh"])
+                if x0 <= c["x"] < x0 + ww and 0 <= c["y"] < wh:
+                    key = ui_mod.KEY_TRIGGER_HQ
+            if key == ui_mod.KEY_TRIGGER_HQ:
+                self.cap.submit_trigger(capture_mod.SRC_TOUCH)   # **单源**（O84）
+            elif key == ui_mod.KEY_RESET_EXIT:
+                # 只记按下时刻；**长按 ≥ `ui.reset_hold_ms` 由 `_pump_keys()` 判**（裁定 O98）
+                self._reset_press_ns = time.monotonic_ns()
+
+    def _pump_keys(self) -> None:
+        """长按检查（§10.6-C / 裁定 O98）：按下已超 `ui.reset_hold_ms` 即退出进程（不等抬起边沿）。"""
+        if not self._reset_press_ns:
+            return
+        if (time.monotonic_ns() - self._reset_press_ns) / 1e6 >= self.buttons.hold_ms:
+            self._reset_press_ns = 0
+            self._exit_key()
+
+    def _exit_key(self) -> None:
+        """「复位·退出」键 = **长按退出进程并退回桌面**（§10.6-C / §13「部署与自启动」行；
+        **v3.86 就地裁定 O98** 取消其上"短按软复位"语义，软复位机制保留于退出序 `shutdown()`；
+        **v3.86 就地裁定 O114**：长按的落地行为由"退出进程、屏停在最后一帧"改为**退回桌面**）。
+
+        发已登记事件 `display_mipi/reset_key`（`press=long`、`seq=`）+ `main/service_exit`；
+        随后置 `stop` 由 `main()` 的 `finally` 走正常退出序，**退出序之后**再 `isolate graphical.target`
+        （顺序有约束：须先由 `shutdown()` 释放 DRM master，桌面才拿得到 master）。
+        """
+        self.log.event("display_mipi", "reset_key", press=ui_mod.PRESS_LONG, seq=int(self.hq_seq))
+        self.log.event("main", "service_exit", exit_code=0, uptime_s=0)
+        self._restore_desktop = True
+        self.stop.set()
+
+    def _pump_injection(self) -> None:
+        """**[验证钩子]** 触发注入（生产触发源 = 指针）。**时间驱动**——O90 冻结期帧号不推进。"""
+        if self.trig_left <= 0 or self.view != "normal":
+            return
+        now = time.monotonic()
+        if self.trig_frame_at and not self._triggered \
+                and self.counters["frames"] >= self.trig_frame_at:
+            self._triggered = True
+            self.cap.submit_trigger(capture_mod.SRC_TOUCH)
+            self.trig_left -= 1
+            self._inject_fired += 1
+            self._next_trig_t = now + self.trig_interval_s
+            return
+        if self._next_trig_t == 0.0:
+            self._next_trig_t = now + self.trig_interval_s
+        elif now >= self._next_trig_t:
+            self.cap.submit_trigger(capture_mod.SRC_TOUCH)
+            self.trig_left -= 1
+            self._inject_fired += 1
+            self._next_trig_t = now + self.trig_interval_s
+
+    def _pump_hq_lifecycle(self) -> bool:
+        """HQ 完成 → 消费结果 → 进全屏（§3.5）；返回 True = 冻结/全屏期（调用方 `continue`，O90）。"""
+        if self.kf is None:
+            return False
+        if self.cap.fsm == capture_mod.FSM_HQ_BUSY and not self.kf.busy():
+            res = self.kf.pop_result()
+            self.cap.hq_done()                     # TH3 完成 → 触发 FSM 回 IDLE（§5）
+            self.counters["hq_done"] += 1
+            if res is not None:
+                self._enter_fullscreen(res)
+        if self.view == "fullscreen_hq":
+            ms = int(self.cfg.require_final("ui.fullscreen_timeout_ms"))
+            if time.monotonic_ns() - self.fs_enter_ns >= ms * 1_000_000:
+                self._exit_fullscreen(reason="timeout")     # 30 s 兜底（§3.5）
+            return True
+        return self.frozen
+
+    def _enter_fullscreen(self, res: Dict[str, Any]) -> None:
+        """该次 HQ 完成即进全屏（§3.5：两屏同时；`reason=click` = 由那次点击触发的 HQ）。"""
+        g = self.est.geom
+        pad_top = int(g["hq_pad_top"])
+        w, h = int(res["shape"][0]), int(res["shape"][1])
+        rc = int(_n.rknn_hq.to_rgb888(res["buffer"], self.hq_rgb, w, h, pad_top, h - pad_top))
+        if rc != 0:
+            self.log.event("main", "boot_check_item", item="HQ_to_rgb888", result="fail", code=rc)
+            self._freeze_exit()                    # 进不了全屏即解除冻结（不卡死链）
+            return
+        self.hq_seq = int(res.get("seq_src", 0))
+        rc = self.disp.compose_fullscreen(self.hq_rgb, self.hq_seq, self.hq_seq)
+        if rc != 0:
+            self._freeze_exit()
+            return
+        self.view = "fullscreen_hq"
+        self.fs_enter_ns = time.monotonic_ns()
+        self.counters["fullscreen_enter"] += 1
+        self.log.event("display_mipi", "fullscreen_enter", seq=self.hq_seq, reason="click",
+                       rsm=self.cap.rsm, fsm=self.cap.fsm)
+        if self._cur_trig is not None:
+            self._cur_trig.update({
+                "t_fullscreen_ns": self.fs_enter_ns,
+                "fs_mipi_flip_ns": self.disp.last_flip_ns(),      # MIPI 全屏出图的 vblank（§6.5）
+                "fs_mipi_seq": self.disp.last_flip_seq(),
+                "hq_model_id": str(res.get("model_id", "")),
+                "hq_active_shape": int(res.get("active_shape", 0)),
+                "hq_done_ns": int(res.get("done_ns", 0)),
+            })
+        if self.hdmi is not None:
+            self.hdmi.show_hq(self.hq_rgb, self.hq_seq)     # 2.0× 整幅（§3.5 集合 D）
+            if self._cur_trig is not None:
+                self._cur_trig["fs_hdmi_flip_ns"] = self.hdmi.last_flip_ns()
+        self._dump_canvas("fullscreen")
+
+    def _exit_fullscreen(self, reason: str) -> None:
+        """退出全屏（`click` / `timeout`）→ 回常规视图并**解除冻结**（§3.5、O90）。"""
+        if self.view != "fullscreen_hq":
+            return
+        self.view = "normal"
+        self.counters["fullscreen_exit"] += 1
+        if self._cur_trig is not None:
+            self._cur_trig["exit_reason"] = reason
+        self.log.event("display_mipi", "fullscreen_exit", seq=self.hq_seq, reason=reason,
+                       rsm=self.cap.rsm, fsm=self.cap.fsm)
+        self._freeze_exit()
+
+    def _freeze_enter(self, seq: int) -> None:
+        """冻结起点 = 触发受理（O90）：实时链静止 + "处理中"提示（§6.2：触发→OSD ≤50 ms）。"""
+        if self.frozen:
+            return
+        self.frozen = True
+        self._frozen_since = time.monotonic_ns()
+        self.counters["freeze_enter"] += 1
+        self.log.event("display_mipi", "freeze_enter", seq=int(seq))
+        if self._cur_trig is not None:
+            self._cur_trig["t_freeze_enter_ns"] = self._frozen_since
+        if self.disp is not None and self.disp.mark_busy(int(seq)) == 0:
+            self.counters["freeze_flips"] += 1      # 冻结窗内的翻页数（替代作废的 hq_flips_delta）
+            if self._cur_trig is not None:
+                # 触发 → OSD 提示上屏（§13：≤50 ms）——取该次 flip 的 **vblank** 时刻与回调 seq
+                self._cur_trig["osd_flip_ns"] = self.disp.last_flip_ns()
+                self._cur_trig["osd_flip_seq"] = self.disp.last_flip_seq()
+
+    def _freeze_exit(self) -> None:
+        """冻结终点（HQ 完成并退出全屏后）：累计冻结窗，供 **fps 活动窗口径** 排除（O90）。"""
+        if not self.frozen:
+            return
+        self.freeze_ns += time.monotonic_ns() - self._frozen_since
+        self.frozen = False
+        self.counters["freeze_exit"] += 1
+        self.log.event("display_mipi", "freeze_exit", seq=self.hq_seq)
+        if self._cur_trig is not None:              # 一个触发周期结束 ⇒ 落一条 seq 级明细
+            self._cur_trig["t_freeze_exit_ns"] = time.monotonic_ns()
+            self.trig_log.append(self._cur_trig)
+            self._cur_trig = None
+
+    def _dump_canvas(self, tag: str) -> None:
+        """链路原样导图（**零色调后处理**）：MIPI 画布 + HDMI 画布各一张，供人工目视与归档。"""
+        if not self.dump_canvas_dir or self.disp is None:
+            return
+        import os as _os
+        _os.makedirs(self.dump_canvas_dir, exist_ok=True)
+        self.disp.dump_png(_os.path.join(self.dump_canvas_dir, f"canvas_{tag}_mipi.png"), 0)
+        if self.hdmi is not None and self.hdmi._drm_ok:
+            self.disp.dump_png(_os.path.join(self.dump_canvas_dir, f"canvas_{tag}_hdmi.png"),
+                               1, idx=self.hdmi.last_flip_idx())
+
+    def _dump_frame(self, k: int) -> None:
+        """**[取证钩子]** 常规态**逐帧**导图：槽 0（MIPI）+ 槽 1（HDMI）各一张。
+
+        文件名 `f{k:02d}_slot{0,1}.png`；`k` = **成功翻页序号**（0 起），与 `DisplayMipi.cur`
+        的奇偶一致 ⇒ `k % 2` 即该帧所用画布缓冲索引。与 `_dump_canvas()` 同口径：链路原样、
+        **零色调后处理**（规则 `10-evidence.md` §2）。HDMI 未配置时槽 1 跳过（可降级项）。
+        """
+        if not self.dump_canvas_dir or self.disp is None:
+            return
+        import os as _os
+        _os.makedirs(self.dump_canvas_dir, exist_ok=True)
+        self.disp.dump_png(_os.path.join(self.dump_canvas_dir, f"f{k:02d}_slot0.png"), 0)
+        if self.hdmi is not None and self.hdmi._drm_ok:
+            self.disp.dump_png(_os.path.join(self.dump_canvas_dir, f"f{k:02d}_slot1.png"),
+                               1, idx=self.hdmi.last_flip_idx())
+
     def _fps(self) -> float:
-        return self.counters["frames"] / max(1e-6, time.monotonic() - self._t_start) \
-            if getattr(self, "_t_start", None) else 0.0
+        """**最近 1 s 滑窗**的帧率（**v3.86 裁定 O108**）。
+
+        口径：取**最近 1 秒内**的成功帧时刻，用**相邻间隔**求速率 `(n-1)/(t_last − t_first)`
+        ⇒ 与 §13 O93 的「两点法」同族，**是实测值、不含进程启动、不被历史拖累**（O97 的
+        「分母含进程启动」问题在**屏上**由此规避）。
+        **与 `bench.py` 报告的 `fps_active` / `fps_steady` 口径不同**（那两值仍是累计口径；
+        §15 O97 未裁定）⇒ **屏上值只作现场判读，不构成验收口径**。
+        """
+        ts = self._fps_ts
+        now = time.monotonic()
+        ts.append(now)
+        while ts and now - ts[0] > FPS_WINDOW_S:
+            ts.pop(0)
+        if len(ts) < 2:
+            return 0.0
+        return (len(ts) - 1) / max(1e-6, ts[-1] - ts[0])
+
+    def _lat_osd(self) -> float:
+        """屏上「端延时」（**v3.86 裁定 O115**）= **最近 `LAT_WINDOW_S` 内已配对帧的 P50**，
+        **每 `LAT_REFRESH_S` 才刷新一次**。
+
+        旧口径（O108）= 逐帧取「最近一次配对的总计」⇒ 数字每帧都变、**人眼读不出**（用户
+        2026-09-22 反馈）。改后：值本身抗抖（中位数）、刷新节奏与统计降频同频（1 Hz）；
+        窗内**无样本时回退**为最近一次配对值（启动后第一拍即有值，不出现 `---`）。
+
+        该值**只作现场判读**，不构成验收口径——验收仍只认 `bench.py` 报告（§6.5）。
+        """
+        win = self._lat_win
+        now = time.monotonic()
+        while win and now - win[0][0] > LAT_WINDOW_S:
+            win.pop(0)
+        if now - self._lat_refresh_s >= LAT_REFRESH_S:
+            self._lat_refresh_s = now
+            if win:
+                self._lat_total_ms = self._lat_pct(0.50, [v for _t, v in win])
+            else:
+                self._lat_total_ms = self._lat_last_ms
+        return self._lat_total_ms
 
     def _lat_pct(self, p: float, data: Optional[list] = None) -> float:
         s = sorted(self.lat if data is None else data)
         if not s:
             return 0.0
         return s[min(len(s) - 1, int(len(s) * p))]
+
+    def trig_summary(self) -> Dict[str, Any]:
+        """§13「HQ 响应」行的 seq 级汇总（**唯一数据源 = `trig_log`**，供 `main.py` 打印与
+        `tools/bench.py --scenario hq` 报告共用）。全部差值取自 `mono_ns`（§6.5 时钟纪律）。
+        """
+        osd, fs_mipi, fs_hdmi, freeze, reasons = [], [], [], [], {}
+        for r in self.trig_log:
+            if r["osd_flip_ns"]:
+                osd.append((r["osd_flip_ns"] - r["t_trigger_ns"]) / 1e6)
+            if r["fs_mipi_flip_ns"]:
+                fs_mipi.append((r["fs_mipi_flip_ns"] - r["t_trigger_ns"]) / 1e6)
+            if r["fs_hdmi_flip_ns"]:
+                fs_hdmi.append((r["fs_hdmi_flip_ns"] - r["t_trigger_ns"]) / 1e6)
+            if r["t_freeze_exit_ns"]:
+                freeze.append((r["t_freeze_exit_ns"] - r["t_freeze_enter_ns"]) / 1e6)
+            k = r["exit_reason"] or "none"
+            reasons[k] = reasons.get(k, 0) + 1
+        return {"cycles": len(self.trig_log), "osd_ms": osd,
+                "fullscreen_mipi_ms": fs_mipi, "fullscreen_hdmi_ms": fs_hdmi,
+                "freeze_ms": freeze, "exit_reasons": reasons}
 
     # ── 退出序 ─────────────────────────────────────────────────────────
     def shutdown(self) -> None:
@@ -282,18 +709,41 @@ class Demo:
 def main() -> int:
     p = argparse.ArgumentParser(description="RK3588 极暗光增强实时演示 —— 交付链路主程序")
     p.add_argument("--frames", type=int, default=0, help="跑 N 帧后退出（0 = 直到信号）")
-    p.add_argument("--est-every", type=int, default=6, help="每 N 帧估计一次")
+    p.add_argument("--est-every", type=int, default=2, help="每 N 帧估计一次")
     p.add_argument("--hdmi-every", type=int, default=6, help="每 N 帧做一次 HDMI 热插拔步进")
     # **验证钩子**（非生产路径）：在第 N 帧注入一次 `TOUCH` 触发，用于验证 TH3 通路。
     # 生产触发源 = 触控 evdev（§5 TH1「四源共用一套触发状态机」），其接线尚未落地。
-    p.add_argument("--trigger-at", type=int, default=0, help="[验证钩子] 第 N 帧注入一次 TOUCH 触发")
+    p.add_argument("--trigger-at", type=int, default=0,
+                   help="[验证钩子] 第 N 个**活动帧**注入一次 TOUCH 触发")
+    p.add_argument("--trigger-times", type=int, default=0,
+                   help="[验证钩子] **时间驱动**注入 N 次触发（间隔见 --trigger-interval-s）")
+    p.add_argument("--trigger-interval-s", type=float, default=15.0,
+                   help="[验证钩子] 注入间隔（秒；默认 15 s ≥ HQ 单次耗时 ~10 s）")
+    p.add_argument("--pointer-touch-node", default="", help="[调试] 覆盖触控 evdev 节点")
+    p.add_argument("--pointer-mouse-node", default="", help="[调试] 覆盖 ui.pointer_mouse_node")
+    p.add_argument("--dump-canvas-dir", default="",
+                   help="链路原样导出 MIPI/HDMI 画布 PNG 的目录（**零色调后处理**；常规态一次 + 全屏态各一次）")
+    # **[取证钩子]** 常规态**逐帧**导图（有界）：前 N 帧每帧导出槽 0 + 槽 1 各一张，命名
+    # `f{帧序:02d}_slot{0,1}.png`。默认 0 = 关闭（既有"常规态只导一次"行为不变）。
+    p.add_argument("--dump-canvas-frames", type=int, default=0,
+                   help="[取证钩子] 常规态逐帧导出画布 PNG 的帧数（槽 0/槽 1 各一张；0 = 关闭）")
+    p.add_argument("--dump-after", type=int, default=0,
+                   help="[取证钩子] 跳过前 N 个成功翻页后才开始逐帧转储（用于取**稳态**画面；默认 0）")
+    # **[计量出口]** 机器可读报告（供 `tools/bench.py` 编排多轮；**不新增日志事件 / config 键**）。
+    # 每轮一个**独立进程**跑本程序 → 满足「全生命周期只 stream on 一次」（规则 30-board-safety §1）。
+    p.add_argument("--report-json", default="",
+                   help="[计量出口] 退出时把本轮计量写为 JSON（供 bench.py 汇总）")
     p.add_argument("--config", default="", help="config.yaml 路径（默认仓库根）")
     args = p.parse_args()
 
     cfg = starlight_config.load(args.config or None)
     logger = starlog.from_config(cfg)
     d = Demo(cfg, logger, frames=args.frames, est_every=args.est_every,
-             hdmi_every=args.hdmi_every, trigger_at=args.trigger_at)
+             hdmi_every=args.hdmi_every, trigger_at=args.trigger_at,
+             trigger_times=args.trigger_times, trigger_interval_s=args.trigger_interval_s,
+             touch_node=args.pointer_touch_node, mouse_node=args.pointer_mouse_node,
+             dump_canvas_dir=args.dump_canvas_dir, dump_canvas_frames=args.dump_canvas_frames,
+             dump_after=args.dump_after)
 
     def on_sig(signum, _frame):
         logger.event("main", "service_exit", exit_code=0, uptime_s=0)
@@ -310,19 +760,31 @@ def main() -> int:
         print(f"启动失败 rc={rc}（TH4 需 DRM master：先 `systemctl isolate multi-user.target`）")
         d.shutdown()
         return 1
+    # **[口径记录]** 启动耗时（RGA 配置 + 模型加载 + `stream on` + 预热）——**不计入帧窗口**
+    t_boot_done = time.monotonic()
+    boot_s = t_boot_done - t0
     try:
         rc = d.run()
     finally:
-        # TH3 的 `info()` 须在 `shutdown()` **之前**取（shutdown 会 deinit 模型、置 `_th=None`）
+        # TH3 / TH5 的 `info()` 须在 `shutdown()` **之前**取（shutdown 会 deinit 模型、复位 RGA，
+        # 后取则 `last_scale_ns` 等打点已被清零 —— v3.86 修正）
         th3_info = d.kf.info() if d.kf is not None else None
+        th5_info = d.hdmi.info() if d.hdmi is not None else None
         d.shutdown()
+        # **（v3.86 裁定 O114）** EXIT 键 = 退回桌面：**退出序之后**才切 target（master 须先释放）。
+        # 仅 EXIT 路径置位 ⇒ bench / `--frames` / 信号退出不回桌面（§6.5 计量窗口不受扰）。
+        if d._restore_desktop:
+            _restore_desktop()
 
     c = d.counters
     wall = max(1e-6, time.monotonic() - t0)
     print(f"frames={c['frames']} estimates={c['estimates']} flips={c['flips']} "
           f"flip_skipped={c['flip_skipped']} dropped_stale={c['dropped_stale']} "
-          f"lease_timeouts={c['lease_timeouts']} discarded_triggers={c['discarded_triggers']}")
-    print(f"wall={wall:.2f}s  fps={c['frames'] / wall:.1f}")
+          f"lease_timeouts={c['lease_timeouts']} discarded_triggers={c['discarded_triggers']} "
+          # **（v3.86 裁定 O122）** 翻页**失败帧数**必须随停机计数给出（不再静默吞掉）
+          f"pageflip_fail={c['pageflip_fail']}")
+    print(f"wall={wall:.2f}s  冻结窗合计={d.freeze_ns / 1e9:.2f}s  "
+          f"fps（**活动窗口径**，O90）={c['frames'] / max(1e-6, wall - d.freeze_ns / 1e9):.1f}")
     # §6.5 延迟口径：按 `seq` 回填配对（禁止按时间就近配对）；配对率与丢弃帧数必须随报告给出
     paired = d.pair_ok
     print(f"配对率={paired / max(1, c['flips']):.4f}"
@@ -344,8 +806,61 @@ def main() -> int:
     # **非 0 即证明 TH4 未被 HQ 冻结**（§5「TH4 不得因结果槽空而锁帧」）。
     if d.kf is not None:
         print(f"TH3: hq_started={c['hq_started']} hq_done={c['hq_done']} "
-              f"hq_flips_delta={c['hq_flips_delta']}（>0 ⇒ HQ 在途期间 MIPI 仍翻页）")
+              f"freeze_enter={c['freeze_enter']} freeze_exit={c['freeze_exit']} "
+              f"freeze_flips={c['freeze_flips']} "
+              f"fullscreen_enter={c['fullscreen_enter']} fullscreen_exit={c['fullscreen_exit']}")
         print(f"TH3 info（shutdown 前）: {th3_info}")
+    if d.trig_log:
+        ts = d.trig_summary()
+        print(f"§13 HQ 响应：周期数={ts['cycles']}  "
+              f"触发→OSD P50={d._lat_pct(0.50, ts['osd_ms']):.1f} ms "
+              f"P95={d._lat_pct(0.95, ts['osd_ms']):.1f} ms（判据 ≤50）")
+        print(f"  触发→全屏 MIPI P50={d._lat_pct(0.50, ts['fullscreen_mipi_ms']):.1f} ms "
+              f"P95={d._lat_pct(0.95, ts['fullscreen_mipi_ms']):.1f} ms；"
+              f"HDMI P50={d._lat_pct(0.50, ts['fullscreen_hdmi_ms']):.1f} ms（判据 ≤12 s）")
+        print(f"  退出 reason={ts['exit_reasons']}  "
+              f"冻结窗合计={sum(ts['freeze_ms']) / 1e3:.2f} s（已从 fps 分母排除）")
+    if d.hdmi is not None:
+        hi = th5_info or {}
+        sc = hi.get("scale") or {}
+        print(f"TH5 HDMI: drm_ok={hi.get('drm_ok')} flips={hi.get('flips')} "
+              f"flip_skipped_slot={hi.get('flip_skipped_slot')} "
+              f"末次放大={hi.get('last_scale_ns')} ns")
+        print(f"镜像/HQ 放大（§6.1 O85 行 ≤3 ms）n={sc.get('n')} "
+              f"P50={sc.get('p50_ms')} ms  P90={sc.get('p90_ms')} ms  max={sc.get('max_ms')} ms")
+    if args.report_json:
+        # **[计量出口]** 本轮原始计量（供 `tools/bench.py --scenario realtime` 汇总）。
+        # 字段取值与本函数上面的打印**同源**；**不新增日志事件 / config 键 / 返回码**。
+        import json as _json
+        th5 = th5_info or {}
+        rec = {
+            "wall_s": wall, "boot_s": boot_s, "frames": c["frames"], "flips": c["flips"],
+            "freeze_ns": d.freeze_ns,
+            "fps_active": c["frames"] / max(1e-6, wall - d.freeze_ns / 1e9),
+            # **同源第二口径**：分母扣掉进程启动（**§6.5 的"帧滑窗"不含 boot**）；两值同报告给出，
+            # 口径以何为准待裁定（§15 已登记），**当前 §11.2 回归基线按 `fps_active` 口径取得**。
+            "fps_steady": c["frames"] / max(1e-6, wall - boot_s - d.freeze_ns / 1e9),
+            "pairing_rate": paired / max(1, c["flips"]), "paired": paired,
+            "counters": dict(c),
+            "lat_p50_ms": d._lat_pct(0.50), "lat_p95_ms": d._lat_pct(0.95),
+            "lat_app_p50_ms": d._lat_pct(0.50, d.lat_app),
+            "lat_app_p95_ms": d._lat_pct(0.95, d.lat_app),
+            "lat_submit_p50_ms": d._lat_pct(0.50, d.lat_submit),
+            "lat_submit_p95_ms": d._lat_pct(0.95, d.lat_submit),
+            "lat_all_ms": list(d.lat), "lat_app_all_ms": list(d.lat_app),
+            "lat_submit_all_ms": list(d.lat_submit),
+            "f_est": d.est.f_est if d.est else None,
+            "alpha": d.est.alpha if d.est else None,
+            "panel_refresh_ms": 1e3 / hz, "idle_link_baseline": base,
+            "mirror_scale": th5.get("scale"), "th5": th5, "th3": th3_info,
+            "stream_on_count": int(_n.capture.stream_on_count()),
+            "trigger_cycles": d.trig_summary() if d.trig_log else None,
+        }
+        try:
+            with open(args.report_json, "w", encoding="utf-8") as fp:
+                _json.dump(rec, fp, ensure_ascii=False)
+        except OSError as exc:
+            print(f"[report-json] 写入失败：{exc}")
     return rc
 
 

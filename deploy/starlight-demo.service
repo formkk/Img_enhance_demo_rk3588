@@ -1,0 +1,40 @@
+[Unit]
+# starlight-demo.service —— RK3588 极暗光增强实时演示（唯一单元；取值见主基准 §10.6-A）
+#
+# **（v3.86 裁定 O116 落地）** 本文件是 §10.6-A 表格的逐项实现：`ExecStart` = `main.py`（前台运行、
+# 不自行后台化）/ `ExecStartPre` = `sensor_lock.py --apply <camera.vblank_lines>`（**单元参数不是
+# §10.4 的 config 键**，取值须与 config 一致）/ `WantedBy=multi-user.target`（与 §2.3 的关桌面态
+# 一致；桌面图标因此只需 `isolate multi-user.target` 即可**顺带拉起本单元**）。
+#
+# TH4 需 **DRM master** ⇒ 本单元与桌面（gnome-shell / Xorg）**互斥**：桌面在跑时启动会在启动自检
+# TH4 失败（§10.5-4 强制项）⇒ 正常入口是 `isolate multi-user.target`（§10.6-D）。
+# 限次重启（§10.6-A）：**超限进入 `failed` 且不再自动拉起**，须人工介入（防带病重启风暴）。
+# 注：`StartLimitBurst` / `StartLimitIntervalSec` 属 **[Unit]** 段——板端 systemd 在 `[Service]`
+# 段报 `Unknown key name 'StartLimitIntervalSec'` 并**忽略**（实测）⇒ 必须写在 `[Unit]`。
+StartLimitBurst=5
+StartLimitIntervalSec=60
+# **（v3.86 裁定 O121）不在此处做「与桌面的 master 竞态」排序**：`Conflicts=graphical.target`
+# + `After=graphical.target` 已**实测无效**并**已撤销** —— `display-manager.service`（= `gdm.service`，
+# `Type=dbus`）停止时 **Xorg 不在其 cgroup 内**（Xorg 是 gdm 经 logind 拉起的**用户会话进程**）
+# ⇒ `graphical.target` 的 stop 很快「完成」、而 master 尚未释放，排序拦不住抢跑。
+# 该竞态的处置改在**交付链路**：`DisplayMipi` 取 master 失败（`E_DRM`）时**有界重试**
+# （见 `display_mipi.py` 的 `DRM_MASTER_RETRY_N` / `DRM_MASTER_RETRY_MS`，§15 O121）。
+Description=RK3588 极暗光增强实时演示（ZDE++ 实时链 + HQ 关键帧链）
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cat/starlight
+# 运行目录含 `config.yaml` / `models/` / `assets/` / `sensor_lock.py`（§10.6-D 步骤 2）。
+# `PYTHONPATH` = 用户级 site-packages（`realtime_apply` 等 pybind 扩展，§3.3、docs/build.md）；
+# 演示以 root 跑，路径写实（不用 `~`）。
+Environment=PYTHONPATH=/home/cat/.local/lib/python3.9/site-packages
+# 帧率锁定的**单元层兜底**（应用侧 `Capture.init()` 已自动施加）：**停流即复位** ⇒ 启动时施加一次。
+# 取值 = `camera.vblank_lines` = **7906**（VMAX = 1080 + 7906 = 8986 行 ≈ 66.8 ms ≈ 15.0 fps，
+# **v3.86 裁定 O91 后的现行值**；§10.6-A 表内旧文写的 3405 是 v3.79 的 30 fps 值）。
+ExecStartPre=/usr/bin/python3 /home/cat/starlight/sensor_lock.py --apply 7906
+ExecStart=/usr/bin/python3 /home/cat/starlight/main.py --config /home/cat/starlight/config.yaml
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

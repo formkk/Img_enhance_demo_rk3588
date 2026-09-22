@@ -649,7 +649,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--outdir', default=os.path.expanduser('~/capture_data'),
-                    help='落盘目录。**不得指向 storage.dir**（受 §8.3 环形淘汰），也不入 git')
+                    help='落盘目录（**v3.86 裁定 O102 后 `storage.dir` 已取消**），不入 git')
     ap.add_argument('--port', type=int, default=8091)
     ap.add_argument('--device', default='/dev/video11')
     ap.add_argument('--w', type=int, default=1920)

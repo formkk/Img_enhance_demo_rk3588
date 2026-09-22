@@ -1,0 +1,153 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "realtime",
+  "scope": "frame",
+  "started_utc": "2026-09-21T07:49:58+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": null,
+    "precision": null,
+    "config_snapshot_hash": null
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      1.7,
+      1.43,
+      1.18
+    ]
+  },
+  "soc_temp_c": 49.923,
+  "notes": [
+    "判据 = §13「实时帧率」行（无 HQ：≥14.99 FPS，O89/O93）与「端到端延迟」行（采集→MIPI 显示 P95 ≤80 ms，两段分解随报告给出）；判定 = 实现者 / 验收人",
+    "§6.5：时钟只用 `mono_ns`；配对按 `seq` 回填；≥300 帧滑窗 × 3 轮（每轮一个独立进程 ⇒ `stream_on_count` 恒为 1）",
+    "杠杆：HDMI 镜像耗时（§6.1 O85 行 ≤3 ms）取 `func_timing.hdmi_mirror_rga` 的 n / P50 / P90",
+    "`metrics.idle_link_baseline` 缺失 ⇒ 超标归因不可闭合（§6.5 / O19）"
+  ],
+  "status": "ok",
+  "entry": "bench.py --scenario realtime（每轮一个独立进程跑 `main.py --report-json`；链路 = TH1…TH5）",
+  "rounds": 1,
+  "frames_per_round": 300,
+  "fps": {
+    "per_round": [
+      13.647303132798047
+    ],
+    "median": 13.647303132798047,
+    "n": 1,
+    "frames_total": 300,
+    "floor_ref": 14.99,
+    "steady_per_round": [
+      14.471276905997081
+    ],
+    "steady_median": 14.471276905997081,
+    "boot_s_per_round": [
+      1.2516443730000901
+    ],
+    "note": "`per_round`/`median` = 现行口径（wall 含进程启动；§11.2 回归基线同口径）；`steady_*` = 分母扣 boot 的口径（§6.5 的\"帧滑窗\"不含启动）"
+  },
+  "latency": {
+    "n": 300,
+    "p50_ms": 41.806106,
+    "p95_ms": 73.215029,
+    "max_ms": 1020.351947,
+    "mean_ms": 58.054296586666666
+  },
+  "latency_segments": {
+    "capture_to_submit": {
+      "n": 300,
+      "p50_ms": 33.115363,
+      "p95_ms": 65.620426,
+      "max_ms": 1005.752388,
+      "mean_ms": 49.573676946666666
+    },
+    "submit_to_vblank": {
+      "n": 300,
+      "p50_ms": 8.803486,
+      "p95_ms": 15.910909,
+      "max_ms": 16.802837,
+      "mean_ms": 8.48061964
+    }
+  },
+  "pairing_rate": 1.0,
+  "paired_flips": 300,
+  "seq_coverage": {
+    "flips": 300,
+    "paired": 300,
+    "unpaired": 0
+  },
+  "discarded_frames": {
+    "flip_skipped": 0,
+    "unpaired": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0
+  },
+  "freeze_window": {
+    "total_ms": 0.0,
+    "marker": "display_mipi/freeze_enter|freeze_exit",
+    "excluded_from": [
+      "fps",
+      "latency",
+      "pairing"
+    ],
+    "note": "本场景不注入触发 ⇒ 期望恒为 0"
+  },
+  "func_timing": {
+    "hdmi_mirror_rga": {
+      "n": 300,
+      "p50_ms": 1.748563,
+      "p90_ms": 1.83519,
+      "max_ms": 2.854577
+    },
+    "stream_on_count": [
+      1
+    ],
+    "note": "本场景（无 HQ）的函数级打点只含 TH5 放大；RGA 合成 / OSD / 曲线应用见 osd-micro 等场景"
+  },
+  "f_est": 2.513958203026115,
+  "alpha": 0.4642,
+  "discarded_triggers": 0,
+  "panel_refresh_ms": 16.666666666666668,
+  "idle_link_baseline": null,
+  "rounds_detail": [
+    {
+      "round": 1,
+      "fps_active": 13.647303132798047,
+      "fps_steady": 14.471276905997081,
+      "boot_s": 1.2516443730000901,
+      "wall_s": 21.982365092999316,
+      "frames": 300,
+      "lat_p50_ms": 41.806106,
+      "lat_p95_ms": 73.584542,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 300,
+        "p50_ms": 1.748563,
+        "p90_ms": 1.83519,
+        "max_ms": 2.854577
+      }
+    }
+  ]
+}

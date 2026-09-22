@@ -23,7 +23,7 @@
 |---|---|
 | 构建工具 | CMake（板上实测 **3.18.4**） |
 | 构建目录 | `build/` |
-| 目标产物 | **两个 pybind11 扩展模块**（**v3.66 板上实测定稿**）：① **`_realtime_apply`** —— §5 契约模块（`apply_window` / `apply_full`，C/NEON 8 iter 单遍融合）；② **`_starlight_native`** —— 含子模块 `capture` / `rga` / `rknn` / `drm` / `osd` 五个内核。**命名偏离说明**：本节原文写「`realtime_apply`」，实际产物名为 **`_realtime_apply`**（下划线前缀）——因 §5-C 的模块名 `realtime_apply` 已被同名 **Python 包装模块 `realtime_apply.py`** 占用，C 扩展须另名以免遮蔽（与 `_starlight_native` 同策） |
+| 目标产物 | **两个 pybind11 扩展模块**（**v3.66 板上实测定稿**）：① **`_realtime_apply`** —— §5 契约模块（`apply_window`，C/NEON 8 iter 单遍融合；**v3.86 裁定 O102：`apply_full` 随「存图」整体取消而删除**）；② **`_starlight_native`** —— 含子模块 `capture` / `rga` / `rknn` / `drm` / `osd` 五个内核。**命名偏离说明**：本节原文写「`realtime_apply`」，实际产物名为 **`_realtime_apply`**（下划线前缀）——因 §5-C 的模块名 `realtime_apply` 已被同名 **Python 包装模块 `realtime_apply.py`** 占用，C 扩展须另名以免遮蔽（与 `_starlight_native` 同策） |
 | 依赖 | librga（RGA）、librknnrt（NPU 运行时）、libdrm、pybind11 |
 | 版本记录 | 构建时打印并落日志：toolchain 版本、CMake 版本、pybind11 版本、librknnrt 版本（后两项进入 §10.4 的 `runtime.*` 三元组校验） |
 
@@ -61,8 +61,8 @@ cmake --build build -j4
 | ABI 一致性 | 扩展模块与运行期 Python 必须同 ABI。**（v3.66 修正）后缀取值改用 `sysconfig`**：`python3 -c "import sysconfig;print(sysconfig.get_config_var('EXT_SUFFIX'))"` —— 原文写的 `python3-config --extension-suffix` 在**板上不可用**（镜像无 `python3-config` 可执行文件）。后缀仍**不得手工命名**；板上实测值 = `.cpython-39-aarch64-linux-gnu.so` |
 | 头文件来源 | pybind11 头与运行期同批；禁止头文件与运行期版本混用。**板上安装方式（v3.66）**：`pip3 install --user pybind11==2.11.1`（用户级，恢复 = `pip3 uninstall pybind11`） |
 | Python 解释器 | **必须用系统 `/usr/bin/python3`**（板上 3.9.2），以保证 pybind11 的 ABI 与目标 aarch64 环境一致；**不得用 conda/venv 解释器构建**（见 §1 的"板上原生编译"） |
-| 签名一致性 | 导出函数签名必须与主基准 §5 契约 C 节逐字一致（`apply_window` / `apply_full`），返回码取自 §5 契约 A 节。**（v3.66 裁定 O55）曲线场几何不在逐帧参数里传**，由 `configure_from_config` 启动期一次性注入 C 层（§5-C 注） |
-| GIL | 热路径是否释放 GIL 与 TH2b 的调用方式一并 `[待复核]` 定稿 |
+| 签名一致性 | 导出函数签名必须与主基准 §5 契约 C 节逐字一致（`apply_window`；**v3.86 裁定 O102 后 `apply_full` 已删**），返回码取自 §5 契约 A 节。**（v3.66 裁定 O55）曲线场几何不在逐帧参数里传**，由 `configure_from_config` 启动期一次性注入 C 层（§5-C 注） |
+| GIL | **（v3.86 裁定 O123 定稿其一）** 凡需从 **Python 侧后台/独立线程**调用的 native 入口**必须 `py::gil_scoped_release`**：TH3 的 `hq.run` / `hq.pack_rgb888_nhwc_f32` / `hq.to_rgb888`（既有三条）与 **TH2a 的 `rknn.estimate`（v3.86 追加 62 补入）** —— 不释放则线程被 GIL 架空、收益归零（HQ 实测先例：不释放时 8.3 s 内 MIPI 仅翻 1 帧；TH2a 实测：补入后端到端 P50 **152.5 → 48.7 ms**）。**尚未定稿的部分**：`rga.*` / `drm.*` / `osd.*` / `capture.*` 目前均为**主线程同步调用**、未释放 GIL，其"是否需要释放"随 **TH2b（`apply_window`）的调用方式**一并 `[待复核]` |
 
 **回归**：每次构建后跑 U8 / FP16 两档的 `realtime_apply` 数值一致性检查（§11.2 的 ONNX↔RKNN 对齐回归子项）。
 
@@ -70,7 +70,7 @@ cmake --build build -j4
 
 1. 构建零告警（**含 `-ffp-contract=off`**）；
 2. `python3 -c "import _realtime_apply, _starlight_native"` 成功，模块后缀与 ABI 一致（`sysconfig` 取值，**不得手工命名**）；
-3. `apply_window` / `apply_full` 签名与 §5 契约 C 节一致；
+3. `apply_window` 签名与 §5 契约 C 节一致（**v3.86 裁定 O102：`apply_full` 已随「存图」取消，本项不再校验**）；
 4. 版本三元组打印并落日志（§10.4 `runtime.*`）；
 5. 8 iter 单遍融合检查（主基准 §11.1-13 口径）；
 6. **（v3.66）NEON vs 标量逐位对账**：FP16 与 U8 两档各跑一次，**mismatch 必须为 0**（`bench.py apply-micro --impl native` 报告内 `selfcheck_neon_vs_scalar`）。板上实测 @512×288×8 iter p50 **4.234 ms**（≤ §6.1 的 20 ms）。

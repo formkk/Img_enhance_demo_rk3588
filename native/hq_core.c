@@ -113,6 +113,32 @@ void hq_pack_rgb888_nhwc_f32(const uint8_t* rgb, float* out, uint32_t w, uint32_
     for (size_t i = 0; i < n; i++) out[i] = (float)rgb[i];
 }
 
+/* 与 tools/hq_frame_review.py `f32_nchw_to_rgb888` 逐位同口径：`min(255, int(v*255.0)) if v > 0.0 else 0`。
+   用 double 做乘法（Python 侧 `v * 255.0` 亦为 double），保证截断取整结果一致；无任何非线性后处理。 */
+static uint8_t f32_to_u8(float v) {
+    if (!(v > 0.0f)) return 0;   /* ≤ 0（含 -0 / NaN）→ 0，与 Python `v > 0.0` 判定一致 */
+    const int t = (int)((double)v * 255.0);
+    return (uint8_t)(t > 255 ? 255 : t);
+}
+
+int hq_nchw_f32_to_rgb888(const float* nchw, uint8_t* rgb, uint32_t w, uint32_t h,
+                          uint32_t y0, uint32_t y1) {
+    if (!nchw || !rgb) return HQ_CORE_E_STATE;
+    if (w == 0 || h == 0) return HQ_CORE_E_STATE;
+    if (y0 >= y1 || y1 > h) return HQ_CORE_E_STATE;
+    const size_t hw = (size_t)w * h;
+    for (uint32_t y = y0; y < y1; y++) {
+        const size_t src = (size_t)y * w;
+        uint8_t* dst = rgb + (size_t)(y - y0) * w * 3;
+        for (uint32_t x = 0; x < w; x++) {
+            dst[x * 3 + 0] = f32_to_u8(nchw[src + x]);          /* c = 0 → R */
+            dst[x * 3 + 1] = f32_to_u8(nchw[hw + src + x]);      /* c = 1 → G */
+            dst[x * 3 + 2] = f32_to_u8(nchw[2 * hw + src + x]);  /* c = 2 → B */
+        }
+    }
+    return HQ_CORE_OK;
+}
+
 void hq_deinit(void) {
     if (!g.ready && g.ctx == 0) return;
     if (g.in_buf) { free(g.in_buf); g.in_buf = NULL; }

@@ -64,6 +64,16 @@ int  drm_slot_count(void);                          /* **（v3.84 新增）** �
 int  drm_compose_flip(int buf_idx, uint64_t seq);               /* 槽 0（语义不变） */
 int  drm_compose_flip_slot(int slot, int buf_idx, uint64_t seq);/* **（v3.84 新增）** */
 
+/* **（v3.86 裁定 O122）外部 modeset 抢 CRTC 后的有界自愈**：内核 `fbcon`（VT 切换时）、桌面或
+   热插拔都会对 CRTC 重做 `SetCrtc`，此后本内核的 `drmModePageFlip` **持续失败**（旧实现在
+   `main.py` 里被静默吞掉 ⇒ 画面永久停留，见 §15 O122）。本函数以**当前画布 fb** 重发
+   `drmModeSetCrtc`（fb 不变 ⇒ 不闪黑）把 CRTC 重新绑回本槽 plane，并把本槽的在途 flip 状态复位。
+   返回 0 = 已重设；`DRM_CORE_E_DRM` = 仍失败（阶段串见 `drm_last_error()`，本函数失败时为
+   `RecoverSetCrtc`）。**调用方负责有界重试与丢弃本帧**（机制值 `DRM_DISP_RECOVER_N` 见
+   `display_mipi.py`）；不得用它取代启动序的 `drm_configure_slot`。 */
+int  drm_recover_slot(int slot);                                /* **（v3.86 新增）** */
+int  drm_recover(void);                                         /* 槽 0（= DSI / TH4） */
+
 /* 阻塞等待在途 flip 完成；返回 0 = 已无在途，-6 = 超时（guard 用尽）。 */
 int  drm_wait_flip(void);                           /* 槽 0（语义不变） */
 int  drm_wait_flip_slot(int slot);                  /* **（v3.84 新增）** */
@@ -117,7 +127,9 @@ uint64_t drm_last_flip_seq_slot(int slot);
 uint64_t drm_flip_skipped_slot(int slot);
 uint64_t drm_flip_count_slot(int slot);
 
-/* 最近一次 configure 失败的阶段串与 errno（定位用） */
+/* 最近一次**失败**（configure / 翻页 / 自愈任一路径）的阶段串与 errno（定位用）。
+   **（v3.86 裁定 O122）** 翻页失败也在此留痕（`PageFlip` / `PageFlipTimeout` / `RecoverSetCrtc`）
+   ——`DRM_CORE_E_DRM` 与 RGA 的 `-3` 同值，**阶段只能靠本串判别**。 */
 const char* drm_last_error(void);
 int drm_last_errno(void);
 

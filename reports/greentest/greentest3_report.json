@@ -1,0 +1,127 @@
+{
+  "tool": "tools/realtime_frame_review.py",
+  "scope": "M1#5 审查（实时线；口径 = §9.5 的 O94 块 (a)(c)）",
+  "arm_gain": 0,
+  "frames": 30,
+  "warmup": 20,
+  "estimates": 5,
+  "win": "512x288",
+  "est": "480x270",
+  "win_arg": "",
+  "last_seq": 50,
+  "mean_orig_rgb": [
+    31.16,
+    30.33,
+    27.59
+  ],
+  "mean_enh_rgb": [
+    100.58,
+    98.73,
+    109.62
+  ],
+  "max_orig_rgb": [
+    127,
+    134,
+    133
+  ],
+  "max_enh_rgb": [
+    230,
+    233,
+    238
+  ],
+  "orig_window_mean_red_channel_per_frame": [
+    31.28,
+    31.25,
+    31.21,
+    31.19,
+    31.16
+  ],
+  "win_temporal_absdiff_mean": 0.194,
+  "win_temporal_absdiff_p90": 0.258,
+  "dark_block_sigma_median": 1.903,
+  "dark_block_mean": 6.64,
+  "gr_balance": {
+    "orig_win": {
+      "whole_g_over_r": 0.9735,
+      "dark_g_over_r": 0.9111
+    },
+    "enh_win": {
+      "whole_g_over_r": 0.9816,
+      "dark_g_over_r": 0.9239
+    }
+  },
+  "inference_snr": {
+    "signal_dark_block_mean_median": 6.229,
+    "noise_temporal_sigma_rms": 0.272,
+    "absdiff_p90_median": 1.0,
+    "snr": 22.901,
+    "frames_used": 30,
+    "insufficient_sample": true,
+    "domain": "480x270（推理域）",
+    "blocks": "30x16×16",
+    "metric": "代理口径（非 ISO/CPI）；亮度 = BT.601 整数近似 + RGA 双线性下采样（离线登记脚本用 Y 平面 + 4×4 box ⇒ 本口径略偏乐观）",
+    "threshold": "§13 判据：1 Lux 下 SNR ≥ 4",
+    "frame_gap_ms_p50": 66.68,
+    "frame_gap_ms_max": 66.69,
+    "adjacency_note": "噪声项按**采集到的相邻帧**计算；gap ≈ 帧周期 ⇒ 即真「相邻帧」"
+  },
+  "input_path": "rga",
+  "injected": null,
+  "nv12_dump": {
+    "path": "/home/cat/greentest3.nv12",
+    "bytes": 3133440,
+    "sha256": "b45b8a1955412d85e0c7c1fd7db837b4566ce66e224a01829e6e8af770946061",
+    "seq": 50,
+    "w": 1920,
+    "h": 1080,
+    "stride": 1920,
+    "sizeimage": 3110400
+  },
+  "curve_precision": "fp16",
+  "f_est_hz": 2.518,
+  "alpha": 0.0,
+  "last_estimate_ns": 18425120,
+  "slice_mask_ret": [
+    0,
+    0
+  ],
+  "conditions": {
+    "iq": {
+      "iq_dir": "/etc/iqfiles",
+      "manifest": "/etc/iqfiles_sets/manifest.json",
+      "set": "demo",
+      "sha256": "2ed58401f2fc8b0b28864d5da68e53de4c441c1593462ca23f21d76c7ce198d0",
+      "file": "imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json",
+      "nr3d_enable": [
+        1
+      ],
+      "exp_us_iq": 66666,
+      "gain_iq": 20.0,
+      "fps_iq": 15
+    },
+    "sensor_subdev": "/dev/v4l-subdev2",
+    "sensor_readback": {
+      "exposure": 8974,
+      "analogue_gain": 87,
+      "vertical_blanking": 7906
+    },
+    "config": {
+      "config_yaml": "/home/cat/starlight/config.yaml",
+      "sha256": "36c9a1b4634973c12085552d99cc9d591d32aefb5a7e1ad04ae14c6eb973fe0c"
+    }
+  },
+  "labels": {
+    "lux": null,
+    "scene": null,
+    "source": "人工录入（照度计 / 手机 app，每批次一次；§15 O45 ④）"
+  },
+  "png_bytes": {
+    "orig": 215331,
+    "enh": 320259
+  },
+  "files": [
+    "/home/cat/greentest3_orig.png",
+    "/home/cat/greentest3_enh.png",
+    "/home/cat/greentest3_report.json"
+  ]
+}

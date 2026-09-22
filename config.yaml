@@ -120,11 +120,17 @@ pipeline:
                                          # scale+CSC blit（不越写 pad 行）（v3.27 裁定 O32）
     output_take: "effective_only"
   curve_field_precision: "fp16"          # 【临时期值】v3.22 裁定 O23 = 全档 FP16；定稿时点 M2
-  apply_scope: {display: [512, 288], save: [1920, 1080]}
-                                         # 【M2 定稿】§3.1：曲线应用只做到窗分辨率；1920×1080 满幅仅触发存盘一帧
-  curve_upsample: "bilinear_fused"        # 【M2 定稿】双线性 + 融合进 8iter 单遍；显示域与存盘域同策（§3.1 I1）
-  est_freq_hz: 9.5                       # 【M2 定稿·实测】est_every=6 下实测 9.47 Hz（§11 M2 要求 5~15 Hz）
-  ema_alpha: 0.4642                      # 【M2 定稿·实测】§9.1：N=ln(0.1)/ln(α)=3 ⇒ 收敛 3/9.47=317 ms ≤400 ms
+  apply_scope: {display: [512, 288]}
+                                         # 【M2 定稿】§3.1：曲线应用只做到窗分辨率（**v3.86 裁定 O102**：
+                                         #   原 `save: [1920, 1080]` 子项随「存图」整体取消而移除）
+  curve_upsample: "bilinear_fused"        # 【M2 定稿】双线性 + 融合进 8iter 单遍（**O102**：原"显示域与
+                                         #   存盘域同策"的存盘域已取消，显示域口径不变）（§3.1 I1）
+  est_freq_hz: 7.53                      # 【M2 定稿·实测；**v3.86 裁定 O103 更新**】est_every=2 下实测
+                                         #   **7.527 Hz**（§11 M2 要求 5~15 Hz）；原值 9.5 Hz 是 **30 fps 时代**
+                                         #   的镜像（O91 改 15 fps 后未重推，即 O103 的根因）
+  ema_alpha: 0.4642                      # 【M2 定稿·实测】§9.1：N=ln(0.1)/ln(α)=3 ⇒ 收敛 3/7.527=398.6 ms
+                                         #   ≤400 ms（**O103**：该值只在 f_est≈7.5 Hz 下成立；f_est=2.5 Hz
+                                         #   时为 1201.6 ms ⇒ 拖影）
 
 # ── HQ（定稿时点 M2-2，除 shape_ladder；v3.48 裁定 O49 由 M0 顺延）──────────
 hq:
@@ -151,24 +157,39 @@ trigger:
 
 # ── UI（定稿时点 M2）───────────────────────────────────────────────
 ui:
-  button_layout:                         # 【M2 定稿】§3.4：按钮区 1024×96（Y 504-599），3 键单行各 341 px
+  button_layout:                         # 【M2 定稿】§3.4：按钮区 1024×96（Y 504-599），2 键单行各 512 px
+                                         #   （v3.86 裁定 O101：取消 save 键、两键各 512）
     rows: 1
-    height_px: 96
-    keys: [{name: trigger_hq, x: 0, w: 341}, {name: save, x: 341, w: 341}, {name: reset_exit, x: 682, w: 341}]
+    height_px: 90                          # **v3.86 裁定 O111：93 → 90**（累计吸收图示下移的 6 px；O109 先 96 → 93）
+    keys: [{name: trigger_hq, x: 0, w: 512}, {name: reset_exit, x: 512, w: 512}]
   hit_area_min_px: 67                    # 【M2 定稿】v3.33 变更（原 160）；≈10 mm @170 PPI
   reset_hold_ms: 3000                    # 【M2 定稿】v3.14 裁定 O6：长按 ≥3 s 退出进程
-  osd_metrics_px: 216                    # 【M2 定稿】v3.33：OSD 指标区总高（状态行 36 + 图示 180）
+  osd_metrics_px: 222                    # 【M2 定稿】v3.33：OSD 指标区总高；**v3.86 裁定 O111：219 → 222**
+                                         #   （状态行 36 + **图示上间隔 6** + 图示 180；O109 先 3 px、O111 再加 3 px）
   osd_status_row_px: 36                  # 【M2 定稿】v3.33：状态/数值行高
   osd_plot_px: [512, 180]                # 【M2 定稿】v3.33：曲线图与直方图各占
-  osd_status_fields: [mode, fps, latency, curve_hz, mean_orig, mean_enh, dmean]
+  osd_status_fields: [latency, fps, mean_orig, mean_enh]
                                          # 【M2 定稿】v3.35：状态行字段与顺序；**v3.85 裁定 O84：8 → 7 字段
-                                         #   （删 countdown）**——TIMER 已移除，见 §3.4 / §13
+                                         #   （删 countdown）**——TIMER 已移除，见 §3.4 / §13；
+                                         #   **v3.86 裁定 O107：7 → 6 字段（删 mode）**——「运行模式」是状态量
+                                         #   而非量测值、常态恒为 `RUN_DEMO`；
+                                         #   **v3.86 裁定 O108：6 → 5 字段（删 curve_hz）**——本屏是**演示界面**
+                                         #   而非系统监控界面，曲线 Hz 属运维/诊断量；**且字段顺序改为
+                                         #   延迟在前、帧率在后**（屏上渲染顺序以 §3.4 为 SSOT）；
+                                         #   **v3.86 裁定 O109：5 → 4 字段（删 dmean）**——亮度增益改为**屏上不显示**
+                                         #   （日志与 bench 报告不受影响）；同裁定：各字段拉开间隔 + 分色 + 「帧率：」中文标签
   osd_stats_decimate: 4                  # 【M2 定稿】v3.35：统计降采样率（512×288 → 128×72 = 9,216 样本）
   osd_stats_hz: 1                        # 【M2 定稿】v3.35：统计更新频率
   osd_font_px: [36, 26]                  # 【M2 定稿】状态行 36 px / 次行 26 px
   fullscreen_timeout_ms: 30000           # 【v3.85 新增·裁定 O79】全屏 HQ 视图无操作 30 s 兜底退出（§3.5）
-  pointer_mouse_node: null               # 【v3.85 新增·裁定 O81】鼠标 evdev 设备路径（触控节点沿用既有实现口径）；
-                                         #   **取值为空 = evdev 路径待板端实测**（不得自造值，规则 20-contracts.md §1）
+  pointer_mouse_node: /dev/input/event7    # 【v3.85 新增·裁定 O81；**v3.86 落值**】鼠标 evdev 设备路径；
+                                         #   触控节点沿用既有实现口径（`pointer.py` 模块常量 `/dev/input/event2`）
+                                         #   取值依据 = 板端 `/proc/bus/input/devices` **只读枚举**：
+                                         #   `TESORO H3E  Gaming Mouse`（Phys=usb-1.3/input0）的 Handlers 为
+                                         #   **`event7`**，其 EV=17（含 EV_REL）、REL=1943、KEY 含 BTN_LEFT
+                                         #   ⇒ 唯一满足"相对位移 + 左键"的鼠标节点；同名设备的 `event11`
+                                         #   为 Phy=usb-1.3/input1 的 EV_ABS 节点（**无 EV_REL**）⇒ **不取**
+                                         #   （枚举原文见 `docs/evidence/M2-2-hq-align.md` §8.9）
 
 # ── 计量（定稿时点 M1/M2）──────────────────────────────────────────
 metrics:
@@ -179,14 +200,10 @@ metrics:
   report_breakdown: true                 # 【M2 定稿】§6.5：延迟两段分解随报告给出
   idle_link_baseline: null               # 定稿时点 M1（空链路 P50/P95；O19 的触发依据）
 
-# ── 存储（定稿时点 M3）─────────────────────────────────────────────
-storage:
-  dir: null
-  name_pattern: null                     # {seq_src}_{mono_ns}_{utc}_{model_id}_{curve_level}_{item}
-  image_format: null                     # png8_rgb
-  meta_carrier: null                     # json_sidecar + png_text
-  capacity_limit_gb: null                # 依赖 O21（介质与容量实测）
-  retention: null                        # ring_overwrite_oldest（按 seq_src 整组淘汰）
+# ── 存储（**v3.86 裁定 O102：本域整域取消**）────────────────────────────
+# 原 `storage.dir` / `storage.name_pattern` / `storage.image_format` / `storage.meta_carrier` /
+# `storage.capacity_limit_gb` / `storage.retention` **六键随「存图」功能整体取消而移除**（§10.4 同步删行）。
+# **注意**：日志目录是 `logging.dir`（与本节无关，轮转纪律见 `docs/logging.md` §2）。
 
 # ── 模型（定稿时点 M0/M1）──────────────────────────────────────────
 model:

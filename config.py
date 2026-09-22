@@ -60,9 +60,7 @@ KEY_TABLE: Tuple[str, ...] = (
     # 计量
     "metrics.window_frames", "metrics.timestamp_domain", "metrics.timestamp_source",
     "metrics.pair_by", "metrics.report_breakdown", "metrics.idle_link_baseline",
-    # 存储
-    "storage.dir", "storage.name_pattern", "storage.image_format",
-    "storage.meta_carrier", "storage.capacity_limit_gb", "storage.retention",
+    # 存储（**v3.86 裁定 O102**：`storage.*` 六键随「存图」功能整体取消而移除，见 §10.4）
     # 模型
     "model.zde_weight_hash", "model.zde_output_channels", "model.zde_output_layout",
     "model.zde_output_dims", "model.zde_ft_version", "model.hq_fallback_id",
@@ -81,14 +79,14 @@ CURVE_GEOMETRY_CHILDREN: Tuple[str, ...] = (
 
 CONTAINER_KEYS: Tuple[str, ...] = (
     "board", "camera", "isp", "rga", "display", "pipeline", "hq", "trigger",
-    "ui", "metrics", "storage", "model", "runtime", "logging",
+    "ui", "metrics", "model", "runtime", "logging",   # **（O102）** 原 `storage` 容器随存图取消而移除
 )
 
 # 不下探的子树（其内部结构由 §10.4 的子表口径承载，非独立键名）
 OPAQUE_SUBTREES: Tuple[str, ...] = (
     "pipeline.curve_geometry",   # §10.4「三档 shape 表」：effective / pad_to 子表（v3.29 裁定 O34-②）
     "pipeline.apply_scope",      # §10.4：显示 = 窗分辨率 / 存盘 = 满幅一帧
-    "ui.button_layout",          # §10.4：3 键单行、行高 96 px、各 341 px
+    "ui.button_layout",          # §10.4：2 键单行、行高 96 px、各 512 px（v3.86 裁定 O101）
 )
 
 DEFAULT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")

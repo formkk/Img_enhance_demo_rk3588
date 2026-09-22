@@ -1,51 +1,55 @@
 #!/usr/bin/env python3
-"""ui_buttons.py —— MIPI 按钮区 3 键的命中判定（§3.4 / §13「交互」行）
+"""ui_buttons.py —— MIPI 按钮区 2 键的命中判定（§3.4 / §13「交互」行）
 
-布局（§3.4）：按钮区 1024×96（Y 504–599），1 行 3 键各 341 px：
-    ① 触发HQ ② 存图 ③ 复位·退出（**短按 = 软复位**、**长按 ≥3 s = 退出进程**，§10.6-C）
+布局（§3.4）：按钮区 1024×96（Y 504–599），1 行 2 键各 512 px：
+    ① 触发HQ ② **退出**（**v3.86 就地裁定 O98：短按软复位自演示 UI 移除** ⇒
+    该键只剩**长按 ≥ `ui.reset_hold_ms` 退出进程**；软复位机制保留于退出序 `shutdown()`；
+    **v3.86 裁定 O101：取消「存图」键** ⇒ 原三键各 341 px 改为两键各 512 px）
 
 纪律：
+  · **几何唯一来源 = `curve_estim.resolve_geometry(cfg)`**（**v3.86 就地裁定 O58**：原
+    `BUTTON_Y` / `BUTTON_H` / `BUTTON_W` / `LAYOUT` 硬编码**已删**；位置与宽度改取自
+    `ui.button_layout`，按钮区起点取自几何单源的 `button_y`）；
   · 命中区下限由 `ui.hit_area_min_px` 给出（§13「交互」行：≥67 px ≈ 10 mm @170 PPI）；
-  · 复位键的**长按阈值**由 `ui.reset_hold_ms` 给出（v3.14 裁定 O6 = 3000 ms）；
-  · 本模块只做**命中判定与按键语义**，不含 evdev 读取（在 `capture.TouchReader`）。
+  · 长按阈值由 `ui.reset_hold_ms` 给出（v3.14 裁定 O6 = 3000 ms）；
+  · 本模块只做**命中判定与按键语义**，不含 evdev 读取（在 `pointer.py`）。
+
+**键名保持 `reset_exit`**（§10.4 键表零改动）；仅其**语义**由"短按复位 / 长按退出"改为"长按退出"（O98）。
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-# §3.4 定稿布局
-BUTTON_Y = 504
-BUTTON_H = 96
-BUTTON_W = 341
+import curve_estim as curve_mod
 
+# §3.4 两键名（与 `ui.button_layout.keys[].name` 逐字一致；**v3.86 裁定 O101 取消 `save`**）
 KEY_TRIGGER_HQ = "trigger_hq"
-KEY_SAVE = "save"
 KEY_RESET_EXIT = "reset_exit"
 
-LAYOUT: Tuple[Tuple[str, int], ...] = (
-    (KEY_TRIGGER_HQ, 0),
-    (KEY_SAVE, BUTTON_W),
-    (KEY_RESET_EXIT, BUTTON_W * 2),
-)
-
-# 按键语义（§13「交互」行 / §10.6-C）
-PRESS_SHORT = "short"
+# 按键语义（§10.6-C；**v3.86 裁定 O98 后只剩长按**，`press` 字段值域仍按 `docs/logging.md` §4 = short|long）
 PRESS_LONG = "long"
 
 
 class ButtonHit:
-    """把 (x, y) 触点映射到键名。命中区 = 按钮矩形向外扩张到下限边长后居中。"""
+    """把 (x, y) 触点映射到键名。命中区 = 按钮矩形向外扩张到下限边长后居中（§3.4）。"""
 
     def __init__(self, cfg: Any):
+        g = curve_mod.resolve_geometry(cfg)
         self.min_px = int(cfg.require_final("ui.hit_area_min_px"))
         self.hold_ms = int(cfg.require_final("ui.reset_hold_ms"))
+        self.btn_y, self.btn_h = int(g["button_y"]), int(g["button_h"])
+        self.btn_keys = tuple(g["button_keys"])
+        names = [k[0] for k in self.btn_keys]
+        for want in (KEY_TRIGGER_HQ, KEY_RESET_EXIT):
+            if want not in names:
+                raise ValueError(f"ui.button_layout 缺键 {want!r}（§3.4 定稿两键）：{names}")
         self.rects: Dict[str, Tuple[int, int, int, int]] = {}
-        for name, bx in LAYOUT:
-            cx = bx + BUTTON_W // 2
-            cy = BUTTON_Y + BUTTON_H // 2
-            hw = max(BUTTON_W, self.min_px) // 2
-            hh = max(BUTTON_H, self.min_px) // 2
+        for name, bx, bw in self.btn_keys:
+            cx = bx + bw // 2
+            cy = self.btn_y + self.btn_h // 2
+            hw = max(bw, self.min_px) // 2
+            hh = max(self.btn_h, self.min_px) // 2
             self.rects[name] = (cx - hw, cy - hh, hw * 2, hh * 2)
 
     def hit(self, x: int, y: int) -> Optional[str]:
@@ -57,25 +61,20 @@ class ButtonHit:
     def areas(self) -> Dict[str, Tuple[int, int, int, int]]:
         return dict(self.rects)
 
-    def classify_reset(self, press_ms: int) -> str:
-        """复位键短按/长按判定（§10.6-C：短按软复位、长按 ≥ `ui.reset_hold_ms` 退出）。"""
-        return PRESS_LONG if press_ms >= self.hold_ms else PRESS_SHORT
-
 
 def main() -> int:
     import config as starlight_config
 
     cfg = starlight_config.load()
     h = ButtonHit(cfg)
-    print(f"命中区下限 = {h.min_px} px；复位长按阈值 = {h.hold_ms} ms")
+    print(f"命中区下限 = {h.min_px} px；长按阈值 = {h.hold_ms} ms（裁定 O98：仅长按退出）")
+    print(f"按钮区 Y {h.btn_y}..{h.btn_y + h.btn_h - 1}")
     for name, rect in h.areas().items():
         print(f"  {name:12s} rect={rect}（{rect[2]}×{rect[3]}）")
-    # 三键中心自检
-    for name, bx in LAYOUT:
-        cx, cy = bx + BUTTON_W // 2, BUTTON_Y + BUTTON_H // 2
+    for name, bx, bw in h.btn_keys:
+        cx, cy = bx + bw // 2, h.btn_y + h.btn_h // 2
         assert h.hit(cx, cy) == name, f"{name} 中心未命中"
-    print("三键中心命中自检通过")
-    print(f"复位键 1000ms -> {h.classify_reset(1000)}；3000ms -> {h.classify_reset(3000)}")
+    print("两键中心命中自检通过")
     return 0
 
 

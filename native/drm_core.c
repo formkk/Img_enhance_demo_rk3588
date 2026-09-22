@@ -162,7 +162,15 @@ static int create_fb_rgb888(int slot, int dmabuf_fd, uint32_t* out_fb) {
     uint32_t handles[4] = { handle, 0, 0, 0 };
     uint32_t pitches[4] = { s->cfg.canvas_w * 3, 0, 0, 0 };
     uint32_t offsets[4] = { 0, 0, 0, 0 };
-    if (drmModeAddFB2(g.fd, s->cfg.canvas_w, s->cfg.canvas_h, DRM_FORMAT_RGB888,
+    /* **（v3.86 追加 40）画布的 fourcc 必须匹配内存字节序**——`DRM_FORMAT_RGB888` 按 `drm_fourcc.h`
+       的定义是 **`[23:0] R:G:B little endian`** ⇒ 小端内存里字节序为 **B,G,R**；而本仓画布内存由
+       RGA 写出、**字节序为 R,G,B**（已对证：同帧 RGA 输出 vs 标准 YCbCr→RGB 数学逐通道吻合
+       31.16/30.33/27.59 ↔ 31.39/30.35/27.65；若为 B 首则 R 应为 27.59 ⇒ 12% 不符）。
+       声明错 ⇒ 内核按 B,G,R 解读 ⇒ **两屏同时红蓝互换**（用户实测「实物红 → 显示蓝」）。
+       `DRM_FORMAT_BGR888` = `[23:0] B:G:R little endian` ⇒ 内存字节 R,G,B = 本仓画布 ✔。
+       ⚠️ PNG 导图看不到这一层（它是画布字节的自洽镜像，永远按"我们假设的顺序"读写）⇒
+       **判屏上颜色只能看屏**，不得用导图代替。 */
+    if (drmModeAddFB2(g.fd, s->cfg.canvas_w, s->cfg.canvas_h, DRM_FORMAT_BGR888,
                       handles, pitches, offsets, out_fb, 0) < 0)
         return DRM_CORE_E_DRM;
     return DRM_CORE_OK;
@@ -186,8 +194,21 @@ int drm_configure_slot(int slot, const drm_cfg_t* cfg) {
     if (open_connector(slot, cfg->conn_id) < 0) { g_err = "open_connector"; return DRM_CORE_E_DRM; }
 
     const size_t canvas_bytes = (size_t)s->cfg.canvas_w * s->cfg.canvas_h * 3;
+    /* **（v3.86 追加 41）画布必须用「去缓存」堆**——OSD / 按钮区由 **CPU 写**（`osd.render_into`）、
+       两窗由 **RGA（DMA）写**，而**显示扫描**与**镜像 RGA 读**都走 dma-buf：
+       原实现取 `cma`（mmap **带缓存**）⇒ CPU 写的像素滞留 CPU cache，**DMA 侧看到旧字节**
+       ⇒ 现象 = **只有 CPU 写的那两条带（OSD / 按钮区）在两块屏闪烁**、两窗不闪、
+       **逐帧转储（CPU 读）却完全稳定**（占位一致），且 HDMI 槽 1 取自陈旧源 ⇒ **缺行 / 逐帧在变**。
+       改取去缓存堆（按可用性回退），使 CPU 写对 DMA 立即可见。 */
+    static const char* const canvas_heaps[] = {
+        "system-uncached-dma32", "cma-uncached", "system-dma32", "cma"
+    };
     for (int i = 0; i < s->nbuf; i++) {
-        s->canvas_fd[i] = dma_heap_alloc("cma", canvas_bytes, &s->canvas_va[i]);
+        s->canvas_fd[i] = -1;
+        for (size_t h = 0; h < sizeof(canvas_heaps) / sizeof(canvas_heaps[0]); h++) {
+            s->canvas_fd[i] = dma_heap_alloc(canvas_heaps[h], canvas_bytes, &s->canvas_va[i]);
+            if (s->canvas_fd[i] >= 0) break;
+        }
         if (s->canvas_fd[i] < 0) { g_err = "canvas_dma_heap"; return DRM_CORE_E_DRM; }
         if (create_fb_rgb888(slot, s->canvas_fd[i], &s->fb[i]) < 0) { g_err = "AddFB2"; g_errno = errno; return DRM_CORE_E_DRM; }
         memset(s->canvas_va[i], 0, canvas_bytes);   /* 整幅清黑一次 */
@@ -235,6 +256,10 @@ int drm_compose_flip_slot(int slot, int buf_idx, uint64_t seq) {
     const uint64_t packed = (seq << DRM_CORE_SLOT_BITS) | (uint64_t)(unsigned)slot;
     if (drmModePageFlip(g.fd, s->crtc_id, s->fb[buf_idx], DRM_MODE_PAGE_FLIP_EVENT,
                         (void*)(uintptr_t)packed) < 0) {
+        /* **（v3.86 裁定 O122）失败可见**：翻页失败也必须留下阶段串 / errno（经既有
+           `drm_last_error()` / `drm.info()` 读出）。此前这里**不写 g_err** ⇒ 调用方只见返回码，
+           而 `DRM_CORE_E_DRM` 与 RGA 的 `-3` **同值** ⇒ 无法区分失联发生在合成步还是翻页步。 */
+        g_err = "PageFlip"; g_errno = errno;
         g_flip_done[slot] = 1;
         return DRM_CORE_E_DRM;
     }
@@ -258,12 +283,31 @@ int drm_compose_flip_slot(int slot, int buf_idx, uint64_t seq) {
         if (r < 0 && errno != EINTR) break;
     }
     s->flip_pending = 0;
+    if (!g_flip_done[slot]) { g_err = "PageFlipTimeout"; g_errno = 0; }
     return (g_flip_done[slot]) ? DRM_CORE_OK : DRM_CORE_E_DRM;
 }
 
 int drm_compose_flip(int buf_idx, uint64_t seq) {
     return drm_compose_flip_slot(DRM_CORE_SLOT_DSI, buf_idx, seq);
 }
+
+/* **（v3.86 裁定 O122）外部 modeset 抢 CRTC 后的有界自愈**：见 drm_core.h。
+   与 `drm_configure_slot` 的初次 modeset **同口径**（`drmModeSetCrtc` + 同一个 `s->mode`），
+   差别仅在 fb 取**当前画布**（`s->fb[s->cur]`）而非 `fb[0]`，以免自愈时换 buffer 造成闪黑。 */
+int drm_recover_slot(int slot) {
+    if (!slot_valid(slot) || !g.opened) return DRM_CORE_E_STATE;
+    struct crtc_slot* s = &g.slot[slot];
+    if (!s->configured) return DRM_CORE_E_STATE;
+    if (drmModeSetCrtc(g.fd, s->crtc_id, s->fb[s->cur], 0, 0, &s->conn_id, 1, &s->mode) < 0) {
+        g_err = "RecoverSetCrtc"; g_errno = errno;
+        return DRM_CORE_E_DRM;
+    }
+    /* CRTC 已重绑本槽 fb ⇒ 本槽**没有在途 flip**，置位以免后续 `drm_wait_flip` 白等超时 */
+    g_flip_done[slot] = 1;
+    return DRM_CORE_OK;
+}
+
+int drm_recover(void) { return drm_recover_slot(DRM_CORE_SLOT_DSI); }
 
 int drm_wait_flip_slot(int slot) {
     if (!slot_valid(slot)) return DRM_CORE_E_STATE;

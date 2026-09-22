@@ -63,7 +63,7 @@ static struct {
     int   est_fd, win_fd, enh_fd, zero_fd, stage_fd, hq_fd;
     void *est_va, *win_va, *enh_va, *zero_va, *stage_va, *hq_va;
     rga_buffer_t est_full, est_eff, win_full, enh_full, zero_full, stage_full, hq_content;
-    uint64_t last_blit_ns, last_canvas_ns;
+    uint64_t last_blit_ns, last_canvas_ns, last_scale_ns;
 } g;
 
 int rga_is_configured(void) { return g.configured; }
@@ -167,21 +167,26 @@ static rga_buffer_t* dst_of(rga_dst_t dst) {
 }
 
 static int blit_nv12(rga_buffer_t src, rga_dst_t dst) {
-    im_rect prect = {0, 0, 0, 0};
-    rga_buffer_t pat;
-    memset(&pat, 0, sizeof(pat));
-    const im_rect srect = {0, 0, (int)g.cfg.cap_w, (int)g.cfg.cap_h};
-    int dw = (int)g.cfg.eff_w, dh = (int)g.cfg.eff_h;
-    if (dst == RGA_DST_WIN) { dw = (int)g.cfg.win_w; dh = (int)g.cfg.win_h; }
-    /* **（v3.86 追加 35）** HQ：目标 = **内容子视图**（`hq_h - 2*hq_pad_top` 行，§3.1 pad 机制）
-       ⇒ 1920×1080 等比缩至内容高（主档 960×540），上下 pad 行留零。 */
-    else if (dst == RGA_DST_HQ) {
-        dw = (int)g.cfg.hq_w;
-        dh = (int)g.cfg.hq_h - 2 * (int)g.cfg.hq_pad_top;
-    }
-    const im_rect drect = {0, 0, dw, dh};
+    /* **（v3.86 追加 39 / O54 就地裁定）NV12→RGB 的 range 约定必须显式**——
+       原实现用 `improcess(...)` + `srect/drect` 且未指定色彩空间 ⇒ 走 librga 默认
+       `IM_COLOR_SPACE_DEFAULT`（= YUV→RGB **BT.601 limited**），而 ISP 输出是 **full range**
+       （板上实测：Y 平面 p5 = 0、U/V 均值 128.16/127.57 中性）⇒ 色度被放大 ~14% + 黑电平错位
+       ⇒ **常规两窗与 HQ 模型输入同时偏绿**（同一帧四路对照：RGA 路 G/B = 1.087 ≈ limited 1.090，
+       full 1.000）。
+       **实测结论（同一帧，n=2）**：把 `color_space_mode` 置在缓冲上、仍走 `improcess` **不生效**
+       （输出与 limited 逐通道差 ≤0.14%）⇒ 本函数改走 **`imcvtcolor(src, dst, sfmt, dfmt, mode, sync)`**
+       （该 API 有显式 `mode` 形参）。
+       **几何不变（故不再传 rect）**：`imcvtcolor` 按两缓冲的 full-rect 工作，而三个目标 wrapper 的
+       full-rect **正好等于有效区**——`win_full` = 512×288；`est_eff` / `hq_content` 均按
+       `wstride*hstride` 偏移基址且高度 = 有效高（见 `rga_configure`），pad 行仍不被写。
+       ⚠️ 边界：BT.601 与 BT.709 的取舍属 **O54 定稿**（`isp.csc_matrix` / `isp.rgb_range` 仍为
+       `null`，§10.4 未定稿）⇒ 本行是"与实测一致的显式值"，**不是 O54 的定稿**。 */
+    const int csc = IM_YUV_TO_RGB_BT601_FULL;
+    src.color_space_mode = csc;                /* 兜底：两缓冲都置（实测仅源侧置、走 improcess 无效） */
+    rga_buffer_t *d = dst_of(dst);
+    d->color_space_mode = csc;
     const uint64_t t0 = mono_ns();
-    const IM_STATUS s = improcess(src, *dst_of(dst), pat, srect, drect, prect, IM_SYNC);
+    const IM_STATUS s = imcvtcolor(src, *d, RK_FORMAT_YCbCr_420_SP, RK_FORMAT_RGB_888, csc, 1);
     g.last_blit_ns = mono_ns() - t0;
     return (s == IM_STATUS_SUCCESS) ? RGA_OK : RGA_E_STATE;
 }
@@ -220,6 +225,49 @@ int rga_canvas_compose_to(void* canvas_va, uint32_t canvas_w, uint32_t canvas_h)
     return (a == IM_STATUS_SUCCESS && b == IM_STATUS_SUCCESS) ? RGA_OK : RGA_E_STATE;
 }
 
+/* RGB888 → RGB888 缩放（见 rga_core.h）。调用口径与 `rga_blit_nv12_va` / `rga_canvas_compose_to`
+   完全一致：`wrapbuffer_virtualaddr_t` + `improcess(IM_SYNC)`；core_mask 由 `rga_configure`
+   一次性 `imconfig`，本函数不再重复配置。源/目标 rect 按整幅（full-rect）传。 */
+int rga_scale_rgb888(const void* src_va, uint32_t src_w, uint32_t src_h,
+                     void* dst_va, uint32_t dst_w, uint32_t dst_h) {
+    if (!g.configured) return RGA_E_STATE;
+    if (!src_va || !dst_va || src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0)
+        return RGA_E_STATE;
+    rga_buffer_t src = wrapbuffer_virtualaddr_t((void*)src_va, src_w, src_h,
+                                                src_w, src_h, RK_FORMAT_RGB_888);
+    rga_buffer_t dst = wrapbuffer_virtualaddr_t(dst_va, dst_w, dst_h,
+                                                dst_w, dst_h, RK_FORMAT_RGB_888);
+    im_rect prect = {0, 0, 0, 0};
+    rga_buffer_t pat;
+    memset(&pat, 0, sizeof(pat));
+    const im_rect srect = {0, 0, (int)src_w, (int)src_h};
+    const im_rect drect = {0, 0, (int)dst_w, (int)dst_h};
+    const uint64_t t0 = mono_ns();
+    const IM_STATUS s = improcess(src, dst, pat, srect, drect, prect, IM_SYNC);
+    g.last_scale_ns = mono_ns() - t0;
+    return (s == IM_STATUS_SUCCESS) ? RGA_OK : RGA_E_STATE;   /* 与同文件既有口径一致（对外只暴露 OK/E_STATE） */
+}
+
+int rga_scale_rgb888_fd(int src_fd, uint32_t src_w, uint32_t src_h,
+                        int dst_fd, uint32_t dst_w, uint32_t dst_h) {
+    if (!g.configured) return RGA_E_STATE;
+    if (src_fd < 0 || dst_fd < 0 || src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0)
+        return RGA_E_STATE;
+    /* **fd 包裹**（dma-buf）：v3.86 A/B 实测比 VA 包裹快 1.2~1.6 ms（见 rga_core.h 注释与
+       `docs/evidence/reports/display-arch-change/rga_scale_transport_probe.c`）。 */
+    rga_buffer_t src = wrapbuffer_fd_t(src_fd, src_w, src_h, src_w, src_h, RK_FORMAT_RGB_888);
+    rga_buffer_t dst = wrapbuffer_fd_t(dst_fd, dst_w, dst_h, dst_w, dst_h, RK_FORMAT_RGB_888);
+    im_rect prect = {0, 0, 0, 0};
+    rga_buffer_t pat;
+    memset(&pat, 0, sizeof(pat));
+    const im_rect srect = {0, 0, (int)src_w, (int)src_h};
+    const im_rect drect = {0, 0, (int)dst_w, (int)dst_h};
+    const uint64_t t0 = mono_ns();
+    const IM_STATUS s = improcess(src, dst, pat, srect, drect, prect, IM_SYNC);
+    g.last_scale_ns = mono_ns() - t0;
+    return (s == IM_STATUS_SUCCESS) ? RGA_OK : RGA_E_STATE;
+}
+
 void* rga_est_va(void)     { return g.est_va; }
 void* rga_est_eff_va(void) { return g.est_va ? (uint8_t*)g.est_va + (size_t)g.cfg.pad_w * 3 * g.cfg.pad_top : NULL; }
 void* rga_win_va(void)     { return g.win_va; }
@@ -233,3 +281,4 @@ void* rga_hq_va(void)    { return g.hq_va; }
 int   rga_hq_fd(void)    { return g.hq_fd; }
 uint64_t rga_last_blit_ns(void)  { return g.last_blit_ns; }
 uint64_t rga_last_canvas_ns(void){ return g.last_canvas_ns; }
+uint64_t rga_last_scale_ns(void) { return g.last_scale_ns; }
