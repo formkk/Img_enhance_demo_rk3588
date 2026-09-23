@@ -1,0 +1,216 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "step-response",
+  "scope": "frame",
+  "started_utc": "2026-09-23T13:11:49+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": null,
+    "precision": null,
+    "config_snapshot_hash": null
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      1.67,
+      1.77,
+      1.84
+    ]
+  },
+  "soc_temp_c": 51.769,
+  "notes": [
+    "判据 = §13「切换响应」行（场景亮度阶跃 → 增强生效 ≤500 ms）× ≥10 次阶跃；判定 = 实现者 / 验收人",
+    "阶跃方式 = **运行期曝光微调**（规则 20 §4 明许）；测点 = **曲线场指纹逐次发布**（时间分辨率 = `publish_period_ms`，**不得读作优于该分辨率**）",
+    "收敛判据 = 阶跃后首次进入「新稳态 ±10% 行程」并此后保持",
+    "`derived_ms` 仅作对照（§9.1 的解析式），**不与实测混用**"
+  ],
+  "status": "ok",
+  "entry": "bench.py --scenario step-response（每轮独立进程跑 `main.py --step-exp-*`）",
+  "steps_requested": 10,
+  "steps_executed": 10,
+  "step_interval_s": 3.0,
+  "frames": 525,
+  "publish_period_ms": 133.1215968778626,
+  "conv_ms": {
+    "n": 10,
+    "p50_ms": 2909.870505,
+    "p95_ms": 4867.477586,
+    "max_ms": 4867.477586,
+    "mean_ms": 3106.2961114
+  },
+  "derived_ms": {
+    "formula": "N = ln(0.1)/ln(alpha); 收敛 = N / f_est",
+    "alpha": 0.4642,
+    "f_est": 7.613075126432968,
+    "value_ms": 394.10438163464613
+  },
+  "steps": [
+    {
+      "step": 1,
+      "t_step_ms": 3024.449128,
+      "exposure_from": 66666,
+      "exposure_to": 66666,
+      "field_start": -0.14655375480651855,
+      "field_final": -0.1471712589263916,
+      "span": -0.0006175041198730469,
+      "conv_ms": 2636.064936,
+      "pub_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 2,
+      "t_step_ms": 6005.144439,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "field_start": -0.1471712589263916,
+      "field_final": -0.14748239517211914,
+      "span": -0.00031113624572753906,
+      "conv_ms": 3008.176077,
+      "pub_in_segment": 23,
+      "reason": null
+    },
+    {
+      "step": 3,
+      "t_step_ms": 9025.148939,
+      "exposure_from": 16666,
+      "exposure_to": 66666,
+      "field_start": -0.14748239517211914,
+      "field_final": -0.1474781036376953,
+      "span": 4.291534423828125e-06,
+      "conv_ms": 2908.353481,
+      "pub_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 4,
+      "t_step_ms": 12029.449032,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "field_start": -0.1474781036376953,
+      "field_final": -0.14753961563110352,
+      "span": -6.151199340820312e-05,
+      "conv_ms": 2993.269837,
+      "pub_in_segment": 23,
+      "reason": null
+    },
+    {
+      "step": 5,
+      "t_step_ms": 15037.738339,
+      "exposure_from": 16666,
+      "exposure_to": 66666,
+      "field_start": -0.14753961563110352,
+      "field_final": -0.14780473709106445,
+      "span": -0.0002651214599609375,
+      "conv_ms": 2906.277389,
+      "pub_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 6,
+      "t_step_ms": 18006.150678,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "field_start": -0.14780473709106445,
+      "field_final": -0.1478123664855957,
+      "span": -7.62939453125e-06,
+      "conv_ms": 3000.803552,
+      "pub_in_segment": 23,
+      "reason": null
+    },
+    {
+      "step": 7,
+      "t_step_ms": 21027.936745,
+      "exposure_from": 16666,
+      "exposure_to": 66666,
+      "field_start": -0.1478123664855957,
+      "field_final": -0.14804291725158691,
+      "span": -0.00023055076599121094,
+      "conv_ms": 2909.870505,
+      "pub_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 8,
+      "t_step_ms": 24033.560107,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "field_start": -0.14804291725158691,
+      "field_final": -0.14794564247131348,
+      "span": 9.72747802734375e-05,
+      "conv_ms": 2864.347788,
+      "pub_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 9,
+      "t_step_ms": 26971.821391,
+      "exposure_from": 16666,
+      "exposure_to": 66666,
+      "field_start": -0.14794564247131348,
+      "field_final": -0.14807343482971191,
+      "span": -0.0001277923583984375,
+      "conv_ms": 2968.319963,
+      "pub_in_segment": 23,
+      "reason": null
+    },
+    {
+      "step": 10,
+      "t_step_ms": 30010.380796,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "field_start": -0.14807343482971191,
+      "field_final": -0.14806056022644043,
+      "span": 1.2874603271484375e-05,
+      "conv_ms": 4867.477586,
+      "pub_in_segment": 37,
+      "reason": null
+    }
+  ],
+  "pairing_rate": 1.0,
+  "discarded_frames": {
+    "frames": 525,
+    "estimates": 263,
+    "flips": 525,
+    "flip_skipped": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0,
+    "discarded_triggers": 0,
+    "v4l2_errors": 0,
+    "pageflip_fail": 0,
+    "hq_started": 0,
+    "hq_done": 0,
+    "freeze_enter": 0,
+    "freeze_exit": 0,
+    "freeze_flips": 0,
+    "fullscreen_enter": 0,
+    "fullscreen_exit": 0
+  },
+  "metrics_policy": {
+    "window_frames": 300,
+    "timestamp_domain": "MONOTONIC",
+    "timestamp_source": "EOF",
+    "pair_by": "seq"
+  }
+}

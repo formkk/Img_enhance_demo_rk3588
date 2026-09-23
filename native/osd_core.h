@@ -34,6 +34,19 @@ int osd_blit_glyph(void* canvas, uint32_t cw, uint32_t ch,
                    int32_t x, int32_t y, uint32_t scale,
                    const uint8_t* glyph, uint32_t gw, uint32_t gh, uint32_t rgb);
 
+/* RGB888 双缓冲统计（与 `osd.py` 的 `Stats` **同口径**，§3.4：降采样 + 灰度直方图 + 均值）。
+ *
+ * **（v3.86 裁定 O142-候选①）** 目的：把原 Python 逐样本循环（9216 点 × 双直方图）下沉到 C，
+ * 且**直接吃 native 缓冲指针、零拷贝**（原路径每帧要 `to_bytes()` 两次）。
+ *
+ * `decimate` = 抽样步长（4 = 每轴每 4 像素取一点，与 Python 的 `range(0, w, d)` 一致）；
+ * `hist_o` / `hist_e` 须各 **256** 项。灰度式与 Python **逐字一致**：`y = (77r + 150g + 29b) >> 8`。
+ * 返回**采样点数**（`0` = 参数非法，调用方不得使用输出）。 */
+uint32_t osd_stats_rgb888(const uint8_t* raw, const uint8_t* enh,
+                          uint32_t w, uint32_t h, uint32_t decimate,
+                          uint32_t* hist_o, uint32_t* hist_e,
+                          double* mean_o, double* mean_e);
+
 #ifdef __cplusplus
 }
 #endif

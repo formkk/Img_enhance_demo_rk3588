@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 import os
+import struct as _struct
 import threading
 import time
 from typing import Any, Dict, Optional
@@ -183,6 +184,10 @@ class CurveEstimator:
         self._first = True
         self._est_calls = 0
         self._rga_fallbacks = 0
+        # **（v3.86 裁定 O143）** 「阶跃响应」验证钩子：发布日志（**默认关**，开启后每次发布记一行）。
+        # 每行 = `(publish_ns, seq_est, 场指纹)`；场指纹 = **场前 256 个 fp16 的均值**（只读 512 B，
+        # 在发布线程内算，7.6 Hz 量级 ⇒ 不进帧路径、对帧率无影响）。
+        self._pub_log: Optional[list] = None
         # ── **（v3.86 裁定 O123）TH2a 独立线程**（§6.1 第 413 / 415 行要求"独立循环、不在帧路径"）──
         # `request()` 在调用（主）线程里**只做 RGA 缩放**（持帧时长 = 一次 RGA），NPU 双条带 + EMA
         # 由 worker 执行 ⇒ 显示循环不再被 ~16 ms 的估计阻塞。RGA 仍**单调用方 = 主线程**
@@ -394,6 +399,22 @@ class CurveEstimator:
         with self._cv:
             return self._publish_locked()
 
+    # ── **（v3.86 裁定 O143）** 「阶跃响应」验证钩子（**默认关**；非 config 键 / 不新增事件与返回码）──
+    def enable_publish_log(self) -> None:
+        """开启发布日志（供 `main.py --step-exp-*` 与 `bench.py --scenario step-response` 用）。"""
+        self._pub_log = []
+
+    def publish_log(self):
+        return list(self._pub_log) if self._pub_log is not None else None
+
+    def _log_publish(self, snap: "CurveSnapshot") -> None:
+        try:
+            b = snap.field.to_bytes()[:512]           # 前 256 个 fp16（1 KB 场的前半）
+            fp = sum(_struct.unpack("<256e", b)) / 256.0
+        except Exception:                              # 钩子失败**不得**影响链路
+            fp = float("nan")
+        self._pub_log.append((int(snap.publish_ns), int(snap.seq_est), float(fp)))
+
     def _publish_locked(self) -> CurveSnapshot:
         """`publish()` 的实现体（**调用方须已持 `_mtx`/`_cv`**）：worker 与模块自检共用。"""
         self.seq_est += 1
@@ -405,6 +426,9 @@ class CurveEstimator:
         self.log.event("curve_estim", "curve_publish", seq_est=self.seq_est,
                        f_est=round(self.f_est, 3), alpha=self.alpha,
                        curve_level=level, precision=self.precision())
+        # **（v3.86 裁定 O143）** 发布日志（默认关）⇒ 为「阶跃响应」场景记录 (t, seq_est, 场指纹)
+        if self._pub_log is not None:
+            self._log_publish(snap)
         return snap
 
     def latest_field(self):

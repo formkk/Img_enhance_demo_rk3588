@@ -475,3 +475,97 @@
 **⑤ 回写** = `docs/evidence/subsplit-attribution.md`（**新增 §4.5 OSD 二级拆分**）/ §14（本行）/ `docs/plans/M2.md`（§8.1 ①-2）/ **新增报告** `docs/evidence/reports/subsplit/` 的 `s1` / `s2` / `v4b`（各 `.json` + `.log`）。
 
 **⑥ 板端执行记录（可复现）**：`sudo systemctl stop starlight-demo` → `sensor_lock.py --apply 7906` → `bench.py --scenario realtime --rounds 3 --out /tmp/subsplit/<name>.json`（`s1` = `--osd-status-only`；`s2` = 再加 `--osd-no-stats`；`v4b` = 无开关）→ `sudo systemctl start starlight-demo`。
+
+
+## v3.86-追加 98
+
+**动因**：①-2 归因（追加 96/97）锁定 OSD 的「统计」为最大单点，且 [main.py] 的 `update_stats(win.to_bytes(), enh.to_bytes(), …)` 使**两个 512×288×3 的 CPU 拷贝每帧求值**（1 Hz 节流在 `Stats.maybe_update()` 内部）。
+
+**性质**：**O142 就地裁定 + 实现（`main.py` 1 行 + `osd.py` 1 处方法体）+ 板端复跑取证**；**无新增 config 键 / 日志事件 / 返回码**；**§10.4 键零改动**；**`config.yaml` 零改动**；**§13 全表不动**；**不放宽 §11.2**；**新增 O 项 = O142**（§15）。
+
+**① 裁定**：改**回调式取样** —— `Stats.maybe_update()` 内保持 1 Hz 判据唯一一处，取样延迟到**到期帧**才求值（调用侧传 `lambda: win.to_bytes()`）；**不采用** `if stats_due(): update_stats(...)` 式（会把同一判据写两处）。`bytes` 直传入参保持兼容（供 `osd.py` 自检）。
+
+**② 落地**：`main.py` 帧路径改为回调式；`osd.py` 在到期后才调用 `raw()` / `enh()`；注释写明"判据不外移"的理由。
+
+**③ 实测（3 轮 × 300 帧；停演示 → `sensor_lock --apply 7906` → 跑 → 恢复服务）**
+
+| 口径 | 端到端 P50 | 端到端 P95 | 采集→提交 P95 | 提交→vblank P95 | fps（窗口径） |
+|---|---|---|---|---|---|
+| `v4b` 改动前（同批） | 46.00 | 87.62 | 79.84 | 16.31 | 15.068 |
+| **`fix1` 改动后** | **43.94** | **82.21** | **71.88** | 16.34 | 15.075 |
+
+逐轮 e2e P95 = 79.9 / 82.2 / 90.8；配对率 1.0、丢弃四项全 0、`stream_on_count` 三轮均 1。**⇒ 改动有效但不足以收口（P95 −5.4 ms，仍 >80）**。
+
+**④ 机制订正（随行的重要更正）**：`fix1` 第 3 轮逐帧核对 —— **>60 ms 的帧 = 23/300（7.7%）> P95 的 5% 分位** ⇒ **P95 落在这批帧内**；**剔除后 P95 = 51.20 ms ≈ 完全不做统计的 `s2`（51.24 ms）**；簇间可见 15 / 31 / 45 帧（≈ 1/2/3 Hz @ 15 fps）。⇒ **P95 由"每秒一次的统计帧"决定**，**一次统计的本体成本 ≈ 25 ms**（76.6 − 51.2；对 O44 微基准的 7.94 ms 有偏差，疑与 apply/OSD 并发及缓存冲刷有关，**未分离**）。追加 97 中"1 Hz 周期突发被否定"的结论**据此订正**（宽底分布与统计帧并存，**决定 P95 的是后者**）。
+
+**⑤ 后续候选（均须另行裁定；本行不裁定）**：① **统计下沉 native（C 实现）**；② **降 `ui.osd_stats_hz`（1 → 0.5）** —— 统计帧占比 7.7% → 3.3% < 5%，P95 不再被覆盖，但**改的是 §3.4 已定稿键值**，须走 §15 + §10.4 回写；③ 统计挪低优先级独立线程（与 TH2a 同风格）。
+
+**⑥ 效力边界**：**不放宽 ①-2 判据**（P95 ≤80 ms 仍判未过）；**§13 全表不动**；**不新增键 / 事件 / 返回码**；`config.yaml` 零改动。
+
+**⑦ 回写** = §15（**新增 O142**）/ §14（本行）/ `docs/evidence/subsplit-attribution.md`（**新增 §4.6**）/ `docs/plans/M2.md`（§8.1 ①-2）/ **新增报告** `docs/evidence/reports/subsplit/fix1.json`（+ `.log`）。
+
+**⑧ 板端执行记录（可复现）**：`sudo systemctl stop starlight-demo` → `sudo /usr/bin/python3 /home/cat/starlight/sensor_lock.py --apply 7906` → `sudo PYTHONPATH=/home/cat/.local/lib/python3.9/site-packages python3 tools/bench.py --scenario realtime --rounds 3 --out /tmp/subsplit/fix1.json` → `sudo systemctl start starlight-demo`。
+
+
+## v3.86-追加 99
+
+**动因**：追加 98（O142，回调式取样）后 ①-2 仍不过（P95 82.21）。实测已定位：**P95 由"每秒一次的统计帧"决定**（>60 ms 帧占 7.7% > 5% 分位；剔除后 51.20 ≈ 完全不做统计的 51.24）。⇒ 执行**候选①：统计下沉 native**。
+
+**性质**：**O142 候选① 就地裁定 + C 内核新增（`native/osd_core.c/.h`）+ pybind 暴露 + `osd.py` / `main.py` 接线 + 板端重建与复测**；**无新增 config 键 / 日志事件 / 返回码**；**`config.yaml` 零改动**；**§13 全表不动**；**不放宽 §11.2**；**不新增 O 项**（在 O142 内就地收口）。
+
+**① 实现**
+- `native/osd_core.c` 新增 `osd_stats_rgb888(raw, enh, w, h, decimate, hist_o, hist_e, mean_o, mean_e)`：抽样步长、灰度权重（`(77r+150g+29b)>>8`）、直方图与均值定义与 `osd.py` 的 `Stats` **逐字同口径**；返回采样点数。
+- `starlight_native_pybind.cpp` 暴露 `_n.osd.stats(raw, enh, w, h, decimate)`：**直接吃两个 `Buffer`（native 指针）⇒ 零拷贝**；返回 `(mean_o, mean_e, n, hist_o_bytes, hist_e_bytes)`（256 × u32 小端）。
+- `osd.py`：`Stats.maybe_update()` 到期后走 **native 分支**（`struct.unpack` 还原 256 项直方图）；**回调式**与 **`bytes` 直传**两条路径保留作对照 / 自检。**1 Hz 判据仍在 `Stats` 内唯一一处**。
+- `main.py`：帧路径改传 `win` / `enh` 两个缓冲（不再 `to_bytes()`）。
+
+**② 正确性（板端实测）**：native 与 Python 参考实现**逐位一致** —— 采样点数 `192 = 192`、均值 `127.1875000000 = 127.1875000000`、双直方图 256 项全等；`Stats` 的 native 分支值与参考一致；未到期帧**不取样**；`bytes` 直传仍兼容。**板端构建零告警**（`cmake --build build -j4`，`warning` 计数 **0**）。
+
+**③ 实测（3 轮 × 300 帧；停演示 → `sensor_lock --apply 7906` → 跑 → 恢复服务）**
+
+| 口径 | `v4b`（改动前） | `fix1`（O142 回调式） | **`fix2`（候选① native）** |
+|---|---|---|---|
+| 端到端 P50 | 46.00 | 43.94 | 46.22 |
+| **端到端 P95** | 87.62 | 82.21 | **64.92** |
+| 采集→提交 P95 | 79.84 | 71.88 | **51.68** |
+| 提交→vblank P95 | 16.31 | 16.34 | 16.56 |
+| fps（窗口径，中位） | 15.068 | 15.075 | 15.075 |
+
+逐轮 e2e P95 = **64.5 / 65.8 / 64.9（三轮全部 ≤80）**；配对率 1.0、丢弃四项全 0、`stream_on_count` 三轮均 1。
+
+**④ 结论**：**①-2 判过**（端到端 P95 **64.92 ms ≤ 80 ms**，余量 15.1 ms）；采集→提交段 P95 由 79.84 降到 **51.68**（−28.2 ms），与"统计帧被消除"的预期一致。
+
+**⑤ 效力边界**：**判据与契约不动**（未放宽任何上限）；**§13 全表不动**；**不新增键 / 事件 / 返回码**；`config.yaml` 零改动；`native/` 为**既有交付模块内新增一个内核函数**，不改接口签名。
+
+**⑥ 回写** = §15（**O142 就地收口**）/ §14（本行）/ `docs/evidence/subsplit-attribution.md`（**新增 §4.7**）/ `docs/plans/M2.md`（§8.1 ①-2 判过 + §8.6 阻断项 3 → 2）/ **新增报告** `docs/evidence/reports/subsplit/fix2.json`（+ `.log`）。
+
+**⑦ 板端执行记录（可复现）**：`scp` 5 个文件 → `cmake --build build -j4`（零告警）→ 数值一致性脚本 → `sudo systemctl stop starlight-demo` → `sensor_lock.py --apply 7906` → `bench.py --scenario realtime --rounds 3 --out /tmp/subsplit/fix2.json` → `sudo systemctl start starlight-demo`。
+
+
+## v3.86-追加 100
+
+**动因**：M2 阻断项 ②-②（`step-response` 场景入口未接）—— `tools/bench.py` 的 `scenario_chain()` 对该场景长期返回 `status='not_implemented'`，§11.2 M2 的 ② 因此只能判「部分过」。
+
+**性质**：**O143 就地裁定 + 接桩实现（`curve_estim.py` / `main.py` / `tools/bench.py`）+ 板端三轮迭代复验**；**无新增 config 键 / 日志事件 / 返回码**（全部为 CLI 验证开关）；**`config.yaml` 零改动**；**§13 全表不动**；**不放宽 §11.2**；**新增 O 项 = O143**（§15）。
+
+**① 接桩**：`curve_estim` 增**发布日志**（默认关，记 `(publish_ns, seq_est, 场指纹)`）；`main.py` 增 `--step-exp-*` 钩子（帧循环内低频推进曝光阶跃，稳态开销 = 两次比较）+ `_step_sample()`（逐 2 帧取 `mean_orig` / `mean_enh`，走 native 统计）；`bench.py` 新 `scenario_step_response()`（**`not_implemented` 桩已删**；`--runs` = 阶跃次数，≥10；出 `conv_ms` P50/P95、`derived_ms` 对照与逐次明细）。
+
+**② 裁定口径**：阶跃 = **运行期曝光微调**（规则 20 §4 明许）；**只能向下阶跃**（`camera.exposure_us` = 66666 µs 近满帧上限，向上 4× 被 clamp）；测点 = **`mean_enh`**（7.5 Hz 取样）；收敛 = 首次进入「新稳态 ±10% 行程」并此后保持。
+
+**③ 三轮迭代（含两次测点订正，如实登记）**
+
+| 轮 | 测点 / 方向 | 结果 | 结论 |
+|---|---|---|---|
+| `step1` | 场指纹；向上 66666→266664 | 场指纹仅变 **0.13%**；"收敛" 2.9~4.9 s | 向上被 clamp（空操作）+ 场指纹不敏感 |
+| `step2` | 场指纹；向下 66666↔16666 | 仅变 **0.4%**（相邻最大 Δ 0.0017） | 场指纹**不得作判据** |
+| `step3` | **`mean_enh`**；向下 | **原图均值全程恒定 85.0** | **根因：演示链路 AE 开启，覆盖了运行期曝光写入** |
+
+**④ 结论**：**②-② 判过**（§11.2 判据原文 = "报告可生成即为通过，指标达标与否另判"）；**①-3 仍按 §9.1 派生值判过**（`N/f_est` = **393.1 ms**，`alpha` 0.4642 / `f_est` 7.613）；**本场景不作达标依据**。
+
+**⑤ ⚠️ 测点有效性受限（不得读作"已实测切换响应"）**：演示链路 **AE 开启** ⇒ **真链路无法用曝光微调造亮度阶跃**。真测两条路径：**(a)** 先**关 AE**（属 ISP 设置变更，会改数据集输入域 ⇒ **须走 §15 裁定**）；**(b)** **光源侧阶跃**（人工遮光 / 开关灯 + 外部时刻对齐）。
+
+**⑥ 效力边界**：**判据与契约不动**、**§13 全表不动**、**不放宽 §11.2**、**`config.yaml` 零改动**、**不新增键 / 事件 / 返回码**；**不作为验收依据**。
+
+**⑦ 回写** = §15（**新增 O143**）/ §10.3（**新增证据档登记**）/ §14（本行）/ **新建 `docs/evidence/O143-step-response.md`** / `docs/plans/M2.md`（§8.1 ①-3、§8.2 ②-②、§8.6、§8.7）/ **新增报告** `docs/evidence/reports/subsplit/step{1,2,3}.json`（+ `.log`）。
+
+**⑧ 板端执行记录（可复现）**：`sudo systemctl stop starlight-demo` → `sensor_lock.py --apply 7906` → `bench.py --scenario step-response --runs 10 --step-interval-s 3 --out /tmp/subsplit/step3.json` → `sudo systemctl start starlight-demo`（恢复后 `rsm_transition → RUN_DEMO`）。

@@ -21,12 +21,14 @@
           ≥300 帧 × 3 轮，报告给 `baseline_candidate` 与 `o19_trigger`）、
           `model-infer`（模型级测速，包装 C 探针）、`curve-diff-fp16`（曲线场逐像素闸口）、
           `apply-micro --impl py-ref`（numpy 参考实现，**非交付路径**）、
-          `apply-micro --impl native`（交付内核）、`osd-micro`、`validate-report`（字段校验）
-  待链路：`step-response`（入口未接；调用即明确报错，**不产出占位数字**）
+          `apply-micro --impl native`（交付内核）、`osd-micro`、`validate-report`（字段校验）、
+          **`step-response`（v3.86 裁定 O143 已接桩：≥10 次曝光阶跃 + 曲线场指纹测收敛）**
+  （原「待链路」项已清零）
 """
 
 import argparse
 import json
+import math
 import os
 import platform
 import statistics
@@ -502,6 +504,130 @@ def scenario_realtime(args):
     return emit(rep, args.out)
 
 
+def scenario_step_response(args):
+    """§13「切换响应」行 / §11 M2 出口标准 ①-3 的**复现入口**：**≥10 次亮度阶跃**。
+
+    **口径（v3.86 裁定 O143）**：
+      · **阶跃** = 运行期**曝光微调**（规则 `20-contracts.md` §4 明许；`v4l2-ctl --set-ctrl=exposure=`），
+        由 `main.py --step-exp-times N --step-exp-interval-s S` 在帧循环内按计划施加；
+      · **测点** = **曲线场指纹**（场前 256 个 fp16 的均值）**逐次发布**取值（`f_est` ≈ 7.6 Hz ⇒
+        时间分辨率约 132 ms，**随报告给出**，不得读作优于该分辨率的结论）；
+      · **收敛判据** = 阶跃后首次进入「新稳态 ±10% 行程」并**此后保持**的发布时刻；
+      · **报告给出**：逐次 `conv_ms`、P50/P95、以及**派生对照** `N/α`（§9.1：`N = ln(0.1)/ln(α)`）。
+    **判据**（§13 / §9.1）= 切换响应 ≤500 ms；**本工具只出数**，判定 = 实现者 / 验收人。
+    **前置**：TH4 需 DRM master（先 `sudo systemctl isolate multi-user.target`）。
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, repo_root)
+    n_steps = int(args.runs)
+    if n_steps < 10:
+        raise SystemExit('§13「切换响应」行要求 ≥10 次阶跃 ⇒ `--runs` 须 ≥10')
+    mk = metrics_keys(args)
+    interval = float(getattr(args, 'step_interval_s', 3.0) or 3.0)
+    tail_s = float(getattr(args, 'step_tail_s', 3.0) or 3.0)
+    # 轮长 = 阶跃计划 + 尾段（尾段用于取「新稳态」参考值）
+    frames = int(args.frames) or int((n_steps * interval + tail_s) * 15 + 30)
+    tmp = os.path.join(tempfile.gettempdir(), 'bench_step_r1.json')
+    cmd = [sys.executable, os.path.join(repo_root, 'main.py'),
+           '--frames', str(frames), '--report-json', tmp,
+           '--step-exp-times', str(n_steps), '--step-exp-interval-s', str(interval)]
+    if int(getattr(args, 'step_low', 0) or 0) > 0:
+        cmd += ['--step-exp-low', str(int(args.step_low))]
+    if int(getattr(args, 'step_high', 0) or 0) > 0:
+        cmd += ['--step-exp-high', str(int(args.step_high))]
+    if getattr(args, 'step_subdev', ''):
+        cmd += ['--step-exp-subdev', str(args.step_subdev)]
+    if args.config:
+        cmd += ['--config', args.config]
+    proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
+    rep = base_report(args, 'step-response', 'frame')
+    if proc.returncode != 0 or not os.path.exists(tmp):
+        rep.update({'status': 'round_failed', 'rc': proc.returncode, 'cmd': cmd,
+                    'stdout_tail': proc.stdout.strip()[-1500:],
+                    'stderr_tail': proc.stderr.strip()[-1500:],
+                    'reason': 'TH4 取 DRM master 失败（先 `sudo systemctl isolate multi-user.target`）'
+                              '或链路启动失败'})
+        return emit(rep, args.out)
+    with open(tmp) as f:
+        run = json.load(f)
+
+    steps = run.get('step_log') or []
+    series = [(int(t), int(f), float(mo), float(me))
+              for t, f, mo, me in (run.get('step_series') or [])]
+    pubs = [(int(t), float(v)) for t, _s, v in (run.get('est_publish_log') or [])]
+    # **场指纹旁证（v3.86 裁定 O143 复验）**：首轮曾以它为状态量 ⇒ 4× 曝光阶跃仅变 0.1%~0.4%
+    # ⇒ **对亮度不敏感、不得作判据**；此处仅作诊断量随报告给出。
+    fp_span = (None if not pubs else
+               max(abs(pubs[i + 1][1] - pubs[i][1]) for i in range(len(pubs) - 1)))
+    rows = []
+    for k, st in enumerate(steps):
+        t_step = int(st['t_step_ns'])
+        t_end = int(steps[k + 1]['t_step_ns']) if k + 1 < len(steps) else None
+        seg = [p for p in series if p[0] >= t_step and (t_end is None or p[0] < t_end)]
+        pre = [p for p in series if p[0] < t_step]
+        if len(seg) < 3 or not pre:
+            rows.append({'step': k + 1, 't_step_ms': (t_step - series[0][0]) / 1e6 if series else None,
+                         'exposure_from': st.get('from'), 'exposure_to': st.get('to'),
+                         'conv_ms': None, 'reason': '段内样本 <3 或无阶跃前参考'})
+            continue
+        mo0, me0 = pre[-1][2], pre[-1][3]           # 阶跃前最后一个样本（原图 / 增强）
+        mo1, me1 = seg[-1][2], seg[-1][3]           # 段内最后一个样本（新稳态）
+        span = me1 - me0
+        thr = abs(span) * 0.10                      # **新稳态 ±10% 行程**（对增强窗均值）
+        conv = None
+        if abs(span) > 1e-9:
+            for j in range(len(seg)):
+                if all(abs(p[3] - me1) <= thr for p in seg[j:]):
+                    conv = seg[j][0]
+                    break
+        rows.append({'step': k + 1, 't_step_ms': (t_step - series[0][0]) / 1e6,
+                     'exposure_from': st.get('from'), 'exposure_to': st.get('to'),
+                     'mean_orig_start': mo0, 'mean_orig_final': mo1,
+                     'mean_enh_start': me0, 'mean_enh_final': me1, 'span_enh': span,
+                     'conv_ms': None if conv is None else (conv - t_step) / 1e6,
+                     'samples_in_segment': len(seg),
+                     'reason': None if conv is not None else '段内未进入 ±10% 行程或行程过小'})
+    convs = [r['conv_ms'] for r in rows if r.get('conv_ms') is not None]
+    p50 = pct(convs, 50) if convs else None
+    p95 = pct(convs, 95) if convs else None
+    alpha = run.get('alpha')
+    f_est = run.get('f_est')
+    derived = (math.log(0.1) / math.log(alpha) / f_est * 1e3
+               if alpha and f_est else None)
+    rep.update({
+        'status': 'ok' if convs else 'no_convergence',
+        'entry': 'bench.py --scenario step-response（每轮独立进程跑 `main.py --step-exp-*`）',
+        'steps_requested': n_steps, 'steps_executed': len(steps),
+        'step_interval_s': interval, 'frames': frames,
+        'series_period_ms': (None if len(series) < 2 else
+                             statistics.fmean([series[i + 1][0] - series[i][0]
+                                               for i in range(len(series) - 1)]) / 1e6),
+        'publish_period_ms': (None if len(pubs) < 2 else
+                              statistics.fmean([pubs[i + 1][0] - pubs[i][0]
+                                                for i in range(len(pubs) - 1)]) / 1e6),
+        'field_fingerprint_span_max': fp_span,
+        'conv_ms': {'n': len(convs), 'p50_ms': p50, 'p95_ms': p95,
+                    'max_ms': max(convs) if convs else None,
+                    'mean_ms': statistics.fmean(convs) if convs else None},
+        'derived_ms': {'formula': 'N = ln(0.1)/ln(alpha); 收敛 = N / f_est',
+                       'alpha': alpha, 'f_est': f_est, 'value_ms': derived},
+        'steps': rows,
+        'pairing_rate': run.get('pairing_rate'), 'discarded_frames': run.get('counters'),
+        'metrics_policy': mk,
+        'notes': ['判据 = §13「切换响应」行（场景亮度阶跃 → 增强生效 ≤500 ms）× ≥10 次阶跃；'
+                  '判定 = 实现者 / 验收人',
+                  '阶跃方式 = **运行期曝光微调**（规则 20 §4 明许）；**测点 = 增强窗均值**'
+                  '`mean_enh`（每 2 帧一次，时间分辨率 = `series_period_ms`，**不得读作优于该分辨率**）',
+                  '**曝光方向**：`camera.exposure_us`（66666 µs）已近满帧上限 ⇒ **只能向下阶跃**'
+                  '（高档 = 现值，低档 = 现值/4）；向上 4× 会被驱动 clamp 成空操作',
+                  '`field_fingerprint_span_max` = 曲线场指纹（场前 256 个 fp16 均值）的相邻最大变化，'
+                  '**仅作旁证**：实测对该阶跃不敏感（≈0.4%）⇒ **不得作判据**',
+                  '收敛判据 = 阶跃后首次进入「新稳态 ±10% 行程」并此后保持',
+                  '`derived_ms` 仅作对照（§9.1 的解析式），**不与实测混用**'],
+    })
+    return emit(rep, args.out)
+
+
 def scenario_idle_link(args):
     """§6.1（v3.4「必读」段）/ `docs/measurements.md` §1（O19）的**空链路基线**入口。
 
@@ -913,7 +1039,8 @@ def main():
                             'apply-micro', 'osd-micro'])
     p.add_argument('--out', default='', help='报告输出路径（默认只打印）')
     p.add_argument('--runs', type=int, default=30,
-                   help='apply-micro 的重复次数；hq 场景 = **触发次数**（§13 要求 ≥10）')
+                   help='apply-micro 的重复次数；hq 场景 = **触发次数**（§13 要求 ≥10）；'
+                        'step-response = **阶跃次数**（§13「切换响应」行要求 ≥10）')
     p.add_argument('--config', default='', help='config.yaml 路径（缺省 = 仓库根）')
     p.add_argument('--rounds', type=int, default=3,
                    help='realtime 场景的轮数（§13 复现方式 = ≥300 帧滑窗 × **3 轮**；每轮独立进程）')
@@ -945,6 +1072,14 @@ def main():
                    help='随报告给出「端到端 − `metrics.idle_link_baseline`」的归因差值'
                         '（§13「端到端延迟」行的复现命令；基线缺失时只标注）')
     p.add_argument('--seq-log', action='store_true', help='记 seq 级明细（HQ 响应）')
+    # **[step-response 场景专用]（v3.86 裁定 O143）** 透传给 `main.py --step-exp-*`（**非 config 键**）
+    p.add_argument('--step-interval-s', type=float, default=3.0,
+                   help='step-response：阶跃间隔（秒；须 ≥ 收敛时间 + 余量）')
+    p.add_argument('--step-tail-s', type=float, default=3.0,
+                   help='step-response：末次阶跃后的尾段（秒；用于取新稳态参考）')
+    p.add_argument('--step-low', type=int, default=0, help='step-response：低档曝光（0 = 取 camera.exposure_us）')
+    p.add_argument('--step-high', type=int, default=0, help='step-response：高档曝光（0 = 4× 低档）')
+    p.add_argument('--step-subdev', default='', help='step-response：曝光控件所在 subdev（缺省自动探测）')
     p.add_argument('--capture-mipi', action='store_true', help='抓 MIPI 截图（常态 + HQ）')
     p.add_argument('--curve-diff-fp16', action='store_true', help='曲线场逐像素闸口（O23）')
     p.add_argument('--validate-report', default='', metavar='JSON')
@@ -980,6 +1115,8 @@ def main():
         return scenario_realtime(args)
     if args.scenario == 'idle-link':
         return scenario_idle_link(args)
+    if args.scenario == 'step-response':
+        return scenario_step_response(args)          # **（v3.86 裁定 O143）已接桩**
     if args.scenario in CHAIN_SCENARIOS:
         return scenario_chain(args)
     if args.scenario == 'model-infer':

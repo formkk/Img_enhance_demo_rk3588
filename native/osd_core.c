@@ -75,3 +75,37 @@ int osd_blit_glyph(void* canvas, uint32_t cw, uint32_t ch,
     }
     return OSD_OK;
 }
+
+/* **（v3.86 裁定 O142-候选①）** RGB888 双缓冲统计：与 `osd.py` 的 `Stats.maybe_update()`
+ * **逐字同口径**（抽样步长、灰度权重、直方图与均值定义都一致），但走 C 且**零拷贝**
+ * （由 pybind 侧直接传 native 缓冲指针）。
+ * 返回采样点数；`0` = 参数非法（调用方不得使用输出）。 */
+uint32_t osd_stats_rgb888(const uint8_t* raw, const uint8_t* enh,
+                          uint32_t w, uint32_t h, uint32_t decimate,
+                          uint32_t* hist_o, uint32_t* hist_e,
+                          double* mean_o, double* mean_e) {
+    if (!raw || !enh || !hist_o || !hist_e || w == 0 || h == 0) return 0;
+    if (decimate == 0) decimate = 1;
+    for (int i = 0; i < 256; i++) { hist_o[i] = 0; hist_e[i] = 0; }
+    uint64_t so = 0, se = 0;
+    uint32_t n = 0;
+    for (uint32_t y = 0; y < h; y += decimate) {
+        const size_t row = (size_t)y * w;
+        for (uint32_t x = 0; x < w; x += decimate) {
+            const size_t i = (row + x) * 3;
+            const uint32_t yo = ((uint32_t)raw[i] * 77u + (uint32_t)raw[i + 1] * 150u
+                                 + (uint32_t)raw[i + 2] * 29u) >> 8;
+            const uint32_t ye = ((uint32_t)enh[i] * 77u + (uint32_t)enh[i + 1] * 150u
+                                 + (uint32_t)enh[i + 2] * 29u) >> 8;
+            hist_o[yo] += 1;
+            hist_e[ye] += 1;
+            so += yo;
+            se += ye;
+            n += 1;
+        }
+    }
+    if (n == 0) return 0;
+    *mean_o = (double)so / (double)n;
+    *mean_e = (double)se / (double)n;
+    return n;
+}

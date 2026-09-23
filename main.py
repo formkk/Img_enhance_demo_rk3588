@@ -109,7 +109,9 @@ class Demo:
                  inject_v4l2_mode: str = "err",
                  no_est: bool = False, est_first: int = 0,
                  no_apply: bool = False, no_osd: bool = False,
-                 osd_status_only: bool = False, osd_no_stats: bool = False):
+                 osd_status_only: bool = False, osd_no_stats: bool = False,
+                 step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
+                 step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
         self.cfg = cfg
         self.log = logger
         self.max_frames = frames
@@ -138,6 +140,17 @@ class Demo:
         # `osd_no_stats` = 连统计也不做。**非 config 键**，只用于 ①-2 的 OSD 增量归因实验。
         self.osd_status_only = bool(osd_status_only)
         self.osd_no_stats = bool(osd_no_stats)
+        # **[验证用钩子] 「阶跃响应」场景（v3.86 裁定 O143）**：运行期按计划做 N 次**曝光阶跃**
+        # （规则 20 §4 明许运行期曝光/增益微调），并开估计器**发布日志**；`bench.py --scenario
+        # step-response` 据「阶跃时刻 → 场指纹收敛」算切换响应。**非 config 键 / 不新增事件与返回码**。
+        self.step_exp_times = max(0, int(step_exp_times))
+        self.step_exp_interval_s = max(0.5, float(step_exp_interval_s))
+        self.step_exp_low = max(0, int(step_exp_low))
+        self.step_exp_high = max(0, int(step_exp_high))
+        self.step_exp_subdev = str(step_exp_subdev or "")
+        self.step_log: list = []          # [(t_step_ns, frame, from, to)]
+        self._step_series: list = []      # [(t_ns, frame, mean_orig, mean_enh)]（每 2 帧一次）
+        self._step_next = 0
         # **[验证用钩子] §15 O24 的确定性注入**：在活动帧 `inject_v4l2_at` 起注入
         # `inject_v4l2_error` 次"acquire 返回硬错误"（**不是 config 键**、不新增返回码）。
         self.inject_v4l2_error = max(0, int(inject_v4l2_error))
@@ -269,6 +282,10 @@ class Demo:
                            code=starlog.code_name(rc))
             return rc
         self.est.alpha = float(cfg.require_final("pipeline.ema_alpha"))
+        # **（v3.86 裁定 O143）** 阶跃响应场景：开估计器发布日志 + 解析 subdev / 高低曝光（启动期一次）
+        if self.step_exp_times > 0:
+            self.est.enable_publish_log()
+            self._step_prepare()
 
         # 曲线应用内核（§5 GAP-1：启动时一次性注入几何）
         ra.shutdown()
@@ -342,6 +359,8 @@ class Demo:
                 time.sleep(0.02)          # 冻结期/全屏期：**不取帧、不估计、不应用**（O90）
                 continue
             t0 = time.monotonic_ns()
+            # **（v3.86 裁定 O143）** 阶跃响应：低频推进曝光阶跃（稳态开销 = 两次比较）
+            self._step_tick(i)
             # **[验证用钩子] §15 O24 的确定性注入**（只注入一次；`N=0` 时本段不生效）
             if (self.inject_v4l2_error and not self._injected
                     and i >= self.inject_v4l2_at and self.cap is not None):
@@ -439,8 +458,13 @@ class Demo:
                 ra.apply_window(win, self.curve.field, enh, WIN_W, WIN_H)
 
             # 统计（降采样 4× + 降频 1 Hz；`Stats` 内部自行节流，故可逐帧调用）
+            # **（v3.86 裁定 O142-候选①，追加 99）** 统计**下沉 native**：直接传 `win` / `enh` 两个 native
+            # 缓冲 ⇒ **零拷贝 + C 统计**（`_n.osd.stats`）；1 Hz 判据仍在 `Stats` 内唯一一处。
+            # 原两条路径保留在 `osd.py`（回调式 / `bytes` 直传）作对照与自检，不在帧路径上。
             if self.disp.osd is not None and self.curve is not None:
-                self.disp.osd.update_stats(win.to_bytes(), enh.to_bytes(), WIN_W, WIN_H)
+                self.disp.osd.update_stats(win, enh, WIN_W, WIN_H)
+            # **（v3.86 裁定 O143）** step-response 测点：每 2 帧取一次 (mean_orig, mean_enh)
+            self._step_sample(i, win, enh)
 
             # TH4：合成 + OSD + pageflip
             st = {
@@ -848,6 +872,79 @@ class Demo:
                 "fullscreen_mipi_ms": fs_mipi, "fullscreen_hdmi_ms": fs_hdmi,
                 "freeze_ms": freeze, "exit_reasons": reasons}
 
+    # ── **（v3.86 裁定 O143）「阶跃响应」验证钩子**（非 config 键 / 不新增事件与返回码）──
+    def _step_prepare(self) -> None:
+        """解析阶跃用的 subdev 与高低曝光值（**启动期一次**，落在帧窗之外）。"""
+        dev = self.step_exp_subdev
+        if not dev:
+            for cand in ("/dev/v4l-subdev2", "/dev/v4l-subdev3", "/dev/v4l-subdev0",
+                         "/dev/v4l-subdev1", "/dev/v4l-subdev4"):
+                try:
+                    r = subprocess.run(["v4l2-ctl", "-d", cand, "--list-ctrls"],
+                                       capture_output=True, text=True, timeout=2)
+                except Exception:
+                    continue
+                if "exposure" in (r.stdout or ""):
+                    dev = cand
+                    break
+        self._step_dev = dev
+        base = int(self.cfg.get("camera.exposure_us") or 8974)
+        # **曝光方向（重要，v3.86 裁定 O143 复验修正）**：`camera.exposure_us`（实测 66666 µs）
+        # 在 15 fps 下**已接近满帧上限**（帧周期 66.7 ms）⇒ **不可再往上加**：4× 会被驱动
+        # clamp 成同上限 ⇒ **阶跃成为空操作**（首轮实测场指纹仅变 0.13% 即此因）。
+        # 故默认改为**向下阶跃**：高档 = 现值，低档 = 现值 / 4（亮度比同为 4×，方向相反）。
+        self._step_high = self.step_exp_high or base
+        self._step_low = self.step_exp_low or max(1, base // 4)
+        self._step_cur = base
+        print(f"[step-response] subdev={dev} low={self._step_low} high={self._step_high} "
+              f"times={self.step_exp_times} interval={self.step_exp_interval_s}s")
+
+    def _step_apply(self, value: int) -> bool:
+        """运行期曝光微调（规则 20 §4 明许）；**只在阶跃时刻发生**，非稳态开销。"""
+        if not getattr(self, "_step_dev", None):
+            return False
+        try:
+            subprocess.run(["v4l2-ctl", "-d", self._step_dev,
+                            f"--set-ctrl=exposure={int(value)}"],
+                           capture_output=True, text=True, timeout=2, check=True)
+            return True
+        except Exception as exc:
+            print(f"[step-response] 设曝光失败：{exc}")
+            return False
+
+    def _step_sample(self, i: int, win, enh) -> None:
+        """**（v3.86 裁定 O143 复验修正）** 阶跃响应的**测点** = **增强窗均值**（逐次取样）。
+
+        首轮曾用「曲线场前 256 个 fp16 的均值」作状态量 ⇒ 对亮度**不敏感**（4× 曝光阶跃仅变
+        0.1%~0.4%，被判据噪声淹没）⇒ 改为直测语义量：**`mean_orig` / `mean_enh` 的时间序列**
+        （走 native 统计，每 2 帧一次 ⇒ 7.5 Hz，成本亚毫秒；**只在阶跃场景开启**）。
+        """
+        if self.step_exp_times <= 0 or (i % 2):
+            return
+        try:
+            mo, me, _n_s, _ho, _he = _n.osd.stats(win, enh, WIN_W, WIN_H, 4)
+        except Exception:                              # 钩子失败不得影响链路
+            return
+        self._step_series.append((time.monotonic_ns(), int(i), float(mo), float(me)))
+
+    def _step_tick(self, i: int) -> None:
+        """帧循环内的**低频**阶跃推进（稳态开销 = 一次整数比较 + 一次时间比较）。"""
+        if self.step_exp_times <= 0 or self._step_next >= self.step_exp_times:
+            return
+        t0 = getattr(self, "_step_t0", None)
+        if t0 is None:
+            self._step_t0 = time.monotonic()          # 首个活动帧 = 计时起点
+            return
+        if time.monotonic() < t0 + (self._step_next + 1) * self.step_exp_interval_s:
+            return
+        value = self._step_low if (self._step_next % 2 == 0) else self._step_high   # 首跳 = 高→低
+        prev = self._step_cur
+        if self._step_apply(value):
+            self.step_log.append({"t_step_ns": time.monotonic_ns(), "frame": int(i),
+                                  "from": int(prev), "to": int(value)})
+            self._step_cur = value
+        self._step_next += 1
+
     # ── 退出序 ─────────────────────────────────────────────────────────
     def shutdown(self) -> None:
         self.stop.set()
@@ -952,6 +1049,16 @@ def main() -> int:
                    help="[验证钩子] OSD 只画状态行（跳过曲线图 / 直方图 / 图名位图）")
     p.add_argument("--osd-no-stats", action="store_true",
                    help="[验证钩子] OSD 连统计也不做（`update_stats()` 直接返回；均值字段保持初值）")
+    # **[验证用钩子] 「阶跃响应」场景（v3.86 裁定 O143）**：运行期做 N 次**曝光阶跃**
+    # （规则 20 §4 明许运行期曝光微调），估计器按每次发布记 (t, seq_est, 场指纹)。
+    # **非 config 键、不新增日志事件与返回码**；`bench.py --scenario step-response` 依赖本组开关。
+    p.add_argument("--step-exp-times", type=int, default=0,
+                   help="[验证钩子] 在本轮做 N 次曝光阶跃（0 = 关；§13 要求 ≥10）")
+    p.add_argument("--step-exp-interval-s", type=float, default=3.0,
+                   help="[验证钩子] 阶跃间隔（秒；须 ≥ 收敛时间 + 余量）")
+    p.add_argument("--step-exp-low", type=int, default=0, help="[验证钩子] 低档曝光（0 = 取 camera.exposure_us）")
+    p.add_argument("--step-exp-high", type=int, default=0, help="[验证钩子] 高档曝光（0 = 4× 低档）")
+    p.add_argument("--step-exp-subdev", default="", help="[验证钩子] 曝光控件所在 subdev（缺省自动探测）")
     # **[计量出口]** 机器可读报告（供 `tools/bench.py` 编排多轮；**不新增日志事件 / config 键**）。
     # 每轮一个**独立进程**跑本程序 → 满足「全生命周期只 stream on 一次」（规则 30-board-safety §1）。
     p.add_argument("--report-json", default="",
@@ -976,7 +1083,10 @@ def main() -> int:
              inject_v4l2_mode=args.inject_v4l2_mode,
              no_est=args.no_est, est_first=args.est_first,
              no_apply=args.no_apply, no_osd=args.no_osd,
-             osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats)
+             osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,
+             step_exp_times=args.step_exp_times, step_exp_interval_s=args.step_exp_interval_s,
+             step_exp_low=args.step_exp_low, step_exp_high=args.step_exp_high,
+             step_exp_subdev=args.step_exp_subdev)
 
     def on_sig(signum, _frame):
         logger.event("main", "service_exit", exit_code=0, uptime_s=0)
@@ -1136,6 +1246,11 @@ def main() -> int:
             "metrics_policy": pol,
             "metrics_policy_ok": not _pol_mismatch,
             "metrics_policy_mismatch": _pol_mismatch,
+            # **（v3.86 裁定 O143）** 「阶跃响应」证据：阶跃时刻表 + 估计器发布日志
+            # （`[(publish_ns, seq_est, 场指纹)]`，**仅在 `--step-exp-times > 0` 时有值**）。
+            "step_log": (d.step_log or None),
+            "est_publish_log": (d.est.publish_log() if d.est else None),
+            "step_series": (d._step_series or None),
         }
         try:
             with open(args.report_json, "w", encoding="utf-8") as fp:

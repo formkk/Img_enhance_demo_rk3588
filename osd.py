@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import gzip
 import os
+import struct as _struct
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -216,10 +217,34 @@ class Stats:
         self.samples = 0
 
     def maybe_update(self, raw, enh, w: int, h: int, now_ns: Optional[int] = None) -> bool:
+        """**（v3.86 裁定 O142）** `raw` / `enh` 三条路径**同口径**：
+
+        ① **native 缓冲**（帧路径，`main.py` 传 `_n.rga.win` / `_n.rga.enh`）—— **零拷贝 + C 统计**
+           （`_n.osd.stats`，**裁定 O142-候选①**，追加 99）；
+        ② **零参回调**（`lambda: win.to_bytes()`）—— 只在到期帧拷贝 + Python 统计（对照 / 回退）；
+        ③ **`bytes`** —— Python 统计（本模块 `main()` 自检用）。
+
+        **1 Hz 判定（`ui.osd_stats_hz`）始终在本方法唯一一处**：不采用 `if stats_due(): …` 式，
+        以免同一判据出现两处而日后分叉。
+        """
         now = now_ns if now_ns is not None else time.monotonic_ns()
         if now - self._last_ns < self.period_ns:
             return False
         self._last_ns = now
+        # **（v3.86 裁定 O142-候选①）** 到期后取样。三条路径，口径**逐字一致**：
+        #   ① **native 缓冲**（帧路径，`main.py` 直接传 `_n.rga.win/enh`）⇒ **零拷贝 + C 统计**；
+        #   ② 零参回调（`lambda: win.to_bytes()`）⇒ 只在到期帧拷贝 + Python 统计（保留作对照/回退）；
+        #   ③ `bytes` 直传 ⇒ Python 统计（`osd.py` 自检用）。
+        if _n is not None and hasattr(raw, "to_bytes") and not callable(raw):
+            mo, me, n, hb_o, hb_e = _n.osd.stats(raw, enh, int(w), int(h), int(self.decimate))
+            self.hist_orig = list(_struct.unpack(f"<{256}I", hb_o))
+            self.hist_enh = list(_struct.unpack(f"<{256}I", hb_e))
+            self.mean_orig, self.mean_enh, self.samples = float(mo), float(me), int(n)
+            return True
+        if callable(raw):
+            raw = raw()
+        if callable(enh):
+            enh = enh()
         d = self.decimate
         hist_o = [0] * 256
         hist_e = [0] * 256

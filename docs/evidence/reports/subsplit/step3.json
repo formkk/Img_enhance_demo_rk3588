@@ -1,0 +1,240 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "step-response",
+  "scope": "frame",
+  "started_utc": "2026-09-23T13:13:59+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": null,
+    "precision": null,
+    "config_snapshot_hash": null
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      1.44,
+      1.62,
+      1.77
+    ]
+  },
+  "soc_temp_c": 51.769,
+  "notes": [
+    "判据 = §13「切换响应」行（场景亮度阶跃 → 增强生效 ≤500 ms）× ≥10 次阶跃；判定 = 实现者 / 验收人",
+    "阶跃方式 = **运行期曝光微调**（规则 20 §4 明许）；**测点 = 增强窗均值**`mean_enh`（每 2 帧一次，时间分辨率 = `series_period_ms`，**不得读作优于该分辨率**）",
+    "**曝光方向**：`camera.exposure_us`（66666 µs）已近满帧上限 ⇒ **只能向下阶跃**（高档 = 现值，低档 = 现值/4）；向上 4× 会被驱动 clamp 成空操作",
+    "`field_fingerprint_span_max` = 曲线场指纹（场前 256 个 fp16 均值）的相邻最大变化，**仅作旁证**：实测对该阶跃不敏感（≈0.4%）⇒ **不得作判据**",
+    "收敛判据 = 阶跃后首次进入「新稳态 ±10% 行程」并此后保持",
+    "`derived_ms` 仅作对照（§9.1 的解析式），**不与实测混用**"
+  ],
+  "status": "ok",
+  "entry": "bench.py --scenario step-response（每轮独立进程跑 `main.py --step-exp-*`）",
+  "steps_requested": 10,
+  "steps_executed": 10,
+  "step_interval_s": 3.0,
+  "frames": 525,
+  "series_period_ms": 132.9037548129771,
+  "publish_period_ms": 133.0762701908397,
+  "field_fingerprint_span_max": 0.0017087459564208984,
+  "conv_ms": {
+    "n": 10,
+    "p50_ms": 2914.575176,
+    "p95_ms": 4845.418495,
+    "max_ms": 4845.418495,
+    "mean_ms": 3112.0330045
+  },
+  "derived_ms": {
+    "formula": "N = ln(0.1)/ln(alpha); 收敛 = N / f_est",
+    "alpha": 0.4642,
+    "f_est": 7.632650158471653,
+    "value_ms": 393.09364411400645
+  },
+  "steps": [
+    {
+      "step": 1,
+      "t_step_ms": 3007.790154,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "mean_orig_start": 85.17447916666667,
+      "mean_orig_final": 85.06293402777777,
+      "mean_enh_start": 154.77886284722223,
+      "mean_enh_final": 154.83745659722223,
+      "span_enh": 0.05859375,
+      "conv_ms": 2877.631927,
+      "samples_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 2,
+      "t_step_ms": 5974.204783,
+      "exposure_from": 16666,
+      "exposure_to": 66666,
+      "mean_orig_start": 85.06293402777777,
+      "mean_orig_final": 85.04470486111111,
+      "mean_enh_start": 154.83745659722223,
+      "mean_enh_final": 154.87510850694446,
+      "span_enh": 0.03765190972222854,
+      "conv_ms": 2990.329467,
+      "samples_in_segment": 23,
+      "reason": null
+    },
+    {
+      "step": 3,
+      "t_step_ms": 9001.3962,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "mean_orig_start": 85.04470486111111,
+      "mean_orig_final": 85.02951388888889,
+      "mean_enh_start": 154.87510850694446,
+      "mean_enh_final": 154.89171006944446,
+      "span_enh": 0.0166015625,
+      "conv_ms": 2884.518634,
+      "samples_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 4,
+      "t_step_ms": 11989.659919,
+      "exposure_from": 16666,
+      "exposure_to": 66666,
+      "mean_orig_start": 85.02951388888889,
+      "mean_orig_final": 84.99446614583333,
+      "mean_enh_start": 154.89171006944446,
+      "mean_enh_final": 154.90733506944446,
+      "span_enh": 0.015625,
+      "conv_ms": 2968.001541,
+      "samples_in_segment": 23,
+      "reason": null
+    },
+    {
+      "step": 5,
+      "t_step_ms": 14975.335382,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "mean_orig_start": 84.99446614583333,
+      "mean_orig_final": 84.95724826388889,
+      "mean_enh_start": 154.90733506944446,
+      "mean_enh_final": 154.90831163194446,
+      "span_enh": 0.0009765625,
+      "conv_ms": 2914.575176,
+      "samples_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 6,
+      "t_step_ms": 18001.656175,
+      "exposure_from": 16666,
+      "exposure_to": 66666,
+      "mean_orig_start": 84.95724826388889,
+      "mean_orig_final": 84.93109809027777,
+      "mean_enh_start": 154.90831163194446,
+      "mean_enh_final": 154.89312065972223,
+      "span_enh": -0.015190972222228538,
+      "conv_ms": 2964.074674,
+      "samples_in_segment": 23,
+      "reason": null
+    },
+    {
+      "step": 7,
+      "t_step_ms": 21004.391825,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "mean_orig_start": 84.93109809027777,
+      "mean_orig_final": 84.8994140625,
+      "mean_enh_start": 154.89312065972223,
+      "mean_enh_final": 154.84939236111111,
+      "span_enh": -0.04372829861111427,
+      "conv_ms": 2898.406757,
+      "samples_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 8,
+      "t_step_ms": 23990.610852,
+      "exposure_from": 16666,
+      "exposure_to": 66666,
+      "mean_orig_start": 84.8994140625,
+      "mean_orig_final": 84.8671875,
+      "mean_enh_start": 154.84939236111111,
+      "mean_enh_final": 154.83322482638889,
+      "span_enh": -0.016167534722228538,
+      "conv_ms": 2837.343574,
+      "samples_in_segment": 23,
+      "reason": null
+    },
+    {
+      "step": 9,
+      "t_step_ms": 26980.098376,
+      "exposure_from": 66666,
+      "exposure_to": 16666,
+      "mean_orig_start": 84.8671875,
+      "mean_orig_final": 84.84841579861111,
+      "mean_enh_start": 154.83322482638889,
+      "mean_enh_final": 154.82215711805554,
+      "span_enh": -0.011067708333342807,
+      "conv_ms": 2940.0298,
+      "samples_in_segment": 22,
+      "reason": null
+    },
+    {
+      "step": 10,
+      "t_step_ms": 29975.365266,
+      "exposure_from": 16666,
+      "exposure_to": 66666,
+      "mean_orig_start": 84.84841579861111,
+      "mean_orig_final": 84.80425347222223,
+      "mean_enh_start": 154.82215711805554,
+      "mean_enh_final": 154.79231770833334,
+      "span_enh": -0.029839409722200116,
+      "conv_ms": 4845.418495,
+      "samples_in_segment": 37,
+      "reason": null
+    }
+  ],
+  "pairing_rate": 1.0,
+  "discarded_frames": {
+    "frames": 525,
+    "estimates": 263,
+    "flips": 525,
+    "flip_skipped": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0,
+    "discarded_triggers": 0,
+    "v4l2_errors": 0,
+    "pageflip_fail": 0,
+    "hq_started": 0,
+    "hq_done": 0,
+    "freeze_enter": 0,
+    "freeze_exit": 0,
+    "freeze_flips": 0,
+    "fullscreen_enter": 0,
+    "fullscreen_exit": 0
+  },
+  "metrics_policy": {
+    "window_frames": 300,
+    "timestamp_domain": "MONOTONIC",
+    "timestamp_source": "EOF",
+    "pair_by": "seq"
+  }
+}

@@ -474,4 +474,23 @@ PYBIND11_MODULE(_starlight_native, m) {
                               reinterpret_cast<const uint8_t*>(s.data()), gw, gh, rgb);
     }, py::arg("canvas"), py::arg("cw"), py::arg("ch"), py::arg("x"), py::arg("y"),
        py::arg("scale"), py::arg("glyph"), py::arg("gw"), py::arg("gh"), py::arg("rgb"));
+
+    /* **（v3.86 裁定 O142-候选①）** 统计下沉：**直接吃两个 native 缓冲**（零拷贝），
+     * 口径与 `osd.py` 的 `Stats.maybe_update()` 逐字一致（抽样 / 灰度权重 / 均值 / 直方图）。
+     * 返回 `(mean_orig, mean_enh, n, hist_orig_bytes, hist_enh_bytes)`
+     * —— `hist_*_bytes` 为 **256 × uint32 小端**，Python 侧用 `struct.unpack` 还原（256 次，可忽略）。
+     * `n == 0` 时抛 `value_error`（参数非法：尺寸不符或采样为空）。 */
+    osd.def("stats", [](Buffer& raw, Buffer& enh, uint32_t w, uint32_t h, uint32_t decimate) {
+        if (raw.len() < (size_t)w * h * 3 || enh.len() < (size_t)w * h * 3)
+            throw py::value_error("osd.stats：缓冲小于 w×h×3");
+        uint32_t ho[256] = {0}, he[256] = {0};
+        double mo = 0.0, me = 0.0;
+        const uint32_t n = osd_stats_rgb888(
+            static_cast<const uint8_t*>(raw.ptr()), static_cast<const uint8_t*>(enh.ptr()),
+            w, h, decimate, ho, he, &mo, &me);
+        if (n == 0) throw py::value_error("osd.stats：参数非法（采样为空）");
+        return py::make_tuple(mo, me, n,
+                              py::bytes(reinterpret_cast<const char*>(ho), sizeof(ho)),
+                              py::bytes(reinterpret_cast<const char*>(he), sizeof(he)));
+    }, py::arg("raw"), py::arg("enh"), py::arg("w"), py::arg("h"), py::arg("decimate") = 4);
 }
