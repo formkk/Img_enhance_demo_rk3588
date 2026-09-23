@@ -569,3 +569,29 @@
 **⑦ 回写** = §15（**新增 O143**）/ §10.3（**新增证据档登记**）/ §14（本行）/ **新建 `docs/evidence/O143-step-response.md`** / `docs/plans/M2.md`（§8.1 ①-3、§8.2 ②-②、§8.6、§8.7）/ **新增报告** `docs/evidence/reports/subsplit/step{1,2,3}.json`（+ `.log`）。
 
 **⑧ 板端执行记录（可复现）**：`sudo systemctl stop starlight-demo` → `sensor_lock.py --apply 7906` → `bench.py --scenario step-response --runs 10 --step-interval-s 3 --out /tmp/subsplit/step3.json` → `sudo systemctl start starlight-demo`（恢复后 `rsm_transition → RUN_DEMO`）。
+
+## v3.86-追加 102
+
+**ISP 5 键定稿（`isp.presets` / `isp.fingerprint` / `isp.csc_matrix` / `isp.rgb_range` / `isp.nr_3d_ref_frames`）+「3DNR 参考帧数」取值对象修订**（= §15 **O145**；证据档 = [M1-5-isp-presets.md](M1-5-isp-presets.md)）。
+
+**① 来源与用户指示**：2026-09-23「**只做 S1~S5（5 键定稿），三套预设的曝光/增益起点是就用 O91 的 66 ms / 20×**」；随后的两处分叉由用户在选项内选定：**三套预设全用 66 ms / 20×**、**NR 档（3DNR）只回读、不改**。作业步骤 = S1 档位回读 / S2 双通路单帧出图 / S3 指纹全量回读 + 3DNR A/B / S4 人工目视终审（**待**）/ S5 落键与回写。
+
+**② S1（档位与取值回读）**：现役 = **demo 档**（`sha256 = 2ed58401…`，`nr3d = [1]`），采集档 `ff7fb3e9…`（`nr3d = [0]`），出厂 `4536f96a…`；sensor subdev 回读 `exposure = 8974`（× 7.433 µs = 66.5 ms）、`analogue_gain = 87`（26 dB = 20×）、`vertical_blanking = 7906` ⇒ **与 O91 定稿换算后完全吻合 ⇒ 两套 IQ 无需重建**（重建会改 sha256 ⇒ 使 O91 与已归档报告的测量条件失效）。
+
+**③ S2（双通路单帧出图，O94 (a)(b)(c) 口径）**：`tools/realtime_frame_review.py --frames 300 --snr-frames 100 --scene darkroom_demo` 与 `tools/hq_frame_review.py`，产物 4 图 + 2 报告入 `reports/M1-5/`（**链路原样、零后处理**）。读数：实时线原图窗 `mean_rgb` 25.64/24.12/25.47 → 增强窗 **93.87/88.76/103.55**、暗部块 σ 中位 2.403、推理域 SNR **35.146**；HQ 线输出 **116.86/111.21/106.35**（960×540）、暗部块 σ 9.89、SNR **46.668**、`run_ns ≈ 8.369 s`。**可读数事实（不作结论）**：暗部 G/R ≈ 0.81 在**原图窗与增强窗同源** ⇒ 偏色在**采集侧**，非 8-iter 应用引入。条件随行：`iq.set = demo` / `sha256 = 2ed58401…` / `config = 0b99a46c…` / `lux = null`（**未录照度**）。
+
+**④ S3（指纹 8 子项全量回读）**：`gamma_en = 1`（49 点，曲线 sha `6c8b16cf…`；旁证 `degamma_en = 0`）、`ccm`（`enable = 1`、14 矩阵 / 7 光源、`interp_enable = 0`、`default_illu = A`）、`black_level`（`enable = 1`、13 ISO 点；第二组 `enable = 0`）、`awb_lock = CALIB_WB_MODE_AUTO`（**未锁定 ⇒ O64 仍未闭合**）、`nr_2d = 1`、`nr_3d = {demo: 1, collect: 0}`、`dpc = 1`。**两条可复现结论**：**(i) collect 与 demo 的全部差异只有 3DNR 使能 + AE 手动档**（其余 7 子项三档逐位相同）⇒ O91 ⑤「域差收敛」成立；**(ii) `nr_3d` 的 demo 子树与 stock 逐位一致**（`be05bac5…` / `8868e41f…`）。
+
+**⑤ 3DNR 开·关 A/B（本档核心新实测）**：**前置事实 = 「参考帧数」不可达** —— `bayertnr_v2` 只有 `enable` + 2 组 `Setting` × 13 ISO 点（17 字段，无 ref/frame 字段），厂商头文件与 `strings /usr/lib/librkaiq.so` 亦无 ⇒ 改测其**帧级固有延迟**。方法 = 两档唯一差异即 3DNR，跑 `bench.py --scenario idle-link` 各 3 轮 × 300 帧（配对率 1.0、丢弃四项全 0、`stream_on_count = 1`、`estimates = 0`）。读数：端到端 P50/P95 = **开 13.482/20.992** · **关 16.278/24.574** · **关（复跑）12.661/20.306**；**「提交→vblank」三份几乎逐位一致**（p50 8.698–8.980 / p95 16.156–16.215，极差 ≤0.3 ms）⇒ **未检出 3DNR 的显示侧帧级固有延迟**；**「采集→提交」段的差异复跑不复现**（首轮 OFF 的 +2.7 ms 消失，且复跑低于 ON）⇒ **不得由延迟差反推参考帧数**。**⚠️ 表述纪律**：只能说「该量不可达、其可观测后果未检出」，**不得**写成「已测到 0 帧参考」。
+
+**⑥ 落值（5 键）**：`isp.presets` = 三档同值（`darkroom` / `night` / `face`：`66666` / `20.0` / `15` / `iq_set = "demo"` / `nr_3d = IQ 现值`）；`isp.fingerprint` = 8 子项 + `iq_file` / `iq_hash`（三档 sha256）；`isp.csc_matrix = "bt601"`；`isp.rgb_range = "full"`（依据 = ISP 侧实测 `YRangeMode = FULL` + `native/rga_core.c` 的 `IM_YUV_TO_RGB_BT601_FULL`，**两处一致、非猜测**）；`isp.nr_3d_ref_frames` = `src` / `enable` / `ref_frames = "IQ 未暴露（不得猜值）"` / `ab`（三份报告路径 + 两段读数 + 结论）。
+
+**⑦ 唯一代码改动**：`config.py` 的 `OPAQUE_SUBTREES` 增列 **`isp.presets` / `isp.fingerprint` / `isp.nr_3d_ref_frames`**（把 §10.4 已明列的三张子表声明为不下探，机制同 `pipeline.curve_geometry`）；**不加此声明则 `config.load()` 以「表外键」拒绝加载**（已实测复现）。**不新增 config 键 / 日志事件 / 返回码**。
+
+**⑧ 连带效应**：`config.snapshot_hash()` `0b99a46c5ab84990…` → **`8cf2fdbfafde1db9…`** ⇒ `M2-gate/bench_rt_o95.json` / `bench_hq_o95.json` 的测量条件失效，**已按新快照重跑**为 `bench_rt_o102.json` / `bench_hq_o102.json`（沿用追加 95 先例）；`pending_keys()` **8 → 3**（全属 M2-2）。
+
+**⑨ 残留（登记，不属阻断）**：AWB 未锁定（**O64**）/ R23 高照度过曝的分场景缓解未落地（三档同值）/ §9.5 的「ISP 指纹启动打印」**未实现**（`main/isp_fingerprint` 事件无发出点）/ O94 四项盲区不变（3DNR 拖尾·闪烁、实时链帧率与延迟、全屏 HQ 观感、双屏镜像）/ 本批无照度标注 / IQ 探针未入库（`/tmp/iq_fp*.py`）。
+
+**⑩ 回写** = `config.yaml`（5 键）+ `config.py` + §9.5（O145 块）+ §10.3（新档登记）+ §10.4（三行）+ §14（本行）+ §15（O145 + 索引行）+ 头部计数（144/130/14 → **145/131/14**）+ 本文档 + 新建 `docs/evidence/M1-5-isp-presets.md` + `docs/plans/M1.md` + `docs/plans/M2.md` + 新增报告 `docs/evidence/reports/M1-5/`（4 图 + 2 报告 + 3 份 A/B 报告）。
+
+**⑪ 复现命令**：见 [M1-5-isp-presets.md](M1-5-isp-presets.md) §9（S1 回读 / S2 出图 / S3 A/B / S5 键表自检）。

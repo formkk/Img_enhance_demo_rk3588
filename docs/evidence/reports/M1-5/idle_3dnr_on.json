@@ -1,0 +1,203 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "idle-link",
+  "scope": "frame",
+  "started_utc": "2026-09-23T15:57:15+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": "ca8855b90df9a80fa4195a831f33d3476b1964f787eb70602797c773067f3b84",
+    "curve_level": "480x272",
+    "precision": "fp16",
+    "config_snapshot_hash": "0b99a46c5ab849907610472b853efeb3dbf9fe65286bdb2f47e15ceb626aa5db"
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      1.21,
+      0.5,
+      0.4
+    ]
+  },
+  "soc_temp_c": 48.076,
+  "notes": [
+    "口径来源 = §6.1 的 v3.4「必读」段（*关闭增强，只跑\"采集 → RGA 原图窗 → MIPI 显示\"*）与 `docs/measurements.md` §1（O19）；**本口径不得与常态轮混填**",
+    "§6.5：时钟只用 `mono_ns`；配对按 `seq` 回填；延迟两段随报告给出；≥300 帧滑窗 × 3 轮（每轮一个独立进程 ⇒ `stream_on_count` 恒为 1）",
+    "O19 判定：`o19_trigger` —— P95 ≥ 60 ms 则自动触发 §13 重议（结论须在 M2 出口前），否则登记「不触发」并关闭 O19；回填落点 = `config.yaml` 的 `metrics.idle_link_baseline` + `docs/measurements.md` §1 三列",
+    "`counters.estimates` 应恒为 0（空链路不跑 TH2a）；非 0 即口径被破，须先查因",
+    "计量四键（v3.86 追加 95）：判定窗长 = `metrics.window_frames`（键值唯一来源）"
+  ],
+  "status": "ok",
+  "entry": "bench.py --scenario idle-link --breakdown（每轮一个独立进程跑 `main.py --idle-link --report-json`）",
+  "link": "idle（关 TH2a / TH2b / OSD；保留 采集 → RGA 原图窗 → 画布合成 → pageflip，TH5 HDMI 镜像同构保留——它不是\"增强\"成本）",
+  "rounds": 3,
+  "frames_per_round": 300,
+  "latency": {
+    "n": 900,
+    "p50_ms": 13.482403,
+    "p95_ms": 20.991602,
+    "max_ms": 918.061866,
+    "mean_ms": 23.396213065555553
+  },
+  "latency_segments": {
+    "capture_to_submit": {
+      "n": 900,
+      "p50_ms": 4.642948,
+      "p95_ms": 4.932229,
+      "max_ms": 907.45392,
+      "mean_ms": 14.619621661111111
+    },
+    "submit_to_vblank": {
+      "n": 900,
+      "p50_ms": 8.88721,
+      "p95_ms": 16.155939,
+      "max_ms": 17.07966,
+      "mean_ms": 8.776591404444444
+    }
+  },
+  "fps": {
+    "per_round": [
+      13.82436651139254,
+      13.921422634856615,
+      13.785945282219133
+    ],
+    "median": 13.82436651139254,
+    "steady_per_round": [
+      14.622228558272429,
+      14.576358709369602,
+      14.5710561277411
+    ],
+    "steady_median": 14.576358709369602,
+    "frames_total": 900,
+    "note": "空链路轮的 fps **不是** §13「实时帧率」的判据对象（该判据针对常态链路）；仅作口径随行的旁证"
+  },
+  "pairing_rate": 1.0,
+  "paired_flips": 900,
+  "seq_coverage": {
+    "flips": 900,
+    "paired": 900,
+    "unpaired": 0
+  },
+  "discarded_frames": {
+    "flip_skipped": 0,
+    "unpaired": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0
+  },
+  "panel_refresh_ms": 16.666666666666668,
+  "baseline_candidate": {
+    "p50_ms": 13.482403,
+    "p95_ms": 20.991602,
+    "n": 900,
+    "capture_to_submit_p50_ms": 4.642948,
+    "capture_to_submit_p95_ms": 4.932229,
+    "submit_to_vblank_p50_ms": 8.88721,
+    "submit_to_vblank_p95_ms": 16.155939,
+    "per_round_p95_ms": [
+      21.165078,
+      20.801402,
+      21.065754
+    ],
+    "per_round_p50_ms": [
+      13.506438,
+      13.468268,
+      13.514339
+    ],
+    "panel_refresh_ms": 16.666666666666668,
+    "timestamp_source": "EOF（§6.5：驱动只给 EOF ⇒ 本基线为 EOF→vblank 口径；`metrics.timestamp_source` 定稿属 M1 十键，本场景不擅自定稿）",
+    "rounds": 3,
+    "frames_per_round": 300
+  },
+  "o19_trigger": {
+    "threshold_p95_ms": 60.0,
+    "measured_median_p95_ms": 21.065754,
+    "reopen_required": false
+  },
+  "idle_link_baseline": [
+    17.538,
+    25.67,
+    9.165,
+    9.86,
+    8.768,
+    16.222
+  ],
+  "rounds_detail": [
+    {
+      "round": 1,
+      "fps_active": 13.82436651139254,
+      "boot_s": 1.184105107000505,
+      "wall_s": 21.700813542000105,
+      "frames": 300,
+      "flips": 300,
+      "lat_p50_ms": 13.506438,
+      "lat_p95_ms": 21.165078,
+      "lat_app_p50_ms": 4.677206,
+      "lat_app_p95_ms": 4.934786,
+      "lat_submit_p50_ms": 8.88721,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "estimates": 0
+    },
+    {
+      "round": 2,
+      "fps_active": 13.921422634856615,
+      "boot_s": 0.9682499909977196,
+      "wall_s": 21.54952176000006,
+      "frames": 300,
+      "flips": 300,
+      "lat_p50_ms": 13.468268,
+      "lat_p95_ms": 20.801402,
+      "lat_app_p50_ms": 4.624271,
+      "lat_app_p95_ms": 4.891807,
+      "lat_submit_p50_ms": 9.146797,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "estimates": 0
+    },
+    {
+      "round": 3,
+      "fps_active": 13.785945282219133,
+      "boot_s": 1.1725318540011358,
+      "wall_s": 21.76129339399995,
+      "frames": 300,
+      "flips": 300,
+      "lat_p50_ms": 13.514339,
+      "lat_p95_ms": 21.065754,
+      "lat_app_p50_ms": 4.644599,
+      "lat_app_p95_ms": 4.962449,
+      "lat_submit_p50_ms": 8.759458,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "estimates": 0
+    }
+  ],
+  "metrics_policy": {
+    "window_frames": 300,
+    "timestamp_domain": "MONOTONIC",
+    "timestamp_source": "EOF",
+    "pair_by": "seq"
+  },
+  "metrics_policy_ok": true,
+  "metrics_policy_mismatch": [],
+  "note": "四键语义 = 期望值 / 断言值（§6.5）：`window_frames` 决定本报告的判定窗长；`timestamp_domain` / `pair_by` 与实现矛盾即硬报错；`timestamp_source` 为运行期实测，偏离期望只标记并随行注明（窗口作废由 `capture/timestamp_source_changed` 承担）"
+}

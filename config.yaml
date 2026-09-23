@@ -65,19 +65,118 @@ camera:
   # （禁止自造表外键，规则 20-contracts.md §1）。**v3.29 裁定 O34-③**：该行定稿时点 = **M1**
   # ⇒ 子键名随 M1 的 `v4l2-ctl -L` 实测一并定义；不参与 §11.2 M0-② 的判定
 
-# ── ISP（定稿时点 M1）───────────────────────────────────────────────
+# ── ISP（**v3.86 定稿 O145：本域 5 键全部定稿**；定稿时点 M1）─────────────
+# 两套档位（O62=(b)）：采集档 / 演示档 = 两套 IQ 文件，各自记文件名 + sha256，采集工具启动
+#   校验"当前 IQ = 采集档"，否则拒采（v3.77 已实施）。两套由 `tools/collect/iq_sets.py`
+#   生成 / 切换，落在 `/etc/iqfiles_sets/`（stock/ + collect/ + demo/ + manifest.json）；
+#   防呆落地于 `capture_app.py`（`--iq-manifest`，fail-closed）。
 isp:
-  presets: null                          # 暗房 / 夜景 / 人脸（§9.2、§9.5）
-                                         # （v3.75 裁定 O62=(b)）采集档 / 演示档 = 两套 IQ 文件，
-                                         #   各自记文件名+sha256，采集工具启动校验"当前IQ=采集档"，否则拒采
-                                         # （v3.77 已实施）两套由 `tools/collect/iq_sets.py` 生成/切换，
-                                         #   落在 /etc/iqfiles_sets/（stock/ + collect/ + demo/ + manifest.json）；
-                                         #   防呆已落地于 capture_app.py（--iq-manifest，fail-closed）
-  fingerprint: null                      # iq_file+iq_hash / gamma_table / ccm / black_level /
-                                         # awb_lock / nr_2d / nr_3d / dpc（§9.5）
-  csc_matrix: null                       # 定稿时点 M1（BT.601/709）
-  rgb_range: null                        # 定稿时点 M1（limited/full）
-  nr_3d_ref_frames: null                 # 定稿时点 M1
+  presets:                               # 【M1 定稿 · v3.86 O145】三套预设（§9.2、§9.5）
+    darkroom:                            # 暗房（静物）
+      scene: "暗房（静物）"
+      exposure_us: 66666                 # 起点 = O91 定稿的 66 ms（三档同值）
+      gain: 20.0                         # 线性倍数（sensor 模拟段）
+      fps: 15
+      iq_set: "demo"
+      nr_3d: "IQ 现值（enable=1）"
+    night:                               # 夜景
+      scene: "夜景"
+      exposure_us: 66666
+      gain: 20.0
+      fps: 15
+      iq_set: "demo"
+      nr_3d: "IQ 现值（enable=1）"
+    face:                                # 弱光人脸
+      scene: "弱光人脸"
+      exposure_us: 66666
+      gain: 20.0
+      fps: 15
+      iq_set: "demo"
+      nr_3d: "IQ 现值（enable=1）"
+    note: >-
+      取值 SSOT = IQ 文件（§9.5 ⑦）：本表数值是**镜像 + 依据**，生效值只写在 IQ 里（档位文件
+      与 sha256 见本域 `fingerprint.iq_*`）。⚠️ **本轮三档同值**（用户 2026-09-23 选定：曝光/
+      增益起点统一用 O91 的 66 ms / 20×，NR 档只回读不改）⇒ **R23（高照度过曝风险）的分场景
+      缓解尚未落地**，随 M2 通路可用后的观感终审（§9.5 O94 两段式）。运行期只许曝光/增益微调，
+      换预设 = 改 config 后重启（v3.9 裁定 O10）；换 `iq_set` 须重启 `rkaiq_3A`（O62 ④(ii)）。
+  fingerprint:                           # 【M1 定稿 · v3.86 O145】§9.5 ISP 指纹（8 子项）
+    # 记录口径：只记「IQ 内路径 + 可观测状态 + 规范化子树哈希」，**不复制 IQ 取值**
+    #   （SSOT = IQ 文件，规则 00-ssot.md §3.1）；子树哈希 = 对 IQ 中该子树做
+    #   `json.dumps(sort_keys=True, separators=(',',':'))` 后取 sha256，**此处记前 16 位十六进制**。
+    # 场景树路径 = `main_scene[i].sub_scene[0].scene_isp30`（i = 0 / 1，两棵同构；下标随行注明）。
+    iq_file: "imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json"
+    iq_hash:
+      stock: "4536f96a0bd594ed803c7a611aa928105c5be8903549b9b269a0e2b4764fa6e0"
+      collect: "ff7fb3e92865eabe53a0f5d4181ab0b3e99672682d54b37da73f9d65f67e2a6c"
+      demo: "2ed58401f2fc8b0b28864d5da68e53de4c441c1593462ca23f21d76c7ce198d0"   # 现役
+    gamma_table:
+      src: "agamma_calib_v11/GammaTuningPara"
+      gamma_en: 1                        # 进 gamma 开（重量级杠杆，本轮不动）
+      curve_points: 49                   # Gamma_curve 长度
+      gamma_out_offset: 0
+      curve_sha256_16: "6c8b16cfbcc298d9"
+      subtree_sha256_16: "881b76242a6f2650"   # stock / collect / demo 三者一致
+      degamma_en: 0                      # 旁证：进 gamma 前无反 gamma（adegamma_calib）
+    ccm:
+      src: "ccm_calib"
+      enable: 1                          # ccm_calib/control.enable
+      matrices: 14                       # TuningPara/matrixAll 条数
+      illuminants: 7                     # TuningPara/aCcmCof 条数
+      damp_enable: 1
+      interp_enable: 0                   # illu_estim 不插值
+      default_illu: "A"
+      tuning_sha256_16: "85e5727b30c11272"
+    black_level:
+      src: "ablc_calib"
+      enable: 1                          # BlcTuningPara（BLC_Data = 13 个 ISO 点 × R/Gr/Gb/B）
+      enable_set2: 0                     # Blc1TuningPara（第二组未启用）
+      iso_points: 13
+      tuning_sha256_16: "a511de7cb4e7c348"
+    awb_lock: "auto"                     # ⚠️ `wb_v21.control.mode = CALIB_WB_MODE_AUTO` ⇒ **未锁定**
+                                         #   ⇒ §9.5 ⑤ 的「AWB 锁定」**未落地**、§15 **O64** 仍未闭合；
+                                         #   IQ 内既有手动增益留档（当前未启用）：
+                                         #   `manualPara.cfg.mwbGain = [1.32703, 1, 1, 3.31432]`
+    nr_2d:
+      src: "bayer2dnr_v2/TuningPara.enable"
+      enable: 1                          # demo / collect 一致
+      tuning_sets: 2                     # LSNR/lcg、HSNR/hcg
+      iso_points: 13
+      tuning_sha256_16: "16ee259977494109"
+    nr_3d:
+      src: "bayertnr_v2/TuningPara.enable"
+      enable: {demo: 1, collect: 0}      # **两套 IQ 的唯一 ISP 差异**
+      tuning_sets: 2
+      iso_points: 13
+      tuning_sha256_16:                  # 按 [isp30[0], isp30[1]]
+        demo: ["be05bac5d36d4eca", "8868e41f867ce167"]      # = stock 逐位一致（原厂值）
+        collect: ["3231321eaddd45e7", "31be6ead629da008"]   # 仅 enable 翻 0
+    dpc:
+      src: "adpcc_calib/DpccTuningPara/Enable"
+      enable: 1
+      subtree_sha256_16: ["79da0940d59eea65", "534d9be12f2cc92c"]
+  csc_matrix: "bt601"                    # 【M1 定稿 · v3.86 O145】RGA 侧 NV12→RGB 的 CSC：
+                                         #   §9.5 ⑨ 实测 ISP 侧 `YRangeMode = FULL` ⇒ 配 full；
+                                         #   取值与 native/rga_core.c 的 `IM_YUV_TO_RGB_BT601_FULL`
+                                         #   一致（非猜测）。取值域（实现侧）= `bt601` / `bt709`，
+                                         #   见 native/realtime_apply_pybind.cpp `parse_csc()`
+  rgb_range: "full"                      # 【M1 定稿 · v3.86 O145】取值域 = `limited` / `full`
+  nr_3d_ref_frames:                      # 【M1 定稿 · v3.86 O145】§9.5 v3.4 追加② 的落地口径
+    # ⚠️ **取值对象已修订（O145）**：「参考帧数」在 IQ、厂商头文件、`librkaiq.so` 三处**均不存在**
+    #    （`bayertnr_v2` 只暴露 `enable` + 2 组 `Setting` × 13 ISO 点 = 17 字段，无任何 ref/frame 字段）
+    #    ⇒ 不以猜测值填充；本键改记「3DNR 时域项的**可回读状态** + 其**帧级固有延迟的 A/B 实测**」。
+    src: "bayertnr_v2/TuningPara"
+    enable: {demo: 1, collect: 0}
+    ref_frames: "IQ 未暴露（不得猜值）"
+    ab:                                  # 3DNR 开 / 关 同场景 A/B（各 3 轮 × 300 帧，idle-link）
+      reports: ["docs/evidence/reports/M1-5/idle_3dnr_on.json",
+                "docs/evidence/reports/M1-5/idle_3dnr_off.json",
+                "docs/evidence/reports/M1-5/idle_3dnr_off2.json"]
+      submit_to_vblank_ms:               # **三份一致** ⇒ 显示侧无固有延迟
+        p50: [8.887, 8.980, 8.698]
+        p95: [16.156, 16.156, 16.215]
+      capture_to_submit_ms:
+        p50: [4.643, 7.366, 3.558]       # ⚠️ 抖动 ±2 ms > 两档差异（OFF#1 的 +2.7 不复现）
+      conclusion: "未检出可归因于 3DNR 时域滤波的帧级固有延迟（提交→vblank 三份一致、极差 ≤0.3 ms）；\n        「采集→提交」段的锚点 = 驱动 EOF 事件，其时序随 ISP 处理次序移动，且跨运行抖动大于两档\n        差异 ⇒ 不得由延迟差反推参考帧数。证据档 = docs/evidence/M1-5-isp-presets.md §4。"
 
 # ── 图像（定稿时点 M0）──────────────────────────────────────────────
 rga:

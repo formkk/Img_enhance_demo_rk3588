@@ -87,6 +87,14 @@ OPAQUE_SUBTREES: Tuple[str, ...] = (
     "pipeline.curve_geometry",   # §10.4「三档 shape 表」：effective / pad_to 子表（v3.29 裁定 O34-②）
     "pipeline.apply_scope",      # §10.4：显示 = 窗分辨率 / 存盘 = 满幅一帧
     "ui.button_layout",          # §10.4：2 键单行、行高 96 px、各 512 px（v3.86 裁定 O101）
+    # **（v3.86 定稿 O145）** ISP 三表的子键在 §10.4 已**明列**（`isp.presets` = 暗房/夜景/人脸
+    # 各含曝光·增益·NR 档；`isp.fingerprint` = iq_file + iq_hash / gamma_table / ccm /
+    # black_level / awb_lock / nr_2d / nr_3d / dpc；`isp.nr_3d_ref_frames` = src / enable /
+    # ref_frames / ab）⇒ 与 `pipeline.curve_geometry` 同机制，在本白名单里**声明为不下探的
+    # 子表**（子结构由 §10.4 该三行 + config.yaml 承载）。
+    "isp.presets",
+    "isp.fingerprint",
+    "isp.nr_3d_ref_frames",
 )
 
 DEFAULT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
