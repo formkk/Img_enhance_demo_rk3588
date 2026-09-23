@@ -35,12 +35,18 @@ static struct {
     int        stream_on_count;
     uint64_t   seq_next;
     uint64_t   frames, dropped_stale, lease_timeouts;
+    uint64_t   v4l2_errors;      /* **（v3.86 裁定 O24-前 2 类）** DQBUF 非 EAGAIN 错误次数 */
     uint32_t   lease_next;
     uint32_t   outstanding;
     int32_t    ts_source;
     int32_t    ts_source_valid;
     uint64_t   ts_changes;
 } g;
+
+/* **[验证用钩子]** 注入剩余次数（§15 O24 的确定性注入；默认 0 = 关闭，正常路径不受影响）
+   `g_inject_err_mode`：0 = 硬错误（`v4l2_errors++`）、1 = 无帧超时（`lease_timeouts++`）。 */
+static int g_inject_err_left = 0;
+static int g_inject_err_mode = 0;
 
 static int xioctl(int fd, unsigned long req, void* arg) {
     int r;
@@ -173,6 +179,15 @@ int v4l2_acquire(int n_consumers, frame_desc_t* out, int timeout_ms) {
     if (g.fd < 0 || !g.streaming) return V4L2_E_STATE;
     if (n_consumers <= 0 || n_consumers > V4L2_MAX_CONSUMERS) return V4L2_E_STATE;
 
+    /* **[验证用钩子]** 注入的"失败"（§15 O24 的确定性注入）：计数与正常失败路径**同一个计数器**
+       ⇒ 下游判据（连续硬错误 ≥15 / 连续无帧 ≥1 s）与真实故障走完全相同的处置分支。 */
+    if (g_inject_err_left > 0) {
+        g_inject_err_left--;
+        if (g_inject_err_mode == 1) { g.lease_timeouts++; return V4L2_E_TIMEOUT; }
+        g.v4l2_errors++;
+        return V4L2_E_V4L2;
+    }
+
     struct pollfd pfd = { g.fd, POLLIN, 0 };
     if (poll(&pfd, 1, timeout_ms) <= 0) { g.lease_timeouts++; return V4L2_E_TIMEOUT; }
 
@@ -186,6 +201,7 @@ int v4l2_acquire(int n_consumers, frame_desc_t* out, int timeout_ms) {
     b.m.planes = planes;
     if (xioctl(g.fd, VIDIOC_DQBUF, &b) < 0) {
         if (errno == EAGAIN) { g.lease_timeouts++; return V4L2_E_TIMEOUT; }
+        g.v4l2_errors++;   /* **（v3.86 裁定 O24-前 2 类）** 硬错误（掉流/接收错误）计数 */
         return V4L2_E_V4L2;
     }
     const int idx = (int)b.index;
@@ -265,3 +281,13 @@ void v4l2_counters(uint64_t* frames, uint64_t* dropped_stale, uint64_t* lease_ti
 
 uint64_t v4l2_ts_source_changes(void) { return g.ts_changes; }
 int32_t  v4l2_current_ts_source(void) { return g.ts_source; }
+
+/* **（v3.86 裁定 O24-前 2 类）** 硬错误计数（DQBUF 非 EAGAIN 错误次数） */
+uint64_t v4l2_error_count(void) { return g.v4l2_errors; }
+
+/* **[验证用钩子]** 注入 `n` 次"下一次 acquire 失败"（`mode`：0 = 硬错误 / 1 = 无帧超时）；
+   `n ≤ 0` 即清空注入 */
+void v4l2_inject_error(int n, int mode) {
+    g_inject_err_left = (n > 0) ? n : 0;
+    g_inject_err_mode = (mode == 1) ? 1 : 0;
+}

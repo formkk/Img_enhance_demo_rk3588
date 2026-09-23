@@ -193,12 +193,24 @@ ui:
 
 # ── 计量（定稿时点 M1/M2）──────────────────────────────────────────
 metrics:
-  window_frames: null                    # 定稿时点 M1（≥300 帧滑动窗）
-  timestamp_domain: null                 # 定稿时点 M1（MONOTONIC）
-  timestamp_source: null                 # 定稿时点 M1（SOE / EOF，须随报告注明）
-  pair_by: null                          # 定稿时点 M1（seq；禁止按时间就近配对）
+  # 【M2 定稿（v3.86 追加 95）】以下四键**语义 = 期望值 / 断言值**（§6.5）：
+  #   报告须与键值一致；键为空即不得出报告（§10.4「空值 = 未定稿」）。
+  #   `timestamp_source` 为**期望来源**，运行期实测偏离 ⇒ 按 `capture/timestamp_source_changed`
+  #   作废窗并随报告注明（**不新增事件 / 返回码**）。
+  window_frames: 300                     # 【M2 定稿（v3.86 追加 95）】§6.5 判定滑窗下界；<300 ⇒ 该轮报告无效
+  timestamp_domain: MONOTONIC            # 【M2 定稿（v3.86 追加 95）】唯一合法时钟域（CLOCK_MONOTONIC）
+  timestamp_source: EOF                  # 【M2 定稿（v3.86 追加 95）】期望来源；偏离即作废窗
+  pair_by: seq                           # 【M2 定稿（v3.86 追加 95）】配对唯一方式；禁时间就近配对
   report_breakdown: true                 # 【M2 定稿】§6.5：延迟两段分解随报告给出
-  idle_link_baseline: null               # 定稿时点 M1（空链路 P50/P95；O19 的触发依据）
+  # 【M1 定稿】空链路基线（§6.1 的 v3.4「必读」段；O19 的触发判据载体）。
+  #   **落盘形态 = 位置化数列（ms），次序固定**：
+  #     [端到端 P50, 端到端 P95, 采集→提交 P50, 采集→提交 P95, 提交→vblank P50, 提交→vblank P95]
+  #   （§10.4 该行；不用字典是因为 config 的叶子键不得出现表外子键 ⇒ 用位置化数列，次序在此写明）。
+  #   口径 = 关 TH2a / TH2b / OSD，只跑「采集 → RGA 原图窗 → 画布合成 → pageflip」（`main.py --idle-link`）；
+  #   复现 = `bench.py --scenario idle-link --breakdown`，300 帧 × 3 轮（n=900，配对率 1.0000，丢弃 0）；
+  #   时序口径 = `mono_ns`，时间戳源 = **EOF**（§6.5；`metrics.timestamp_source` 仍属 M1 未定稿项，本值为 EOF 口径）；
+  #   依据报告 = `docs/evidence/reports/O19/idle_link_300x3.json`；实测面板刷新周期 16.667 ms；**不得与常态轮混填**。
+  idle_link_baseline: [17.538, 25.670, 9.165, 9.860, 8.768, 16.222]   # O19 判定 = P95 25.67 < 60 ⇒ **不触发** §13 重议
 
 # ── 存储（**v3.86 裁定 O102：本域整域取消**）────────────────────────────
 # 原 `storage.dir` / `storage.name_pattern` / `storage.image_format` / `storage.meta_carrier` /

@@ -47,6 +47,22 @@ import ui_buttons as ui_mod
 # 曲线场精度档 → 扩展取值
 WIN_W, WIN_H = curve_mod.WIN_W, curve_mod.WIN_H
 
+# ── **（v3.86 裁定 O24-前 2 类）异常恢复的有界容忍与越阈停机**（§10.5 矩阵两行）──────
+# 四问的裁定值：**不重试**（O26 禁止停流重开、`stream_on_once` 恒一次 ⇒ 进程内无自愈手段）；
+# 阈值内容忍；越阈 ⇒ `RUN_DEMO → FAULT_EXIT`（不迁已作废的 `MIPI_PREVIEW_ONLY`）⇒ 停机。
+# 判据只统计 `RUN_DEMO` 且**非冻结 / 非全屏期**（HQ 冻结期本就不取帧，不排除会误判）。
+V4L2_ERR_STREAK_N = 15          # 自上次成功取帧起，连续硬错误（DQBUF 非 EAGAIN）次数 ≥ 此值
+NO_FRAME_TIMEOUT_S = 1.0        # 连续无成功取帧时长 ≥ 此值（秒）
+ACQUIRE_FAIL_BACKOFF_S = 0.005  # 取帧失败时的退避（防硬错误路径忙等；正常帧路径不受影响）
+FAULT_EXIT_CODE = 1             # 停机退出码（≠0 ⇒ systemd `Restart=on-failure` 限次拉起）
+DMESG_SCAN_BYTES = 64 * 1024    # 归因用：`dmesg` 尾部**只读**有界扫描（§10.5 第 2 行）
+DMESG_KEYS = ("imx415", "i2c", "rkisp")   # 设备/链路标识
+# **必须"同一行同时命中设备标识与错误关键词"才归因**——否则会误判：板上 `dmesg` 尾部 64 KiB 内
+# `imx415` 有 350 行，其中绝大多数是 `sensor_lock` 的**例行**行（`set vblank` / `set analog gain`）
+# ⇒ 只按设备标识匹配会**恒判** `sensor_i2c_dma`，使两类的区分失去意义。
+DMESG_ERR_KEYS = ("error", "fail", "timeout", "timed out", "denied", "eio", "reset", "retry",
+                  "no response", "not respond")
+
 # **（v3.86 裁定 O108）** OSD 帧率的统计窗长（秒）：屏上帧率取**最近 1 s 滑窗**（见 `_fps()`）。
 FPS_WINDOW_S = 1.0
 
@@ -88,10 +104,57 @@ class Demo:
                  hdmi_every: int = 6, trigger_at: int = 0, trigger_times: int = 0,
                  trigger_interval_s: float = 15.0, touch_node: str = "", mouse_node: str = "",
                  dump_canvas_dir: str = "", dump_canvas_frames: int = 0,
-                 dump_after: int = 0):
+                 dump_after: int = 0, idle_link: bool = False,
+                 inject_v4l2_error: int = 0, inject_v4l2_at: int = 30,
+                 inject_v4l2_mode: str = "err",
+                 no_est: bool = False, est_first: int = 0,
+                 no_apply: bool = False, no_osd: bool = False,
+                 osd_status_only: bool = False, osd_no_stats: bool = False):
         self.cfg = cfg
         self.log = logger
         self.max_frames = frames
+        # **[计量钩子] 空链路基线（§6.1 的 v3.4「必读」段）**：*"关闭增强，只跑
+        # 采集 → RGA 原图窗 → MIPI 显示"* ⇒ 本轮按**字面**口径实现：
+        #   · 关 TH2a：不 `request()`（RGA 缩放 + NPU 双条带 + EMA 全不做）
+        #   · 关 TH2b：不 `apply_window()`（8 iter 单遍融合不做）
+        #   · 关 OSD：`DisplayMipi.init(with_osd=False)`（统计 / 曲线图 / 直方图 / 按钮区渲染都不做；
+        #     O44 已实测其为实现成本 7.94 / 3.77 / 0.337 ms）
+        #   · 保留：TH1 采集与 lease、RGA 原图窗、画布合成、DRM pageflip、`seq` 回填配对
+        # `est.init()` **仍要跑**——它是 RGA 几何（`resolve_geometry`）与 RGA 目标的唯一配置点，
+        # 且落在 `boot()` 内（§6.5：帧窗不含进程启动）。
+        self.idle_link = bool(idle_link)
+        # **[验证用钩子] ①-2 子项拆分（v3.86 追加 96）**：把「采集→提交」段的增量拆到
+        # TH2a（曲线估计线程）/ TH2b（8-iter 应用）/ OSD 三个来源上。**非 config 键、不新增事件与返回码**；
+        #   · `no_est` = 从不请求估计（TH2a worker 不参与帧路径）；
+        #   · `est_first = N` = **只前 N 帧请求**，之后冻结「最近已发布场」（`latest()` 持久）⇒
+        #     用于"只测 TH2b"（估计成本只在启动期、由 `--skip-first N` 在分析侧剔除）；
+        #   · `no_apply` = 跳过 `ra.apply_window()`（窗内显示 RGA 原图，照常 pageflip）；
+        #   · `no_osd` = OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做，同 `--idle-link` 的 OSD 口径）。
+        self.no_est = bool(no_est)
+        self.est_first = max(0, int(est_first))
+        self.no_apply = bool(no_apply)
+        self.no_osd = bool(no_osd)
+        # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
+        # `osd_no_stats` = 连统计也不做。**非 config 键**，只用于 ①-2 的 OSD 增量归因实验。
+        self.osd_status_only = bool(osd_status_only)
+        self.osd_no_stats = bool(osd_no_stats)
+        # **[验证用钩子] §15 O24 的确定性注入**：在活动帧 `inject_v4l2_at` 起注入
+        # `inject_v4l2_error` 次"acquire 返回硬错误"（**不是 config 键**、不新增返回码）。
+        self.inject_v4l2_error = max(0, int(inject_v4l2_error))
+        self.inject_v4l2_at = max(0, int(inject_v4l2_at))
+        # 注入模式：`err` = 硬错误（计 `v4l2_errors`）/ `noframe` = 无帧超时（计 `lease_timeouts`）
+        self.inject_v4l2_mode = 1 if str(inject_v4l2_mode).lower() == "noframe" else 0
+        self._injected = False
+        # **（v3.86 裁定 O24-前 2 类）** 越阈判据的运行态：`_no_frame_since` = 连续无成功取帧起点
+        # （`None` = 有帧）；`_v4l2_err_base` = 上次成功取帧时的硬错误计数（差值即"连续"硬错误数）。
+        self._no_frame_since: Optional[float] = None
+        self._v4l2_err_base = 0
+        self._v4l2_err_pending = False   # 上次成功取帧后是否出现过失败（省掉正常路径的 counters 读）
+        self._last_frame_mono = 0.0          # 最后一次成功取帧的 `monotonic`（`dmesg` 归因的时间下界）
+        self._first_frame_mono = 0.0         # 首个成功取帧的 `monotonic`（帧率旁证 `frame_span_ms`，O97）
+        self._fault = False
+        self._fault_reason = ""
+        self._t_start = 0.0                  # 由 `main()` / bench 置位（用于 `service_exit` 的 uptime_s）
         self.est_every = max(1, est_every)
         # TH5 热插拔低频步进周期（帧）：与 `est_every` 同风格；6 帧 ≈ 200 ms @30 fps
         self.hdmi_every = max(1, hdmi_every)
@@ -144,6 +207,8 @@ class Demo:
         self.counters: Dict[str, Any] = {"frames": 0, "estimates": 0, "flips": 0,
                                          "flip_skipped": 0, "dropped_stale": 0,
                                          "lease_timeouts": 0, "discarded_triggers": 0,
+                                         # **（v3.86 裁定 O24-前 2 类）** 硬错误计数（掉流/接收错误）
+                                         "v4l2_errors": 0,
                                          # **（v3.86 裁定 O122）** 翻页**负值**帧数（自愈后仍未成）
                                          # ——O122 前该分支**不计数**，负值被静默吞掉（49 min / 5 flip）
                                          "pageflip_fail": 0,
@@ -182,7 +247,8 @@ class Demo:
 
         # ① TH4：DSI/CRTC 就绪
         self.disp = display_mod.DisplayMipi(cfg, self.log)
-        rc = self.disp.init(with_osd=True)
+        rc = self.disp.init(with_osd=not (self.idle_link or self.no_osd),
+                            osd_status_only=self.osd_status_only, osd_no_stats=self.osd_no_stats)
         if rc != 0:
             self.log.event("main", "boot_check_item", item="TH4", result="fail",
                            code=starlog.code_name(rc))
@@ -276,11 +342,45 @@ class Demo:
                 time.sleep(0.02)          # 冻结期/全屏期：**不取帧、不估计、不应用**（O90）
                 continue
             t0 = time.monotonic_ns()
+            # **[验证用钩子] §15 O24 的确定性注入**（只注入一次；`N=0` 时本段不生效）
+            if (self.inject_v4l2_error and not self._injected
+                    and i >= self.inject_v4l2_at and self.cap is not None):
+                self._injected = True
+                self.cap.inject_v4l2_error(self.inject_v4l2_error, self.inject_v4l2_mode)
+                print(f"[inject] 已在活动帧 {i} 注入 {self.inject_v4l2_error} 次 acquire "
+                      f"{'无帧超时' if self.inject_v4l2_mode else '硬错误'}（§15 O24 验证钩子）")
             f = self.cap.acquire(1, 500)
             if f is None:
                 c = self.cap.counters()
                 self.counters["lease_timeouts"] = c["lease_timeouts"]
+                self.counters["v4l2_errors"] = c["v4l2_errors"]
+                # **（v3.86 裁定 O24-前 2 类）** 越阈判据：连续无帧 ≥1 s **或** 连续硬错误 ≥15 次
+                # ⇒ `RUN_DEMO → FAULT_EXIT` + 停机（见 `_fault_exit()`）。**阈值内容忍**。
+                # 只统计 `RUN_DEMO` 且**非冻结 / 非全屏期**（冻结期本就不取帧 ⇒ 不参与判据）。
+                if self.cap.rsm == capture_mod.RSM_RUN_DEMO and not self.frozen \
+                        and self.view == "normal":
+                    now = time.monotonic()
+                    if self._no_frame_since is None:
+                        self._no_frame_since = now
+                    streak = int(c["v4l2_errors"]) - self._v4l2_err_base
+                    if streak >= V4L2_ERR_STREAK_N or \
+                            (now - self._no_frame_since) >= NO_FRAME_TIMEOUT_S:
+                        self._fault_exit(streak)
+                        break
+                # 退避：硬错误路径 `acquire` 会**立即返回**，无退避即成忙等（规则 `30-board-safety.md` §3）
+                self._v4l2_err_pending = True
+                time.sleep(ACQUIRE_FAIL_BACKOFF_S)
                 continue
+            # 有帧 ⇒ 清零连续计数器（硬错误"连续"口径 = 自上次成功取帧起）。
+            # **只在"上次成功取帧之后出现过失败"时才读一次 `counters()`** ⇒ 正常帧路径**零新增调用**
+            # （空链路基线等既有报告因此仍可比）。
+            self._no_frame_since = None
+            self._last_frame_mono = time.monotonic()
+            if not self._first_frame_mono:
+                self._first_frame_mono = self._last_frame_mono
+            if self._v4l2_err_pending:
+                self._v4l2_err_pending = False
+                self._v4l2_err_base = int(self.cap.counters()["v4l2_errors"])
             self.counters["frames"] += 1
 
             # 原图窗（RGA：NV12 → 512×288 RGB888）
@@ -290,12 +390,17 @@ class Demo:
             # `request()` 在本线程只同步做 RGA 缩放（持帧时长 = 一次 RGA），NPU 双条带 + EMA 在
             # TH2a worker 内跑 ⇒ **曲线估计不再落在帧路径上**（§6.1 第 413 / 415 行的契约位置）。
             # 曲线场按「最近一次已发布」非阻塞取用；worker 忙时本轮请求跳过（不含等待）。
-            if i % self.est_every == 0:
-                if self.est.request(f) == 0:
-                    self.counters["estimates"] += 1
-            # 首拍（第 0 帧）等一次发布——与 O123 之前"首帧即持有有效曲线场"的行为一致；
-            # 此后一律 `latest()` 非阻塞取值，**帧路径不再等 worker**。
-            self.curve = self.est.wait_first() if i == 0 else self.est.latest()
+            if not self.idle_link and not self.no_est:
+                # **（v3.86 追加 96）** `--est-first N`：只前 N 帧请求估计，之后不再请求
+                # ⇒ 场冻结在「最近已发布」，用于只测 TH2b（估计成本只在启动期）。
+                if (self.est_first <= 0 or i < self.est_first) and i % self.est_every == 0:
+                    if self.est.request(f) == 0:
+                        self.counters["estimates"] += 1
+                # 首拍（第 0 帧）等一次发布——与 O123 之前"首帧即持有有效曲线场"的行为一致；
+                # 此后一律 `latest()` 非阻塞取值，**帧路径不再等 worker**。
+                self.curve = self.est.wait_first() if i == 0 else self.est.latest()
+            # **空链路（`--idle-link`）**：`self.curve` 恒为 `None` ⇒ 下面的 TH2b 与 OSD 统计
+            # 两个 `if` 自然短路，链路只剩「采集 → RGA 原图窗 → 画布合成 → pageflip」。
 
             # TH5：低频热插拔步进（每 hdmi_every 帧一次；§5 写"线程"⇒ 已登记偏离）
             if self.hdmi is not None and i % self.hdmi_every == 0:
@@ -329,7 +434,8 @@ class Demo:
             self.cap.release(f["lease_id"])
 
             # TH2b：8 iter 单遍融合（交付内核）
-            if self.curve is not None:
+            # **（v3.86 追加 96）** `--no-apply` 时跳过（窗内显示 RGA 原图；**不是** config 键）
+            if self.curve is not None and not self.no_apply:
                 ra.apply_window(win, self.curve.field, enh, WIN_W, WIN_H)
 
             # 统计（降采样 4× + 降频 1 Hz；`Stats` 内部自行节流，故可逐帧调用）
@@ -345,7 +451,7 @@ class Demo:
                 "t_capture_ns": int(f["t_capture_ns"]),
                 "mean_orig": self.disp.osd.stats.mean_orig if self.disp.osd else 0.0,
                 "mean_enh": self.disp.osd.stats.mean_enh if self.disp.osd else 0.0,
-                "curve_field": self.curve.field,
+                "curve_field": self.curve.field if self.curve is not None else None,
                 "curve_w": g["eff_w"], "curve_h": g["eff_h"],
                 "curve_precision": self.est.precision(),
                 "view": self.view,                    # §3.5 视图态（O79）
@@ -415,8 +521,68 @@ class Demo:
         c = self.cap.counters()
         self.counters["dropped_stale"] = c["dropped_stale"]
         self.counters["lease_timeouts"] = c["lease_timeouts"]
+        self.counters["v4l2_errors"] = c["v4l2_errors"]
         self.counters["discarded_triggers"] = c["discarded_triggers"]
-        return 0
+        # **（v3.86 裁定 O24-前 2 类）** 越阈停机 ⇒ 非 0 退出码（`systemd` 的 `Restart=on-failure`
+        # 据此限次拉起；正常退出（信号 / `--frames` / EXIT 键）仍返回 0）。
+        return FAULT_EXIT_CODE if self._fault else 0
+
+    # ── 异常恢复（**v3.86 裁定 O24-前 2 类**；§10.5 矩阵两行）────────────────
+    def _dmesg_reason(self, since_mono: float) -> str:
+        """停机前的**只读**归因：有界（≤64 KiB）扫描 `dmesg` 尾部，只在**同一行**同时命中
+        「设备标识」与「错误关键词」且该行时刻 **≥ 最后一次成功取帧**时，归因 `sensor_i2c_dma`（第 2 类）；
+        否则回落 `v4l2_stream_lost`（第 1 类）。
+
+        **为什么要三重条件**：板上 `dmesg` 尾部 64 KiB 内 `imx415` 有 350 行（`sensor_lock` 的例行
+        `set vblank` / `set analog gain`）⇒ 只按设备标识匹配会**恒判**第 2 类，使两类区分失去意义；
+        `dmesg` 的行首 `[<uptime_s>]` 与 `CLOCK_MONOTONIC` 同域，故可直接与"最后一次成功取帧"比较。
+        **只读、不改任何状态**；失败（无权限 / 无 `dmesg`）也回落第 1 类。
+        """
+        try:
+            out = subprocess.run(["dmesg"], capture_output=True, timeout=2.0)
+        except (OSError, subprocess.SubprocessError):
+            return "v4l2_stream_lost"
+        blob = (out.stdout or b"")[-DMESG_SCAN_BYTES:].decode("utf-8", "replace")
+        for line in blob.splitlines():
+            low = line.lower()
+            if not any(k in low for k in DMESG_KEYS):
+                continue
+            if not any(k in low for k in DMESG_ERR_KEYS):
+                continue
+            if line.startswith("["):
+                try:
+                    ts = float(line[1:line.index("]")].strip())
+                except (ValueError, IndexError):
+                    ts = None
+                if ts is not None and ts < since_mono:
+                    continue                      # 只认"最后一次成功取帧之后"的内核消息
+            return "sensor_i2c_dma"
+        return "v4l2_stream_lost"
+
+    def _fault_exit(self, streak: int) -> None:
+        """越阈 ⇒ `RUN_DEMO → FAULT_EXIT` + 停机（**事件与码零新增**，§10.5 矩阵）。
+
+        日志沿用**既有**事件与字段：`boot_check_item`（承载码 `E_V4L2`，同 `TH3_request` 的既有点位写法）
+        + `degrade_action`（边沿一次）+ `rsm_transition`（由 `set_rsm()` 落）+ `service_exit`（退出码）。
+        """
+        self._fault = True
+        self.counters["v4l2_errors"] = int(self.cap.counters()["v4l2_errors"])
+        # ① 先记"失败 + 码"（此刻即判据越阈点，不被下面的 `dmesg` 扫描（≤2 s）推迟）
+        self.log.event("main", "boot_check_item", item="TH1", result="fail",
+                       code=starlog.code_name(capture_mod.E_V4L2))
+        # ② 归因（只读、有界）
+        reason = self._dmesg_reason(self._last_frame_mono or time.monotonic())
+        self._fault_reason = reason
+        self.log.event("main", "degrade_action", trigger=reason, action="fault_exit",
+                       rsm=self.cap.rsm, fsm=self.cap.fsm)
+        # ③ 迁移 + 停机（退出码 ≠ 0 ⇒ systemd `Restart=on-failure` 限次拉起）
+        self.cap.set_rsm(capture_mod.RSM_FAULT_EXIT, reason=reason)
+        up = int(max(0.0, time.monotonic() - (self._t_start or time.monotonic())))
+        self.log.event("main", "service_exit", exit_code=FAULT_EXIT_CODE, uptime_s=up)
+        print(f"异常恢复越阈停机：reason={reason} 连续硬错误={streak} "
+              f"（阈值 {V4L2_ERR_STREAK_N}）或无帧 ≥{NO_FRAME_TIMEOUT_S:g} s ⇒ "
+              f"RUN_DEMO → FAULT_EXIT，退出码 {FAULT_EXIT_CODE}（systemd 限次拉起）")
+        self.stop.set()
 
     # ── 指针 / 注入 / 冻结 / 全屏（**v3.86 落地 O79 / O81 / O84 / O90**）──────
     def _pump_pointer(self) -> None:
@@ -706,9 +872,37 @@ class Demo:
         ra.shutdown()
 
 
+def metrics_policy(cfg: Any) -> dict:
+    """§6.5 计量四键（**v3.86 追加 95 定稿**）：语义 = **期望值 / 断言值**。
+
+    取值唯一来源 = `config.yaml`（§10.4 键表）；**键空即报错**（"空值 = 未定稿"）。
+    本函数只读不写，**不新增 config 键 / 日志事件 / 返回码**。
+
+    断言分工（两种不一致的性质不同，处置也不同）：
+      · `timestamp_domain` / `pair_by` —— 与**实现**矛盾（实现只有 `mono_ns` / `seq`）
+        ⇒ 属配置写错，**硬报错**（`ConfigError`），不得出报告；
+      · `timestamp_source` —— 是**运行期实测**（驱动给的 SOE / EOF），偏离期望不属配置错误
+        ⇒ **不硬报错**，在报告中标记 `metrics_policy_ok=False` 并随行注明（§6.5：来源须随报告注明；
+        窗口作废由既有 `capture/timestamp_source_changed` 事件承担）。
+    """
+    pol = {"window_frames": int(cfg.require_final("metrics.window_frames")),
+           "timestamp_domain": str(cfg.require_final("metrics.timestamp_domain")),
+           "timestamp_source": str(cfg.require_final("metrics.timestamp_source")),
+           "pair_by": str(cfg.require_final("metrics.pair_by"))}
+    if pol["timestamp_domain"] != "MONOTONIC":
+        raise starlight_config.ConfigError(
+            f"metrics.timestamp_domain={pol['timestamp_domain']!r} ≠ MONOTONIC（§6.5 唯一合法时钟域）")
+    if pol["pair_by"] != "seq":
+        raise starlight_config.ConfigError(
+            f"metrics.pair_by={pol['pair_by']!r} ≠ seq（§6.5 禁用时间就近配对）")
+    return pol
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="RK3588 极暗光增强实时演示 —— 交付链路主程序")
-    p.add_argument("--frames", type=int, default=0, help="跑 N 帧后退出（0 = 直到信号）")
+    p.add_argument("--frames", type=int, default=0,
+                   help="跑 N 帧后退出（0 = 直到信号；**配合 `--report-json` 时缺省取 "
+                        "`metrics.window_frames`**——§6.5 判定窗下界，键值唯一来源）")
     p.add_argument("--est-every", type=int, default=2, help="每 N 帧估计一次")
     p.add_argument("--hdmi-every", type=int, default=6, help="每 N 帧做一次 HDMI 热插拔步进")
     # **验证钩子**（非生产路径）：在第 N 帧注入一次 `TOUCH` 触发，用于验证 TH3 通路。
@@ -729,6 +923,35 @@ def main() -> int:
                    help="[取证钩子] 常规态逐帧导出画布 PNG 的帧数（槽 0/槽 1 各一张；0 = 关闭）")
     p.add_argument("--dump-after", type=int, default=0,
                    help="[取证钩子] 跳过前 N 个成功翻页后才开始逐帧转储（用于取**稳态**画面；默认 0）")
+    # **[计量钩子] 空链路基线**（§6.1 v3.4「必读」段：*"关闭增强，只跑采集 → RGA 原图窗 →
+    # MIPI 显示"*；采集方式见 `docs/measurements.md` §1 与 §13「端到端延迟」行的
+    # `bench.py --scenario idle-link --breakdown`）。**不是 config 键**、不改任何取值。
+    p.add_argument("--idle-link", action="store_true",
+                   help="[计量钩子] 空链路基线：关 TH2a / TH2b / OSD，只跑采集 → 原图窗 → MIPI")
+    # **[验证用钩子] §15 O24 的确定性注入**（前 2 类异常恢复的判据与处置分支验证；
+    # **不是 config 键**、不新增返回码）。
+    p.add_argument("--inject-v4l2-error", type=int, default=0,
+                   help="[验证钩子] 在活动帧 `--inject-v4l2-at` 起注入 N 次 acquire 硬错误（0 = 关）")
+    p.add_argument("--inject-v4l2-at", type=int, default=30,
+                   help="[验证钩子] 注入起点（活动帧序号；默认 30）")
+    p.add_argument("--inject-v4l2-mode", default="err", choices=["err", "noframe"],
+                   help="[验证钩子] err = 硬错误（计 v4l2_errors）/ noframe = 无帧超时（计 lease_timeouts）")
+    # **[验证用钩子] §8.1 ①-2 的子项拆分（v3.86 追加 96）**——把「采集→提交」段的增量拆到
+    # TH2a / TH2b / OSD 三个来源；**非 config 键、不新增日志事件与返回码**，只在计量路径使用。
+    p.add_argument("--no-est", action="store_true",
+                   help="[验证钩子] 不请求曲线估计（TH2a worker 不参与帧路径）")
+    p.add_argument("--est-first", type=int, default=0,
+                   help="[验证钩子] 只前 N 帧请求估计，之后冻结最近发布场（0 = 一直估计）")
+    p.add_argument("--no-apply", action="store_true",
+                   help="[验证钩子] 跳过 TH2b 增强应用（窗内显示 RGA 原图）")
+    p.add_argument("--no-osd", action="store_true",
+                   help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
+    # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
+    # 再拆成「图示绘制」与「统计」两块。**非 config 键、不新增日志事件与返回码**。
+    p.add_argument("--osd-status-only", action="store_true",
+                   help="[验证钩子] OSD 只画状态行（跳过曲线图 / 直方图 / 图名位图）")
+    p.add_argument("--osd-no-stats", action="store_true",
+                   help="[验证钩子] OSD 连统计也不做（`update_stats()` 直接返回；均值字段保持初值）")
     # **[计量出口]** 机器可读报告（供 `tools/bench.py` 编排多轮；**不新增日志事件 / config 键**）。
     # 每轮一个**独立进程**跑本程序 → 满足「全生命周期只 stream on 一次」（规则 30-board-safety §1）。
     p.add_argument("--report-json", default="",
@@ -738,12 +961,22 @@ def main() -> int:
 
     cfg = starlight_config.load(args.config or None)
     logger = starlog.from_config(cfg)
-    d = Demo(cfg, logger, frames=args.frames, est_every=args.est_every,
+    # **（v3.86 追加 95）** 计量四键（§6.5）= 期望值 / 断言值；**键空即报错**（§10.4「空值 = 未定稿」）。
+    # **只在计量出口路径接线** ⇒ systemd 演示服务（不传 `--report-json`）不受影响：
+    # `--frames` 缺省仍为 0（直到信号），仅 `--report-json` 路径取 `metrics.window_frames` 作窗长。
+    pol = metrics_policy(cfg)
+    frames = args.frames or (pol["window_frames"] if args.report_json else 0)
+    d = Demo(cfg, logger, frames=frames, est_every=args.est_every,
              hdmi_every=args.hdmi_every, trigger_at=args.trigger_at,
              trigger_times=args.trigger_times, trigger_interval_s=args.trigger_interval_s,
              touch_node=args.pointer_touch_node, mouse_node=args.pointer_mouse_node,
              dump_canvas_dir=args.dump_canvas_dir, dump_canvas_frames=args.dump_canvas_frames,
-             dump_after=args.dump_after)
+             dump_after=args.dump_after, idle_link=args.idle_link,
+             inject_v4l2_error=args.inject_v4l2_error, inject_v4l2_at=args.inject_v4l2_at,
+             inject_v4l2_mode=args.inject_v4l2_mode,
+             no_est=args.no_est, est_first=args.est_first,
+             no_apply=args.no_apply, no_osd=args.no_osd,
+             osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats)
 
     def on_sig(signum, _frame):
         logger.event("main", "service_exit", exit_code=0, uptime_s=0)
@@ -763,8 +996,12 @@ def main() -> int:
     # **[口径记录]** 启动耗时（RGA 配置 + 模型加载 + `stream on` + 预热）——**不计入帧窗口**
     t_boot_done = time.monotonic()
     boot_s = t_boot_done - t0
+    # **（v3.86 裁定 O97）** `t_run_done` = **帧循环退出**时刻（`shutdown()` 之前）
+    # ⇒ 帧率分母 = `t_run_done − t_boot_done − 冻结窗`（**扣进程启动与退出序**）。
+    t_run_done = 0.0
     try:
         rc = d.run()
+        t_run_done = time.monotonic()
     finally:
         # TH3 / TH5 的 `info()` 须在 `shutdown()` **之前**取（shutdown 会 deinit 模型、复位 RGA，
         # 后取则 `last_scale_ns` 等打点已被清零 —— v3.86 修正）
@@ -778,13 +1015,25 @@ def main() -> int:
 
     c = d.counters
     wall = max(1e-6, time.monotonic() - t0)
+    # **（v3.86 裁定 O97）** 唯一判定口径 = **帧窗**：扣进程启动（`t_boot_done`）与退出序（`t_run_done`）。
+    frame_win_s = max(1e-6, (t_run_done or time.monotonic()) - t_boot_done - d.freeze_ns / 1e9)
+    fps_window = c['frames'] / frame_win_s
+    frame_span_ms = ((d._last_frame_mono - d._first_frame_mono) * 1e3
+                     if d._first_frame_mono else None)
     print(f"frames={c['frames']} estimates={c['estimates']} flips={c['flips']} "
           f"flip_skipped={c['flip_skipped']} dropped_stale={c['dropped_stale']} "
           f"lease_timeouts={c['lease_timeouts']} discarded_triggers={c['discarded_triggers']} "
           # **（v3.86 裁定 O122）** 翻页**失败帧数**必须随停机计数给出（不再静默吞掉）
-          f"pageflip_fail={c['pageflip_fail']}")
+          f"pageflip_fail={c['pageflip_fail']} v4l2_errors={c['v4l2_errors']}")
+    if d._fault:
+        print(f"[异常恢复] 越阈停机：reason={d._fault_reason} 退出码={FAULT_EXIT_CODE}"
+              f"（§10.5 矩阵：RUN_DEMO → FAULT_EXIT ⇒ systemd Restart=on-failure 限次拉起）")
     print(f"wall={wall:.2f}s  冻结窗合计={d.freeze_ns / 1e9:.2f}s  "
           f"fps（**活动窗口径**，O90）={c['frames'] / max(1e-6, wall - d.freeze_ns / 1e9):.1f}")
+    # **（v3.86 裁定 O97）判定口径 = 帧窗**（扣进程启动与退出序）；下面两个旧值降为**诊断旁证**。
+    print(f"fps（**帧窗口径，O97 判定口径**）={fps_window:.3f}"
+          f"（帧窗 {frame_win_s * 1e3:.1f} ms / {c['frames']} 帧；启动 {boot_s:.2f} s 与退出序已在分母外；"
+          f"首帧→末帧 {frame_span_ms if frame_span_ms is None else round(frame_span_ms, 1)} ms）")
     # §6.5 延迟口径：按 `seq` 回填配对（禁止按时间就近配对）；配对率与丢弃帧数必须随报告给出
     paired = d.pair_ok
     print(f"配对率={paired / max(1, c['flips']):.4f}"
@@ -799,6 +1048,9 @@ def main() -> int:
     hz = float(d.cfg.require_final("display.panel_refresh_hz"))
     print(f"实测面板刷新周期={1e3 / hz:.2f} ms（{hz:g} Hz）")
     base = d.cfg.get("metrics.idle_link_baseline")
+    if d.idle_link:
+        print("链路口径=空链路（`--idle-link`）：关 TH2a / TH2b / OSD"
+              "（只有 采集 → RGA 原图窗 → 画布合成 → pageflip）")
     print(f"M1 空链路基线={base if base else '缺失（M1 并行产出）'} ⇒ 超标归因尚不可闭合（§6.5）")
     print(f"f_est={d.est.f_est:.2f} Hz  alpha={d.est.alpha:.4f}")
     print(f"stream_on_count={_n.capture.stream_on_count()}（契约：恒为 1）")
@@ -833,9 +1085,20 @@ def main() -> int:
         # 字段取值与本函数上面的打印**同源**；**不新增日志事件 / config 键 / 返回码**。
         import json as _json
         th5 = th5_info or {}
+        # **（v3.86 追加 95）** 四键断言结果随报告给出：`timestamp_source` 是运行期实测
+        # （驱动给 SOE / EOF），偏离期望**不硬报错**，只标记并注明（§6.5 来源须随报告给出）。
+        _ts_src = c.get("ts_source")
+        _pol_mismatch = {}
+        if _ts_src is not None and str(_ts_src) != pol["timestamp_source"]:
+            _pol_mismatch["timestamp_source"] = {"expected": pol["timestamp_source"],
+                                                 "measured": str(_ts_src)}
         rec = {
             "wall_s": wall, "boot_s": boot_s, "frames": c["frames"], "flips": c["flips"],
             "freeze_ns": d.freeze_ns,
+            # **（v3.86 裁定 O97）** `fps_window` = **唯一判定口径**（帧窗）；`fps_active`（含启动）与
+            # `fps_steady`（扣启动、仍含退出序）**降为诊断旁证**（保留是为旧报告可比）。
+            "fps_window": fps_window, "window_ms": frame_win_s * 1e3,
+            "frame_span_ms": frame_span_ms,
             "fps_active": c["frames"] / max(1e-6, wall - d.freeze_ns / 1e9),
             # **同源第二口径**：分母扣掉进程启动（**§6.5 的"帧滑窗"不含 boot**）；两值同报告给出，
             # 口径以何为准待裁定（§15 已登记），**当前 §11.2 回归基线按 `fps_active` 口径取得**。
@@ -852,9 +1115,27 @@ def main() -> int:
             "f_est": d.est.f_est if d.est else None,
             "alpha": d.est.alpha if d.est else None,
             "panel_refresh_ms": 1e3 / hz, "idle_link_baseline": base,
+            # **[计量钩子]** 本轮的链路口径（`--idle-link` = 空链路：关 TH2a / TH2b / OSD）。
+            # 报告据此标注口径，**不新增 config 键 / 日志事件 / 返回码**（§6.1 / O19）。
+            "idle_link": bool(d.idle_link),
+            # **（v3.86 追加 96）** ①-2 子项拆分的路径自述（**非 config 键**）：报告据此可判读
+            # 「本轮到底开了哪几项」——`no_est` / `est_first` / `no_apply` / `no_osd`。
+            "path_variant": {"idle_link": bool(d.idle_link), "no_est": bool(d.no_est),
+                             "est_first": int(d.est_first), "no_apply": bool(d.no_apply),
+                             "no_osd": bool(d.no_osd),
+                             "osd_status_only": bool(d.osd_status_only),
+                             "osd_no_stats": bool(d.osd_no_stats)},
             "mirror_scale": th5.get("scale"), "th5": th5, "th3": th3_info,
             "stream_on_count": int(_n.capture.stream_on_count()),
+            # **（v3.86 裁定 O24-前 2 类）** 异常恢复：越阈停机的归因与退出码（未触发时 = None）。
+            "v4l2_errors": int(c.get("v4l2_errors", 0)),
+            "fault": ({"reason": d._fault_reason, "exit_code": FAULT_EXIT_CODE} if d._fault else None),
             "trigger_cycles": d.trig_summary() if d.trig_log else None,
+            # **（v3.86 追加 95）** 计量四键（§6.5）= 期望值 / 断言值：报告须与键值一致；
+            # `metrics_policy_ok=False` 表示运行期实测偏离期望（如 `timestamp_source`）。
+            "metrics_policy": pol,
+            "metrics_policy_ok": not _pol_mismatch,
+            "metrics_policy_mismatch": _pol_mismatch,
         }
         try:
             with open(args.report_json, "w", encoding="utf-8") as fp:

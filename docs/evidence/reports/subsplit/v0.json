@@ -1,0 +1,270 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "realtime",
+  "scope": "frame",
+  "started_utc": "2026-09-23T12:18:20+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": null,
+    "precision": null,
+    "config_snapshot_hash": null
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      0.91,
+      1.4,
+      1.41
+    ]
+  },
+  "soc_temp_c": 49.923,
+  "notes": [
+    "判据 = §13「实时帧率」行（无 HQ：≥14.99 FPS，O89/O93）与「端到端延迟」行（采集→MIPI 显示 P95 ≤80 ms，两段分解随报告给出）；判定 = 实现者 / 验收人",
+    "§6.5：时钟只用 `mono_ns`；配对按 `seq` 回填；≥300 帧滑窗 × 3 轮（每轮一个独立进程 ⇒ `stream_on_count` 恒为 1）",
+    "判据口径（O97）= `fps.window_*` 帧窗口径；`active_*` / `steady_*` 只作旁证",
+    "计量四键（v3.86 追加 95）：判定窗长 = `metrics.window_frames`（键值唯一来源）",
+    "杠杆：HDMI 镜像耗时（§6.1 O85 行 ≤3 ms）取 `func_timing.hdmi_mirror_rga` 的 n / P50 / P90"
+  ],
+  "status": "ok",
+  "entry": "bench.py --scenario realtime（每轮一个独立进程跑 `main.py --report-json`；链路 = TH1…TH5）",
+  "rounds": 3,
+  "frames_per_round": 300,
+  "fps": {
+    "primary": "window（帧窗口径；O97 判定口径）",
+    "window_per_round": [
+      15.103978513600435,
+      15.114507760942022,
+      15.096025218613375
+    ],
+    "window_median": 15.103978513600435,
+    "window_ms_per_round": [
+      19862.31639100015,
+      19848.47966899997,
+      19872.780791999503
+    ],
+    "frame_span_ms_per_round": [
+      19841.33765100023,
+      19836.344590000408,
+      19851.46567299944
+    ],
+    "n": 3,
+    "frames_total": 900,
+    "floor_ref": 14.99,
+    "active_per_round": [
+      13.811762170557522,
+      13.60557315997571,
+      13.511989729304464
+    ],
+    "active_median": 13.60557315997571,
+    "steady_per_round": [
+      14.375022907797145,
+      14.33814620378256,
+      14.321532263318892
+    ],
+    "steady_median": 14.33814620378256,
+    "boot_s_per_round": [
+      0.8510853150000912,
+      1.1265807919999133,
+      1.2550242990000697
+    ],
+    "note": "判定用 `window_*` = 帧窗口径（`frames / (t_run_done − t_boot_done − 冻结窗)`，§6.5 / O97）；`active_*`（含启动）与 `steady_*`（扣启动、仍含退出序）为诊断旁证"
+  },
+  "latency": {
+    "n": 900,
+    "p50_ms": 17.397452,
+    "p95_ms": 25.452047,
+    "max_ms": 965.171213,
+    "mean_ms": 26.62779739666667
+  },
+  "latency_segments": {
+    "capture_to_submit": {
+      "n": 900,
+      "p50_ms": 8.860478,
+      "p95_ms": 9.754673,
+      "max_ms": 958.692043,
+      "mean_ms": 17.69345055
+    },
+    "submit_to_vblank": {
+      "n": 900,
+      "p50_ms": 9.041955,
+      "p95_ms": 16.239634,
+      "max_ms": 17.401067,
+      "mean_ms": 8.934346846666667
+    }
+  },
+  "path_variant": {
+    "no_est": true,
+    "est_first": 0,
+    "no_apply": true,
+    "no_osd": true
+  },
+  "skip_first": 0,
+  "latency_full": {
+    "end_to_end": {
+      "n": 900,
+      "p50_ms": 17.397452,
+      "p95_ms": 25.452047,
+      "max_ms": 965.171213,
+      "mean_ms": 26.62779739666667
+    },
+    "capture_to_submit": {
+      "n": 900,
+      "p50_ms": 8.860478,
+      "p95_ms": 9.754673,
+      "max_ms": 958.692043,
+      "mean_ms": 17.69345055
+    },
+    "submit_to_vblank": {
+      "n": 900,
+      "p50_ms": 9.041955,
+      "p95_ms": 16.239634,
+      "max_ms": 17.401067,
+      "mean_ms": 8.934346846666667
+    }
+  },
+  "pairing_rate": 1.0,
+  "paired_flips": 900,
+  "seq_coverage": {
+    "flips": 900,
+    "paired": 900,
+    "unpaired": 0
+  },
+  "discarded_frames": {
+    "flip_skipped": 0,
+    "unpaired": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0
+  },
+  "freeze_window": {
+    "total_ms": 0.0,
+    "marker": "display_mipi/freeze_enter|freeze_exit",
+    "excluded_from": [
+      "fps",
+      "latency",
+      "pairing"
+    ],
+    "note": "本场景不注入触发 ⇒ 期望恒为 0"
+  },
+  "func_timing": {
+    "hdmi_mirror_rga": {
+      "n": 0,
+      "p50_ms": null,
+      "p90_ms": null,
+      "max_ms": null
+    },
+    "stream_on_count": [
+      1,
+      1,
+      1
+    ],
+    "note": "本场景（无 HQ）的函数级打点只含 TH5 放大；RGA 合成 / OSD / 曲线应用见 osd-micro 等场景"
+  },
+  "f_est": 0.0,
+  "alpha": 0.4642,
+  "discarded_triggers": 0,
+  "panel_refresh_ms": 16.666666666666668,
+  "idle_link_baseline": [
+    17.538,
+    25.67,
+    9.165,
+    9.86,
+    8.768,
+    16.222
+  ],
+  "rounds_detail": [
+    {
+      "round": 1,
+      "fps_window": 15.103978513600435,
+      "window_ms": 19862.31639100015,
+      "frame_span_ms": 19841.33765100023,
+      "fps_active": 13.811762170557522,
+      "fps_steady": 14.375022907797145,
+      "boot_s": 0.8510853150000912,
+      "wall_s": 21.720617274999768,
+      "frames": 300,
+      "lat_p50_ms": 17.423614,
+      "lat_p95_ms": 25.339337,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 0,
+        "p50_ms": null,
+        "p90_ms": null,
+        "max_ms": null
+      }
+    },
+    {
+      "round": 2,
+      "fps_window": 15.114507760942022,
+      "window_ms": 19848.47966899997,
+      "frame_span_ms": 19836.344590000408,
+      "fps_active": 13.60557315997571,
+      "fps_steady": 14.33814620378256,
+      "boot_s": 1.1265807919999133,
+      "wall_s": 22.04978772100003,
+      "frames": 300,
+      "lat_p50_ms": 17.2537,
+      "lat_p95_ms": 25.673961,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 0,
+        "p50_ms": null,
+        "p90_ms": null,
+        "max_ms": null
+      }
+    },
+    {
+      "round": 3,
+      "fps_window": 15.096025218613375,
+      "window_ms": 19872.780791999503,
+      "frame_span_ms": 19851.46567299944,
+      "fps_active": 13.511989729304464,
+      "fps_steady": 14.321532263318892,
+      "boot_s": 1.2550242990000697,
+      "wall_s": 22.202503554999566,
+      "frames": 300,
+      "lat_p50_ms": 17.445287,
+      "lat_p95_ms": 25.478348,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 0,
+        "p50_ms": null,
+        "p90_ms": null,
+        "max_ms": null
+      }
+    }
+  ],
+  "metrics_policy": {
+    "window_frames": 300,
+    "timestamp_domain": "MONOTONIC",
+    "timestamp_source": "EOF",
+    "pair_by": "seq"
+  },
+  "metrics_policy_ok": true,
+  "metrics_policy_mismatch": [],
+  "note": "四键语义 = 期望值 / 断言值（§6.5）：`window_frames` 决定本报告的判定窗长；`timestamp_domain` / `pair_by` 与实现矛盾即硬报错；`timestamp_source` 为运行期实测，偏离期望只标记并随行注明（窗口作废由 `capture/timestamp_source_changed` 承担）"
+}

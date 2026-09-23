@@ -1,0 +1,246 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "realtime",
+  "scope": "frame",
+  "started_utc": "2026-09-22T16:25:55+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": "ca8855b90df9a80fa4195a831f33d3476b1964f787eb70602797c773067f3b84",
+    "curve_level": "480x272",
+    "precision": "fp16",
+    "config_snapshot_hash": "2fe4800b084b5bc308e2260c89e084bb9437b08820107c9667cabdee123c4fc6"
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      1.64,
+      1.86,
+      1.96
+    ]
+  },
+  "soc_temp_c": 51.769,
+  "notes": [
+    "判据 = §13「实时帧率」行（无 HQ：≥14.99 FPS，O89/O93）与「端到端延迟」行（采集→MIPI 显示 P95 ≤80 ms，两段分解随报告给出）；判定 = 实现者 / 验收人",
+    "§6.5：时钟只用 `mono_ns`；配对按 `seq` 回填；≥300 帧滑窗 × 3 轮（每轮一个独立进程 ⇒ `stream_on_count` 恒为 1）",
+    "判据口径（O97）= `fps.window_*` 帧窗口径；`active_*` / `steady_*` 只作旁证",
+    "杠杆：HDMI 镜像耗时（§6.1 O85 行 ≤3 ms）取 `func_timing.hdmi_mirror_rga` 的 n / P50 / P90"
+  ],
+  "status": "ok",
+  "entry": "bench.py --scenario realtime（每轮一个独立进程跑 `main.py --report-json`；链路 = TH1…TH5）",
+  "rounds": 3,
+  "frames_per_round": 300,
+  "fps": {
+    "primary": "window（帧窗口径；O97 判定口径）",
+    "window_per_round": [
+      15.066690773650278,
+      15.052391919026157,
+      15.063610955273393
+    ],
+    "window_median": 15.063610955273393,
+    "window_ms_per_round": [
+      19911.472566003795,
+      19930.387250999047,
+      19915.54354999971
+    ],
+    "frame_span_ms_per_round": [
+      19868.13878799876,
+      19897.40532900032,
+      19864.68791700463
+    ],
+    "n": 3,
+    "frames_total": 900,
+    "floor_ref": 14.99,
+    "active_per_round": [
+      13.334829552769508,
+      13.418906903203581,
+      13.679949092720236
+    ],
+    "active_median": 13.418906903203581,
+    "steady_per_round": [
+      14.262708950470936,
+      14.330501809735413,
+      14.447093440598941
+    ],
+    "steady_median": 14.330501809735413,
+    "boot_s_per_round": [
+      1.4636030229958124,
+      1.4221473829966271,
+      1.164483612999902
+    ],
+    "note": "判定用 `window_*` = 帧窗口径（`frames / (t_run_done − t_boot_done − 冻结窗)`，§6.5 / O97）；`active_*`（含启动）与 `steady_*`（扣启动、仍含退出序）为诊断旁证"
+  },
+  "latency": {
+    "n": 900,
+    "p50_ms": 56.775034,
+    "p95_ms": 119.268602,
+    "max_ms": 1155.216521,
+    "mean_ms": 75.70825869222222
+  },
+  "latency_segments": {
+    "capture_to_submit": {
+      "n": 900,
+      "p50_ms": 49.395821,
+      "p95_ms": 114.633708,
+      "max_ms": 1150.18345,
+      "mean_ms": 66.97527426222221
+    },
+    "submit_to_vblank": {
+      "n": 900,
+      "p50_ms": 8.73204,
+      "p95_ms": 16.336772,
+      "max_ms": 19.218312,
+      "mean_ms": 8.73298443
+    }
+  },
+  "pairing_rate": 1.0,
+  "paired_flips": 900,
+  "seq_coverage": {
+    "flips": 900,
+    "paired": 900,
+    "unpaired": 0
+  },
+  "discarded_frames": {
+    "flip_skipped": 0,
+    "unpaired": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0
+  },
+  "freeze_window": {
+    "total_ms": 0.0,
+    "marker": "display_mipi/freeze_enter|freeze_exit",
+    "excluded_from": [
+      "fps",
+      "latency",
+      "pairing"
+    ],
+    "note": "本场景不注入触发 ⇒ 期望恒为 0"
+  },
+  "func_timing": {
+    "hdmi_mirror_rga": {
+      "n": 300,
+      "p50_ms": 1.912194,
+      "p90_ms": 2.083988,
+      "max_ms": 2.409492
+    },
+    "stream_on_count": [
+      1,
+      1,
+      1
+    ],
+    "note": "本场景（无 HQ）的函数级打点只含 TH5 放大；RGA 合成 / OSD / 曲线应用见 osd-micro 等场景"
+  },
+  "f_est": 7.780209842007162,
+  "alpha": 0.4642,
+  "discarded_triggers": 0,
+  "panel_refresh_ms": 16.666666666666668,
+  "idle_link_baseline": [
+    17.538,
+    25.67,
+    9.165,
+    9.86,
+    8.768,
+    16.222
+  ],
+  "rounds_detail": [
+    {
+      "round": 1,
+      "fps_window": 15.066690773650278,
+      "window_ms": 19911.472566003795,
+      "frame_span_ms": 19868.13878799876,
+      "fps_active": 13.334829552769508,
+      "fps_steady": 14.262708950470936,
+      "boot_s": 1.4636030229958124,
+      "wall_s": 22.497475413001666,
+      "frames": 300,
+      "lat_p50_ms": 48.339468,
+      "lat_p95_ms": 119.383293,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 300,
+        "p50_ms": 1.912194,
+        "p90_ms": 2.083988,
+        "max_ms": 2.409492
+      }
+    },
+    {
+      "round": 2,
+      "fps_window": 15.052391919026157,
+      "window_ms": 19930.387250999047,
+      "frame_span_ms": 19897.40532900032,
+      "fps_active": 13.418906903203581,
+      "fps_steady": 14.330501809735413,
+      "boot_s": 1.4221473829966271,
+      "wall_s": 22.356515486993885,
+      "frames": 300,
+      "lat_p50_ms": 59.70684,
+      "lat_p95_ms": 129.030298,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 300,
+        "p50_ms": 1.914819,
+        "p90_ms": 2.048404,
+        "max_ms": 3.042418
+      }
+    },
+    {
+      "round": 3,
+      "fps_window": 15.063610955273393,
+      "window_ms": 19915.54354999971,
+      "frame_span_ms": 19864.68791700463,
+      "fps_active": 13.679949092720236,
+      "fps_steady": 14.447093440598941,
+      "boot_s": 1.164483612999902,
+      "wall_s": 21.92990616899624,
+      "frames": 300,
+      "lat_p50_ms": 62.26384,
+      "lat_p95_ms": 113.946547,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 300,
+        "p50_ms": 1.925902,
+        "p90_ms": 2.095947,
+        "max_ms": 3.055543
+      }
+    }
+  ],
+  "attribution": {
+    "status": "ok",
+    "idle_link_baseline": {
+      "p50_ms": 17.538,
+      "p95_ms": 25.67,
+      "capture_to_submit_p50_ms": 9.165,
+      "capture_to_submit_p95_ms": 9.86,
+      "submit_to_vblank_p50_ms": 8.768,
+      "submit_to_vblank_p95_ms": 16.222
+    },
+    "end_to_end_p95_minus_baseline_ms": 93.599,
+    "end_to_end_p50_minus_baseline_ms": 39.237,
+    "note": "差值 = 常态链路（含 TH2a/TH2b/OSD）− 空链路基线；两值须同口径（§6.1 / §6.5：跨口径差值不得入报告结论）",
+    "capture_to_submit_p95_minus_baseline_ms": 104.774,
+    "submit_to_vblank_p95_minus_baseline_ms": 0.115
+  }
+}

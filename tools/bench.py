@@ -17,10 +17,12 @@
 成熟度（诚实标注，勿误用）：
   ✅ 可跑：`realtime`（§13「实时帧率」/「端到端延迟」：≥300 帧滑窗 × 3 轮，每轮独立进程）、
           `hq`（§13「HQ 响应」：同进程驱动 `main.Demo` + 时间注入 ≥10 次触发）、
+          `idle-link`（**空链路基线**，`docs/measurements.md` §1 / O19：`main.py --idle-link` ×
+          ≥300 帧 × 3 轮，报告给 `baseline_candidate` 与 `o19_trigger`）、
           `model-infer`（模型级测速，包装 C 探针）、`curve-diff-fp16`（曲线场逐像素闸口）、
           `apply-micro --impl py-ref`（numpy 参考实现，**非交付路径**）、
           `apply-micro --impl native`（交付内核）、`osd-micro`、`validate-report`（字段校验）
-  待链路：`step-response` / `idle-link`（入口未接；调用即明确报错，**不产出占位数字**）
+  待链路：`step-response`（入口未接；调用即明确报错，**不产出占位数字**）
 """
 
 import argparse
@@ -42,7 +44,7 @@ REQUIRED_FIELDS_FRAME = [
     'func_timing', 'f_est', 'alpha', 'soc_temp_c', 'discarded_triggers', 'freeze_window',
     'latency_segments', 'panel_refresh_ms', 'idle_link_baseline', 'scheduling',
 ]
-CHAIN_SCENARIOS = ['step-response', 'idle-link']
+CHAIN_SCENARIOS = ['step-response']
 
 
 def mono_ns():
@@ -138,6 +140,41 @@ def emit(report, out):
             f.write(text + '\n')
         print(f'[report] {out}')
     return 0
+
+
+def metrics_keys(args):
+    """§6.5 计量四键（**v3.86 追加 95 定稿**）：判定窗 / 时钟域 / 时间戳来源 / 配对方式。
+
+    取值唯一来源 = `config.yaml`（§10.4 键表）⇒ **键空即报错**（"空值 = 未定稿"），
+    不得在本工具内用硬编码顶替。本函数只读不写，**不新增 config 键 / 日志事件 / 返回码**。
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    import config as starlight_config
+    cfg = starlight_config.load(args.config or None)
+    mk = {k: cfg.require_final(f'metrics.{k}') for k in
+          ('window_frames', 'timestamp_domain', 'timestamp_source', 'pair_by')}
+    # 与实现矛盾即**硬报错**（同 `main.py` 的 `metrics_policy()` 口径）：本工具只有 `mono_ns` 时钟
+    # 与按 `seq` 回填两条实现路径 ⇒ 键写别的值属配置写错，**不得出报告**。
+    if str(mk['timestamp_domain']) != 'MONOTONIC':
+        raise starlight_config.ConfigError(
+            f"metrics.timestamp_domain={mk['timestamp_domain']!r} ≠ MONOTONIC（§6.5 唯一合法时钟域）")
+    if str(mk['pair_by']) != 'seq':
+        raise starlight_config.ConfigError(
+            f"metrics.pair_by={mk['pair_by']!r} ≠ seq（§6.5 禁用时间就近配对）")
+    return mk
+
+
+def policy_block(per, mk):
+    """把四键 + 逐轮断言结果汇总进报告（§6.5；**v3.86 追加 95**）。"""
+    bad = [{'round': i + 1, 'mismatch': p.get('metrics_policy_mismatch') or {}}
+           for i, p in enumerate(per) if p.get('metrics_policy_ok') is False]
+    return {'metrics_policy': mk, 'metrics_policy_ok': not bad,
+            'metrics_policy_mismatch': bad,
+            'note': '四键语义 = 期望值 / 断言值（§6.5）：`window_frames` 决定本报告的判定窗长；'
+                    '`timestamp_domain` / `pair_by` 与实现矛盾即硬报错；`timestamp_source` 为运行期实测，'
+                    '偏离期望只标记并随行注明（窗口作废由 `capture/timestamp_source_changed` 承担）'}
 
 
 def scenario_chain(args):
@@ -289,12 +326,21 @@ def scenario_realtime(args):
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.insert(0, repo_root)
     rounds = max(1, int(args.rounds))
-    frames = int(args.frames) or 300
+    # **（v3.86 追加 95）** 判定窗长缺省 = `metrics.window_frames`（§6.5；键空即报错 ⇒ 不再用 300 硬编码）
+    mk = metrics_keys(args)
+    frames = int(args.frames) or int(mk['window_frames'])
     per = []
     for r in range(rounds):
         tmp = os.path.join(tempfile.gettempdir(), f'bench_rt_r{r + 1}.json')
         cmd = [sys.executable, os.path.join(repo_root, 'main.py'),
                '--frames', str(frames), '--report-json', tmp]
+        # **（v3.86 追加 96）** ①-2 子项拆分：把路径开关透传给 `main.py`（**非 config 键**）
+        for flag in ('--no-est', '--no-apply', '--no-osd',
+                     '--osd-status-only', '--osd-no-stats'):
+            if getattr(args, flag.replace('-', '_').lstrip('_'), False):
+                cmd.append(flag)
+        if int(getattr(args, 'est_first', 0) or 0) > 0:
+            cmd += ['--est-first', str(int(args.est_first))]
         if args.config:
             cmd += ['--config', args.config]
         proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
@@ -319,6 +365,21 @@ def scenario_realtime(args):
     lat = [x for p in per for x in (p.get('lat_all_ms') or [])]
     lat_app = [x for p in per for x in (p.get('lat_app_all_ms') or [])]
     lat_sub = [x for p in per for x in (p.get('lat_submit_all_ms') or [])]
+    # **（v3.86 追加 96）** `--skip-first N`：每轮剔除**前 N 帧样本**（事先声明的预热前缀，
+    # 与 `--est-first N` 配对用于"只测 TH2b"）。**两口径都随报告给出**（`latency` = 剔除后、
+    # `latency_full` = 全部样本），不作事后筛选——剔除量与剔除前后样本数均在报告中可见。
+    _skip = max(0, int(getattr(args, 'skip_first', 0) or 0))
+
+    def _pool(key):
+        out = []
+        for p in per:
+            out.extend(list(p.get(key) or [])[_skip:])
+        return out
+
+    lat_full, lat_app_full, lat_sub_full = lat, lat_app, lat_sub
+    lat = _pool('lat_all_ms')
+    lat_app = _pool('lat_app_all_ms')
+    lat_sub = _pool('lat_submit_all_ms')
     frames_all = sum(int(p.get('frames') or 0) for p in per)
     flips_all = sum(int(p.get('flips') or 0) for p in per)
     paired_all = sum(int(p.get('paired') or 0) for p in per)
@@ -329,16 +390,31 @@ def scenario_realtime(args):
         'status': 'ok',
         'entry': 'bench.py --scenario realtime（每轮一个独立进程跑 `main.py --report-json`；链路 = TH1…TH5）',
         'rounds': rounds, 'frames_per_round': frames,
-        'fps': {'per_round': fps_vals, 'median': med(fps_vals), 'n': len(per),
-                'frames_total': frames_all, 'floor_ref': 14.99,
-                # **同源第二口径**（分母扣进程启动）：两值并报，**口径以何为准待裁定**
+        # **（v3.86 裁定 O97）** 判定口径唯一化 = **帧窗**（分母扣**进程启动**与**退出序**，§6.5 新增条）；
+        # `active_*`（含启动）与 `steady_*`（扣启动、**仍含退出序**）**降为诊断旁证、不得用于判定**。
+        'fps': {'primary': 'window（帧窗口径；O97 判定口径）',
+                'window_per_round': col('fps_window'), 'window_median': med(col('fps_window')),
+                'window_ms_per_round': col('window_ms'),
+                'frame_span_ms_per_round': col('frame_span_ms'),
+                'n': len(per), 'frames_total': frames_all, 'floor_ref': 14.99,
+                # 诊断旁证（保留是为旧报告可比；**不得用于判定**）
+                'active_per_round': fps_vals, 'active_median': med(fps_vals),
                 'steady_per_round': col('fps_steady'), 'steady_median': med(col('fps_steady')),
                 'boot_s_per_round': col('boot_s'),
-                'note': '`per_round`/`median` = 现行口径（wall 含进程启动；§11.2 回归基线同口径）；'
-                        '`steady_*` = 分母扣 boot 的口径（§6.5 的"帧滑窗"不含启动）'},
+                'note': '判定用 `window_*` = 帧窗口径（`frames / (t_run_done − t_boot_done − 冻结窗)`，'
+                        '§6.5 / O97）；`active_*`（含启动）与 `steady_*`（扣启动、仍含退出序）为诊断旁证'},
         'latency': window_stats_ms(lat),
         'latency_segments': {'capture_to_submit': window_stats_ms(lat_app),
                              'submit_to_vblank': window_stats_ms(lat_sub)},
+        # **（v3.86 追加 96）** ①-2 子项拆分：本轮的**路径自述**与**剔除前**的同口径统计。
+        'path_variant': {'no_est': bool(args.no_est), 'est_first': int(args.est_first),
+                         'no_apply': bool(args.no_apply), 'no_osd': bool(args.no_osd),
+                         'osd_status_only': bool(args.osd_status_only),
+                         'osd_no_stats': bool(args.osd_no_stats)},
+        'skip_first': _skip,
+        'latency_full': {'end_to_end': window_stats_ms(lat_full),
+                         'capture_to_submit': window_stats_ms(lat_app_full),
+                         'submit_to_vblank': window_stats_ms(lat_sub_full)},
         'pairing_rate': paired_all / max(1, flips_all), 'paired_flips': paired_all,
         'seq_coverage': {'flips': flips_all, 'paired': paired_all,
                          'unpaired': flips_all - paired_all},
@@ -359,7 +435,9 @@ def scenario_realtime(args):
         'discarded_triggers': sum(int(p['counters'].get('discarded_triggers', 0)) for p in per),
         'panel_refresh_ms': med(col('panel_refresh_ms')),
         'idle_link_baseline': baseline,
-        'rounds_detail': [{'round': i + 1, 'fps_active': p.get('fps_active'),
+        'rounds_detail': [{'round': i + 1, 'fps_window': p.get('fps_window'),
+                           'window_ms': p.get('window_ms'), 'frame_span_ms': p.get('frame_span_ms'),
+                           'fps_active': p.get('fps_active'),
                            'fps_steady': p.get('fps_steady'), 'boot_s': p.get('boot_s'),
                            'wall_s': p.get('wall_s'), 'frames': p.get('frames'),
                            'lat_p50_ms': p.get('lat_p50_ms'), 'lat_p95_ms': p.get('lat_p95_ms'),
@@ -371,10 +449,184 @@ def scenario_realtime(args):
                   '（采集→MIPI 显示 P95 ≤80 ms，两段分解随报告给出）；判定 = 实现者 / 验收人',
                   '§6.5：时钟只用 `mono_ns`；配对按 `seq` 回填；≥300 帧滑窗 × 3 轮'
                   '（每轮一个独立进程 ⇒ `stream_on_count` 恒为 1）',
+                  '判据口径（O97）= `fps.window_*` 帧窗口径；`active_*` / `steady_*` 只作旁证',
+                  '计量四键（v3.86 追加 95）：判定窗长 = `metrics.window_frames`（键值唯一来源）',
                   '杠杆：HDMI 镜像耗时（§6.1 O85 行 ≤3 ms）取 `func_timing.hdmi_mirror_rga` 的 n / P50 / P90'],
+        **policy_block(per, mk),
     })
     if baseline is None:
         rep['notes'].append('`metrics.idle_link_baseline` 缺失 ⇒ 超标归因不可闭合（§6.5 / O19）')
+    # `--baseline`（§13「端到端延迟」行的复现命令含此开关）：把「端到端 − M1 空链路基线」的
+    # **归因差值**随报告给出（规则 `30-board-safety.md` §3：超标归因必须先扣空链路基线）。
+    # 基线缺失时**只标注、不产出差值**（不得用邻近数字顶替）。
+    if args.baseline:
+        # `metrics.idle_link_baseline` 的落盘形态 = **位置化数列（ms）**：
+        #   `[端到端 P50, 端到端 P95, 采集→提交 P50, 采集→提交 P95, 提交→vblank P50, 提交→vblank P95]`
+        # （§10.4 该行；config 的叶子键不得出现表外子键 ⇒ 不用字典、用位置化数列，次序在该行与
+        # `config.yaml` 注释里写明）。只给前两项时，两段差值不产出（不臆造）。
+        b = baseline
+        if isinstance(baseline, (list, tuple)) and len(baseline) >= 2:
+            b = {'p50_ms': baseline[0], 'p95_ms': baseline[1]}
+            if len(baseline) >= 6:
+                b.update({'capture_to_submit_p50_ms': baseline[2],
+                          'capture_to_submit_p95_ms': baseline[3],
+                          'submit_to_vblank_p50_ms': baseline[4],
+                          'submit_to_vblank_p95_ms': baseline[5]})
+        elif not isinstance(baseline, dict):
+            b = None
+        if not b:
+            rep['attribution'] = {'status': 'baseline_missing',
+                                  'reason': '`metrics.idle_link_baseline` 尚未回填 ⇒ 归因未闭合'
+                                            '（§6.5 / O19；先跑 `--scenario idle-link --breakdown`）'}
+        else:
+            def _sub(a, b2):
+                return None if (a is None or b2 is None) else round(float(a) - float(b2), 3)
+
+            att = {
+                'status': 'ok',
+                'idle_link_baseline': b,
+                'end_to_end_p95_minus_baseline_ms': _sub(rep['latency'].get('p95_ms'), b.get('p95_ms')),
+                'end_to_end_p50_minus_baseline_ms': _sub(rep['latency'].get('p50_ms'), b.get('p50_ms')),
+                'note': '差值 = 常态链路（含 TH2a/TH2b/OSD）− 空链路基线；'
+                        '两值须同口径（§6.1 / §6.5：跨口径差值不得入报告结论）',
+            }
+            # 两段差值只在基线携带两段取值时才产出（`len >= 6`）；否则**不臆造**。
+            if b.get('capture_to_submit_p95_ms') is not None:
+                att['capture_to_submit_p95_minus_baseline_ms'] = _sub(
+                    rep['latency_segments']['capture_to_submit'].get('p95_ms'),
+                    b.get('capture_to_submit_p95_ms'))
+                att['submit_to_vblank_p95_minus_baseline_ms'] = _sub(
+                    rep['latency_segments']['submit_to_vblank'].get('p95_ms'),
+                    b.get('submit_to_vblank_p95_ms'))
+            rep['attribution'] = att
+    return emit(rep, args.out)
+
+
+def scenario_idle_link(args):
+    """§6.1（v3.4「必读」段）/ `docs/measurements.md` §1（O19）的**空链路基线**入口。
+
+    §6.1 原文定范围：*"关闭增强，只跑"采集 → RGA 原图窗 → MIPI 显示"，实测 P50/P95 入 config"*。
+    本轮按字面口径实现（`main.py --idle-link`，**不是 config 键**）：
+      · 关 TH2a（不 `request`）/ 关 TH2b（不 `apply_window`）/ 关 OSD（`with_osd=False`）
+      · 保留 TH1 采集与 lease、RGA 原图窗、画布合成、DRM pageflip、`seq` 回填配对
+    复现命令 = `bench.py --scenario idle-link --breakdown`（§13「端到端延迟」行与 `docs/measurements.md`
+    §1 均指定）；**≥300 帧滑窗 × 3 轮**，每轮一个独立进程（保 `stream_on_count=1`）。
+
+    **前置**：TH4 需 DRM master（先 `sudo systemctl isolate multi-user.target`）。
+    判定（O19）：本报告 `baseline_candidate.p95_ms` ≥ 60 ms ⇒ 自动触发 §13 重议（结论须在 M2 出口前）；
+    < 60 ms ⇒ 登记「不触发」并关闭 O19。
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, repo_root)
+    rounds = max(1, int(args.rounds))
+    # **（v3.86 追加 95）** 同 `realtime`：判定窗长缺省 = `metrics.window_frames`（键空即报错）
+    mk = metrics_keys(args)
+    frames = int(args.frames) or int(mk['window_frames'])
+    per = []
+    for r in range(rounds):
+        tmp = os.path.join(tempfile.gettempdir(), f'bench_idle_r{r + 1}.json')
+        cmd = [sys.executable, os.path.join(repo_root, 'main.py'), '--idle-link',
+               '--frames', str(frames), '--report-json', tmp]
+        if args.config:
+            cmd += ['--config', args.config]
+        proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
+        if proc.returncode != 0 or not os.path.exists(tmp):
+            rep = base_report(args, 'idle-link', 'frame')
+            rep.update({'status': 'round_failed', 'round': r + 1, 'rc': proc.returncode,
+                        'cmd': cmd, 'stdout_tail': proc.stdout.strip()[-1500:],
+                        'stderr_tail': proc.stderr.strip()[-1500:],
+                        'reason': 'TH4 取 DRM master 失败（先 `sudo systemctl isolate multi-user.target`）'
+                                  '或链路启动失败'})
+            return emit(rep, args.out)
+        with open(tmp) as f:
+            per.append(json.load(f))
+
+    def col(key):
+        return [p.get(key) for p in per]
+
+    def med(vals):
+        v = sorted(x for x in vals if x is not None)
+        return v[len(v) // 2] if v else None
+
+    if any(not p.get('idle_link') for p in per):
+        raise SystemExit('idle-link 场景要求按空链路口径运行（`--idle-link`）——'
+                         '报告未标 `idle_link=true`，禁止混入常态轮（§6.1 口径不可混填）')
+
+    lat = [x for p in per for x in (p.get('lat_all_ms') or [])]
+    lat_app = [x for p in per for x in (p.get('lat_app_all_ms') or [])]
+    lat_sub = [x for p in per for x in (p.get('lat_submit_all_ms') or [])]
+    frames_all = sum(int(p.get('frames') or 0) for p in per)
+    flips_all = sum(int(p.get('flips') or 0) for p in per)
+    paired_all = sum(int(p.get('paired') or 0) for p in per)
+    end_to_end = window_stats_ms(lat)
+    seg_app = window_stats_ms(lat_app)
+    seg_sub = window_stats_ms(lat_sub)
+    # O19 的触发判据用**本轮实测**（不是 config 里的既有值）：取三轮端到端 P95 的中位。
+    p95_med = med(col('lat_p95_ms'))
+    rep = base_report(args, 'idle-link', 'frame')
+    rep.update({
+        'status': 'ok',
+        'entry': 'bench.py --scenario idle-link --breakdown'
+                 '（每轮一个独立进程跑 `main.py --idle-link --report-json`）',
+        'link': 'idle（关 TH2a / TH2b / OSD；保留 采集 → RGA 原图窗 → 画布合成 → pageflip，'
+                'TH5 HDMI 镜像同构保留——它不是"增强"成本）',
+        'rounds': rounds, 'frames_per_round': frames,
+        'latency': end_to_end,
+        'latency_segments': {'capture_to_submit': seg_app, 'submit_to_vblank': seg_sub},
+        'fps': {'per_round': col('fps_active'), 'median': med(col('fps_active')),
+                'steady_per_round': col('fps_steady'), 'steady_median': med(col('fps_steady')),
+                'frames_total': frames_all,
+                'note': '空链路轮的 fps **不是** §13「实时帧率」的判据对象（该判据针对常态链路）；'
+                        '仅作口径随行的旁证'},
+        'pairing_rate': paired_all / max(1, flips_all), 'paired_flips': paired_all,
+        'seq_coverage': {'flips': flips_all, 'paired': paired_all,
+                         'unpaired': flips_all - paired_all},
+        'discarded_frames': {
+            'flip_skipped': sum(int(p['counters'].get('flip_skipped', 0)) for p in per),
+            'unpaired': flips_all - paired_all,
+            'dropped_stale': sum(int(p['counters'].get('dropped_stale', 0)) for p in per),
+            'lease_timeouts': sum(int(p['counters'].get('lease_timeouts', 0)) for p in per)},
+        'panel_refresh_ms': med(col('panel_refresh_ms')),
+        # **O19 登记用的候选值**：`metrics.idle_link_baseline` 由它回填（两段 + 端到端 + 条件随行）。
+        'baseline_candidate': {
+            'p50_ms': end_to_end.get('p50_ms'), 'p95_ms': end_to_end.get('p95_ms'),
+            'n': end_to_end.get('n'),
+            'capture_to_submit_p50_ms': seg_app.get('p50_ms'),
+            'capture_to_submit_p95_ms': seg_app.get('p95_ms'),
+            'submit_to_vblank_p50_ms': seg_sub.get('p50_ms'),
+            'submit_to_vblank_p95_ms': seg_sub.get('p95_ms'),
+            'per_round_p95_ms': col('lat_p95_ms'), 'per_round_p50_ms': col('lat_p50_ms'),
+            'panel_refresh_ms': med(col('panel_refresh_ms')),
+            'timestamp_source': 'EOF（§6.5：驱动只给 EOF ⇒ 本基线为 EOF→vblank 口径；'
+                                '`metrics.timestamp_source` 定稿属 M1 十键，本场景不擅自定稿）',
+            'rounds': rounds, 'frames_per_round': frames,
+        },
+        # O19 的**触发判据**就地判定（阈值 60 ms = §13 上限 80 ms 的 75%，见 §13 / measurements §1）。
+        'o19_trigger': {'threshold_p95_ms': 60.0, 'measured_median_p95_ms': p95_med,
+                        'reopen_required': None if p95_med is None else (p95_med >= 60.0)},
+        'idle_link_baseline': per[0].get('idle_link_baseline'),
+        'rounds_detail': [{'round': i + 1, 'fps_active': p.get('fps_active'),
+                           'boot_s': p.get('boot_s'), 'wall_s': p.get('wall_s'),
+                           'frames': p.get('frames'), 'flips': p.get('flips'),
+                           'lat_p50_ms': p.get('lat_p50_ms'), 'lat_p95_ms': p.get('lat_p95_ms'),
+                           'lat_app_p50_ms': p.get('lat_app_p50_ms'),
+                           'lat_app_p95_ms': p.get('lat_app_p95_ms'),
+                           'lat_submit_p50_ms': p.get('lat_submit_p50_ms'),
+                           'pairing_rate': p.get('pairing_rate'),
+                           'stream_on_count': p.get('stream_on_count'),
+                           'estimates': (p.get('counters') or {}).get('estimates')}
+                          for i, p in enumerate(per)],
+        'notes': ['口径来源 = §6.1 的 v3.4「必读」段（*关闭增强，只跑"采集 → RGA 原图窗 → MIPI 显示"*）'
+                  '与 `docs/measurements.md` §1（O19）；**本口径不得与常态轮混填**',
+                  '§6.5：时钟只用 `mono_ns`；配对按 `seq` 回填；延迟两段随报告给出；'
+                  '≥300 帧滑窗 × 3 轮（每轮一个独立进程 ⇒ `stream_on_count` 恒为 1）',
+                  'O19 判定：`o19_trigger` —— P95 ≥ 60 ms 则自动触发 §13 重议（结论须在 M2 出口前），'
+                  '否则登记「不触发」并关闭 O19；回填落点 = `config.yaml` 的 `metrics.idle_link_baseline`'
+                  ' + `docs/measurements.md` §1 三列',
+                  '`counters.estimates` 应恒为 0（空链路不跑 TH2a）；非 0 即口径被破，须先查因',
+                  '计量四键（v3.86 追加 95）：判定窗长 = `metrics.window_frames`（键值唯一来源）'],
+        **policy_block(per, mk),
+    })
     return emit(rep, args.out)
 
 
@@ -666,12 +918,32 @@ def main():
     p.add_argument('--rounds', type=int, default=3,
                    help='realtime 场景的轮数（§13 复现方式 = ≥300 帧滑窗 × **3 轮**；每轮独立进程）')
     p.add_argument('--frames', type=int, default=0,
-                   help='hq / realtime 场景的每轮帧数（0 = hq 注入触发跑完即收尾 / realtime 取 300）')
+                   help='hq / realtime 场景的每轮帧数（0 = hq 注入触发跑完即收尾 / realtime 与 idle-link '
+                        '取 `metrics.window_frames`——§6.5 判定窗下界，键值唯一来源）')
     p.add_argument('--trigger-interval-s', type=float, default=15.0,
                    help='hq 场景的触发注入间隔（秒；须 ≥ HQ 单次耗时）')
     p.add_argument('--dump-canvas-dir', default='',
                    help='hq 场景导图目录（链路原样 PNG；缺省 + `--capture-mipi` 时落 reports/hq_path_canvas）')
     p.add_argument('--breakdown', action='store_true', help='延迟分两段上报（§6.5）')
+    # **[验证用钩子] §8.1 ①-2 的子项拆分（v3.86 追加 96）** —— 透传到 `main.py`（**非 config 键**）。
+    # 变体约定（`docs/evidence/subsplit-attribution.md`）：
+    #   V0 = `--no-est --no-apply --no-osd`（应与既有 `idle-link` 一致，作交叉校验）
+    #   V1 = `--no-apply --no-osd`（只 TH2a）/ V2 = `--est-first N --no-osd` + `--skip-first N`（只 TH2b）
+    #   V3 = `--no-osd`（TH2a + TH2b）/ V4 = 无（全开）
+    p.add_argument('--no-est', action='store_true', help='V*：透传 main.py（不请求估计）')
+    p.add_argument('--est-first', type=int, default=0, help='V*：只前 N 帧请求估计，之后冻结场')
+    p.add_argument('--no-apply', action='store_true', help='V*：透传 main.py（跳过 TH2b 应用）')
+    p.add_argument('--no-osd', action='store_true', help='V*：透传 main.py（OSD 不初始化）')
+    # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`--osd-status-only` 只画状态行（去两图）；
+    # `--osd-no-stats` 连统计也不做。用于把 OSD 的 ①-2 增量拆成「图示绘制」与「统计」。
+    p.add_argument('--osd-status-only', action='store_true', help='V*：OSD 只画状态行（去两图与图名）')
+    p.add_argument('--osd-no-stats', action='store_true', help='V*：OSD 连统计也不做（均值保持初值）')
+    p.add_argument('--skip-first', type=int, default=0,
+                   help='V*：每轮**剔除前 N 帧样本**后再统计（与 `--est-first N` 配对；'
+                        '两口径都随报告给出，剔除属**事先声明**的预热前缀，非事后筛选）')
+    p.add_argument('--baseline', action='store_true',
+                   help='随报告给出「端到端 − `metrics.idle_link_baseline`」的归因差值'
+                        '（§13「端到端延迟」行的复现命令；基线缺失时只标注）')
     p.add_argument('--seq-log', action='store_true', help='记 seq 级明细（HQ 响应）')
     p.add_argument('--capture-mipi', action='store_true', help='抓 MIPI 截图（常态 + HQ）')
     p.add_argument('--curve-diff-fp16', action='store_true', help='曲线场逐像素闸口（O23）')
@@ -706,6 +978,8 @@ def main():
         return scenario_hq(args)
     if args.scenario == 'realtime':
         return scenario_realtime(args)
+    if args.scenario == 'idle-link':
+        return scenario_idle_link(args)
     if args.scenario in CHAIN_SCENARIOS:
         return scenario_chain(args)
     if args.scenario == 'model-infer':

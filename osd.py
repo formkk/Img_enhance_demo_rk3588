@@ -248,8 +248,14 @@ class Stats:
 class OsdRenderer:
     """把 7 字段 + 两块图示 + 2 个按钮画到画布缓冲上（§3.4）。"""
 
-    def __init__(self, cfg: Any, canvas_w: int, canvas_h: int):
+    def __init__(self, cfg: Any, canvas_w: int, canvas_h: int,
+                 status_only: bool = False, no_stats: bool = False):
         self.cfg = cfg
+        # **（v3.86 追加 97）①-2 的 OSD 瘦身钩子（非 config 键）**：
+        #   · `status_only` = **只画状态行**（跳 `_plot_area`：曲线图 + 直方图 + 图名位图都不画）；
+        #   · `no_stats` = 连统计也不做（`update_stats()` 直接返回）⇒ 状态行的均值字段保持初值。
+        self.status_only = bool(status_only)
+        self.no_stats = bool(no_stats)
         self.cw, self.ch = canvas_w, canvas_h
         # **几何单源（§15 O58 就地裁定）**：OSD 区 / 状态行 / 图示区 / 按钮区 rect 全部取自
         # `curve_estim.resolve_geometry(cfg)`，并与本类收到的画布尺寸交叉核对。
@@ -298,7 +304,9 @@ class OsdRenderer:
         _n.osd.fill_rect(canvas, self.cw, self.ch, 0, self.osd_y, self.cw, self.osd_h, C_BG)
         _n.osd.fill_rect(canvas, self.cw, self.ch, 0, self.btn_y, self.cw, self.btn_h, C_BG)
         self._status_row(canvas, state)
-        self._plot_area(canvas, state)
+        # **（v3.86 追加 97）** `status_only` ⇒ 跳过图示区（曲线图 + 直方图 + 图名位图）
+        if not self.status_only:
+            self._plot_area(canvas, state)
         self._buttons(canvas)
 
     def _zh_status(self, canvas, x: int, y: int, name: str) -> int:
@@ -514,6 +522,10 @@ class OsdRenderer:
         _n.osd.fill_rect(canvas, self.cw, self.ch, x - 1, y - 1, 3, 3, C_CURSOR_CORE)
 
     def update_stats(self, raw, enh, w: int, h: int) -> bool:
+        # **（v3.86 追加 97）** `no_stats` ⇒ 连统计都不做（状态行均值字段保持初值；
+        # 只用于"OSD 瘦身"实验的第二级，不得作为交付路径）
+        if self.no_stats:
+            return False
         return self.stats.maybe_update(raw, enh, w, h)
 
 

@@ -83,6 +83,14 @@ int      v4l2_stream_on_count(void);   /* 契约：恒为 0 或 1 */
 /* 计数：lease 与丢弃（进 bench.py 报告；**不得静默丢弃**） */
 void v4l2_counters(uint64_t* frames, uint64_t* dropped_stale, uint64_t* lease_timeouts,
                    uint32_t* outstanding_leases);
+/* **（v3.86 裁定 O24-前 2 类）** 硬错误计数 = `DQBUF` 返回**非 `EAGAIN`** 错误的次数
+   （判定量之一：自上次成功取帧起连续 ≥15 次即判掉流 ⇒ 见 §10.5 矩阵与 `main.py`）。 */
+uint64_t v4l2_error_count(void);
+/* **[验证用钩子]** 注入 `n` 次"下一次 `acquire` 直接失败"（**仅 §15 O24 的确定性注入**；
+   **不改变正常路径语义**、**不是 config 键**、不新增返回码——返回的仍是既有 `E_V4L2` / `E_TIMEOUT`）。
+   `mode` = 0：「硬错误」（`v4l2_errors++`，返回 `E_V4L2`）；1：「无帧超时」（`lease_timeouts++`，
+   返回 `E_TIMEOUT`）⇒ 两条判据分支（连续硬错误 ≥15 / 连续无帧 ≥1 s）可分别确定性验证。 */
+void v4l2_inject_error(int n, int mode);
 /* 时间戳源发生变化的次数（§6.5：仅记录，不停机、该窗口指标作废） */
 uint64_t v4l2_ts_source_changes(void);
 int32_t  v4l2_current_ts_source(void);

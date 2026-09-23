@@ -100,6 +100,8 @@ py::dict capture_counters() {
     d["frames"] = frames;
     d["dropped_stale"] = dropped;
     d["lease_timeouts"] = timeouts;
+    /* **（v3.86 裁定 O24-前 2 类）** 硬错误计数（掉流/接收错误）——`main.py` 的判据量之一 */
+    d["v4l2_errors"] = v4l2_error_count();
     d["outstanding_leases"] = outstanding;
     d["stream_on_count"] = v4l2_stream_on_count();
     d["ts_source_changes"] = v4l2_ts_source_changes();
@@ -197,6 +199,9 @@ PYBIND11_MODULE(_starlight_native, m) {
     cap.def("stream_off", &v4l2_stream_off, "仅进程终止路径（软复位不得调用）");
     cap.def("deinit", &v4l2_deinit);
     cap.def("counters", &capture_counters);
+    /* **[验证用钩子]** §15 O24 的确定性注入（注入 n 次"acquire 返回硬错误"；默认 0 = 关闭） */
+    cap.def("inject_error", &v4l2_inject_error, py::arg("n"), py::arg("mode") = 0,
+            "注入 n 次 acquire 失败（mode 0=硬错误 / 1=无帧超时；仅 O24 验证用）");
     cap.def("buffer_count", &v4l2_buffer_count);
     cap.def("buffer", [](int i) { return wrap_va(v4l2_buffer_va(i), v4l2_buffer_len(i), true); },
             py::arg("index"), "V4L2 缓冲（只读，NV12）");

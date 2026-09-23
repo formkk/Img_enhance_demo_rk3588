@@ -1,0 +1,222 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "hq",
+  "scope": "frame",
+  "started_utc": "2026-09-22T14:55:30+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": null,
+    "precision": null,
+    "config_snapshot_hash": null
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      0.08,
+      0.51,
+      1.23
+    ]
+  },
+  "soc_temp_c": 49.0,
+  "notes": [
+    "判据 = §13「HQ 响应」行：触发→MIPI OSD ≤50 ms；触发→全屏 HQ 视图出图 ≤12 s（v3.58 裁定 O37 重排、v3.85 裁定 O83 语义改「两屏同时」）；判定 = 实现者",
+    "O90：HQ 期间实时链冻结 ⇒ fps 取**活动窗口径**（冻结窗已从分母排除）；`hq_flips_delta` 随 O90 作废，改记 `freeze_window`",
+    "§6.5：时钟只用 `mono_ns`；出图时点 = pageflip 的 vblank；配对按 `seq` 回填，禁止时间就近配对",
+    "本场景报告随带配对率与丢弃帧数；`--seq-log` 给出每周期 seq 级明细",
+    "触发→OSD / 全屏 的 P95 判据见 trigger_response.pass",
+    "`metrics.idle_link_baseline` 缺失 ⇒ 超标归因不可闭合（§6.5）"
+  ],
+  "entry": "bench.py --scenario hq --seq-log（同进程驱动 main.Demo；链路 = TH1…TH5）",
+  "hq_active_shape": "960x544",
+  "triggers_requested": 10,
+  "dump_canvas_dir": null,
+  "status": "ok",
+  "cycles_completed": 2,
+  "trigger_response": {
+    "osd": {
+      "n": 2,
+      "p50_ms": 14.191302,
+      "p95_ms": 16.321495,
+      "max_ms": 16.321495,
+      "mean_ms": 15.2563985
+    },
+    "fullscreen_mipi": {
+      "n": 2,
+      "p50_ms": 8005.674627,
+      "p95_ms": 8545.09267,
+      "max_ms": 8545.09267,
+      "mean_ms": 8275.3836485
+    },
+    "fullscreen_hdmi": {
+      "n": 2,
+      "p50_ms": 8012.014664,
+      "p95_ms": 8562.833808,
+      "max_ms": 8562.833808,
+      "mean_ms": 8287.424235999999
+    },
+    "budget": {
+      "osd_ms": 50.0,
+      "fullscreen_ms": 12000.0
+    },
+    "pass": {
+      "osd_p95_le_50ms": true,
+      "fullscreen_mipi_p95_le_12s": true
+    },
+    "exit_reasons": {
+      "timeout": 2
+    }
+  },
+  "seq_coverage": {
+    "triggers": 2,
+    "osd_flip_seq_pair_ok": 2,
+    "fullscreen_mipi_seq_pair_ok": 2
+  },
+  "pairing_rate": 1.0,
+  "paired_flips": 600,
+  "discarded_frames": {
+    "flip_skipped": 0,
+    "unpaired": 0,
+    "dropped_stale": 0
+  },
+  "fps": {
+    "frames": 600,
+    "wall_s": 119.01086779600155,
+    "frozen_s": 76.551040138,
+    "active_window_fps": 14.131004130134055,
+    "floor_ref": 14.99
+  },
+  "latency": {
+    "n": 600,
+    "p50_ms": 57.844576,
+    "p95_ms": 122.016003,
+    "max_ms": 76717.303885,
+    "mean_ms": 581.2194111566666
+  },
+  "latency_segments": {
+    "capture_to_submit": {
+      "n": 600,
+      "p50_ms": 49.70604,
+      "p95_ms": 117.156628,
+      "max_ms": 76701.799442,
+      "mean_ms": 572.5110391766666
+    },
+    "submit_to_vblank": {
+      "n": 600,
+      "p50_ms": 8.809318,
+      "p95_ms": 16.297078,
+      "max_ms": 17.219048,
+      "mean_ms": 8.70837198
+    }
+  },
+  "func_timing": {
+    "hq_last_run_ns": 7943526519,
+    "hq_runs": 2,
+    "hq_core_mask_ret": 0,
+    "hdmi_mirror_rga_last_ns": 2254612,
+    "hdmi_mirror_rga": {
+      "n": 602,
+      "p50_ms": 1.915107,
+      "p90_ms": 2.093609,
+      "max_ms": 4.99427
+    },
+    "note": "本场景只含 TH3 推理与 TH5 放大两处函数级打点；RGA 合成 / OSD / 曲线应用的逐函数耗时见 realtime / osd-micro 场景"
+  },
+  "f_est": 7.671690230462275,
+  "alpha": 0.4642,
+  "discarded_triggers": 8,
+  "freeze_window": {
+    "cycles": 2,
+    "total_ms": 76551.161765,
+    "per_cycle_ms": [
+      38546.154401,
+      38005.007364
+    ],
+    "marker": "display_mipi/freeze_enter|freeze_exit",
+    "excluded_from": [
+      "fps",
+      "latency",
+      "pairing"
+    ]
+  },
+  "panel_refresh_ms": 16.666666666666668,
+  "idle_link_baseline": null,
+  "counters": {
+    "frames": 600,
+    "estimates": 300,
+    "flips": 600,
+    "flip_skipped": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0,
+    "discarded_triggers": 8,
+    "pageflip_fail": 0,
+    "hq_started": 2,
+    "hq_done": 2,
+    "freeze_enter": 2,
+    "freeze_exit": 2,
+    "freeze_flips": 2,
+    "fullscreen_enter": 2,
+    "fullscreen_exit": 2
+  },
+  "th3_info": {
+    "model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+    "shape": "960x544",
+    "core_mask_ret": 0,
+    "runs": 2,
+    "last_run_ns": 7943526519,
+    "last_rc": 0,
+    "busy": false,
+    "slot_full": false,
+    "thread_alive": true
+  },
+  "th5_info": {
+    "slot": 1,
+    "configured": true,
+    "connector_id": 207,
+    "crtc_id": 70,
+    "mode_name": "1920x1080",
+    "hdisplay": 1920,
+    "vdisplay": 1080,
+    "vrefresh": 60,
+    "canvas_stride": 5760,
+    "canvas_count": 2,
+    "flip_count": 603,
+    "flip_skipped": 0,
+    "last_submit_ns": 46696202592073,
+    "last_flip_ns": 46696214648723,
+    "last_flip_seq": 600,
+    "connector_status": 1,
+    "drm_ok": true,
+    "idle_drawn": true,
+    "flips": 603,
+    "flip_skipped_slot": 0,
+    "last_scale_ns": 2254612,
+    "scale": {
+      "n": 602,
+      "p50_ms": 1.915107,
+      "p90_ms": 2.093609,
+      "max_ms": 4.99427
+    }
+  }
+}

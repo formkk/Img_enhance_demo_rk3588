@@ -19,7 +19,13 @@
 
 | 登记项 | 采集方式 | 判定阈值 | 回填时点 | 结论值 | 依据报告路径 | 复检时点 |
 |---|---|---|---|---|---|---|
-| `metrics.idle_link_baseline` 的 P50 / P95（**分两段**：采集→提交、提交→vblank） | `bench.py --scenario idle-link --breakdown`；**≥300 帧滑窗 × 3 轮**；同口径另跑常态链路一次作对照 | **P95 ≥ 60 ms（= §13 上限 80 ms 的 75%）→ 自动触发 §13「端到端延迟」指标重议**，结论须在 **M2 出口前**给出；**P95 < 60 ms → 登记为"不触发"并关闭本项** | M1 | | | M1 后（含 M1 权重变更、面板刷新率或 mode timing 变更） |
+| `metrics.idle_link_baseline` 的 P50 / P95（**分两段**：采集→提交、提交→vblank） | `bench.py --scenario idle-link --breakdown`；**≥300 帧滑窗 × 3 轮**；同口径另跑常态链路一次作对照 | **P95 ≥ 60 ms（= §13 上限 80 ms 的 75%）→ 自动触发 §13「端到端延迟」指标重议**，结论须在 **M2 出口前**给出；**P95 < 60 ms → 登记为"不触发"并关闭本项** | M1 | **端到端 P50 17.538 / P95 25.670 ms（n=900）**；两段 = 采集→提交 P50 9.165 / P95 9.860、提交→vblank P50 8.768 / P95 16.222（≈ 面板周期 16.667）；逐轮 P95 = 25.898 / 25.314 / 25.671 ⇒ **中位 25.671 < 60 ⇒ 判定「不触发」、本项关闭**（§13 该行维持 80 ms，应用侧余量 54.33 ms） | `docs/evidence/reports/O19/idle_link_300x3.json`（空链路，3 轮 × 300 帧；配对率 1.0000 / 丢弃 0 / `stream_on_count=1` / `counters.estimates=0`）；对照 = `docs/evidence/reports/M2-gate/rt_baseline_300x3.json`（常态 + `--baseline` 归因）；证据档 = `docs/evidence/O19-idle-link-baseline.md` | 面板刷新率 / mode timing / `camera.vblank_lines` 变更后；M1 权重变更（O11 全量重跑）后 |
+
+> **（v3.86 追加 68）口径（不得与常态轮混填）**：「空链路」= §6.1 的 v3.4「必读」段原文的**字面口径**——**关 TH2a（不 `request`）/ 关 TH2b（不 `apply_window`）/ 关 OSD（`with_osd=False`）**，保留 TH1 采集、RGA 原图窗、画布合成、DRM pageflip、`seq` 回填配对、TH5 HDMI 镜像（同构保留，它不是"增强"成本）。实现载体 = `main.py --idle-link`（**计量钩子，非 config 键**）；落盘形态 = `config.yaml` 的 `metrics.idle_link_baseline` = **位置化数列** `[端到端 P50, 端到端 P95, 采集→提交 P50, 采集→提交 P95, 提交→vblank P50, 提交→vblank P95]`（ms，次序在该行注释与 §10.4 写明）。**时序口径 = `mono_ns`；时间戳源 = `EOF`**（§6.5）。
+>
+> **（v3.86 追加 68）归因（O76 的闭合依据，见主基准 §15）**：常态轮（同条件、同 3 轮 × 300 帧）端到端 P50 52.376 / P95 106.161 ms、采集→提交 P50 43.668 / P95 97.623、提交→vblank P50 8.318 / P95 16.170 ⇒ **差值全部落在应用侧（+87.76 ms P95）**，**显示排队段与基线无差异（−0.05 ms ≈ 0）**，且两侧零丢弃、配对率 1.0000。
+>
+> **（v3.86 追加 68）随行发现（登记，不属本行阈值）**：同轮实测 **V4L2 帧周期 p50 = 66.682 ms（= 14.997 fps，零抖动，120 帧独立测量）**，而报告的 `fps_steady` 仅 14.17–14.40 ⇒ 帧率报告的**分母含退出序 `shutdown()`**（两点法残差 60 帧 0.821 s / 360 帧 1.007 s / 300 帧 0.96–1.08 s，**不随 N 增长**）。该口径缺口登记于 §15 **O97**（未决），**本行不据此改任何判据**。
 
 **重议输出要求**（不得只给结论）：① 新的延迟上限建议值或维持 80 ms 的理由；② 两段分解数据；③ 若维持 80 ms，须给出应用侧余量（80 ms − 基线 P95 − 应用侧 P95）。
 
@@ -49,8 +55,8 @@
 
 | 登记项（故障类别） | 采集方式（注入 / 观测） | 判定阈值 | 回填时点 | 结论值（动作） | 依据报告路径 | 复检时点 |
 |---|---|---|---|---|---|---|
-| CSI / V4L2 掉流与接收错误（`E_V4L2`） | 运行中注入掉流（如 `v4l2-ctl` 停流、断开/复位传感器链路），并观测 `capture` 事件与 RSM 迁移 | 须定出：是否重试 / 重试次数 / 是否迁移 `MIPI_PREVIEW_ONLY` / 是否停机 | M2 | | | 内核或 BSP 版本变更后 |
-| 传感器 I2C / DMA 错误（`E_V4L2`） | 读取内核日志（`dmesg`）与驱动返回码，构造/复现错误路径 | 同上（须明确与上一类的处置差异） | M2 | | | 同上 |
+| CSI / V4L2 掉流与接收错误（`E_V4L2`） | 运行中注入掉流（如 `v4l2-ctl` 停流、断开/复位传感器链路），并观测 `capture` 事件与 RSM 迁移。**（v3.86 追加 72：本轮载体 = 确定性钩子** `main.py --inject-v4l2-error N --inject-v4l2-at M`（mode=`err`），**真链路注入留待用户在场另做一次**） | 须定出：是否重试 / 重试次数 / **是否迁移 RSM**（`MIPI_PREVIEW_ONLY` 已由 v3.85 裁定 O80 作废 ⇒ 该问的对象改为"迁 `FAULT_EXIT` 还是软复位"）/ 是否停机 | M2 | **（v3.86 追加 72）** 判定 = **连续无成功取帧 ≥1 s（`mono_ns`；只统计 `RUN_DEMO` 且非冻结/非全屏期）或 `counters.v4l2_errors` 自上次成功取帧起连续 ≥15 次**；**不重试**（O26 禁停流重开 ⇒ 进程内无自愈手段，阈值内只容忍）；**迁 `RUN_DEMO → FAULT_EXIT`**（不迁已作废的 `MIPI_PREVIEW_ONLY`、不走软复位）；**停机**（退出码 ≠ 0 ⇒ systemd `Restart=on-failure`）。实测：注入 20 次硬错误 ⇒ **连续 15 次即越阈**、退出码 **1**、`v4l2_errors=15`/`lease_timeouts=0`、`fault={reason:'v4l2_stream_lost',exit_code:1}` | `docs/evidence/reports/O24/o24_err.json`（+ `.log`）；**真链路注入（v3.86 追加 75）= `docs/evidence/reports/O24/o24_realinject_{journal,state}.txt`**（`media-ctl` 断 `m00_b_imx415 → rockchip-csi2-dphy0`；每周期 ~1.5 s 由**连续无帧分支**越阈、`exit_code=1`、**5 次重启后 `Start request repeated too quickly` ⇒ `failed`**；恢复已验证）；证据档 = `docs/evidence/O24-abnormal-recovery.md` | 内核或 BSP 版本变更后（§10.5 矩阵该行变更时同步） |
+| 传感器 I2C / DMA 错误（`E_V4L2`） | 读取内核日志（`dmesg`）与驱动返回码，构造/复现错误路径 | 同上（**须明确与上一类的处置差异**——本轮裁定：**处置无差异，差异仅在 `reason` 归因**） | M2 | **（v3.86 追加 72）** 判定与动作**与上一类完全相同**（用户空间经 V4L2 API 无法区分）；**唯一差异 = 停机前只读、有界（≤64 KiB）扫描 `dmesg` 尾部**：同一行**同时**命中设备标识（`imx415`/`i2c`/`rkisp`）与错误关键词、**且**该行 `[<uptime_s>]` ≥ 最后一次成功取帧时刻 ⇒ `reason=sensor_i2c_dma`，否则回落 `v4l2_stream_lost`。实测：同一函数在"无时间下界"时命中尾部 `imx415 … error` 行返回 `sensor_i2c_dma`、"加时间下界"时返回 `v4l2_stream_lost` ⇒ 两分支均通；**无帧分支**实测（`mode=noframe`）⇒ 1 s 内 `lease_timeouts=186`（退避生效、无忙等）、退出码 **1** | `docs/evidence/reports/O24/o24_noframe.json`（+ `.log`）；真链路注入同上一行；证据档同上 §1/§3 | 同上 |
 | ~~存图写盘失败（磁盘满 / 权限，`E_IO`）~~ **（v3.86 裁定 O102：随「存图」整体取消而移出）** | 填满 `storage.dir` 所在分区（`fallocate`）后触发存图；另测权限拒绝 | 须定出：是否淘汰最旧组重试 / 是否计入失败计数 / 是否告警上 OSD | M2 | | | 存储介质变更后 |
 | OOM（内存不足） | 以 cgroup 内存上限或内存压力工具构造；观测 TH1~TH5 存活与 OOM killer 目标 | 须定出：是否降级（停 TH2a / 降档）或主动退出，并给出判定依据 | M4 | | | 内存预算（§6.3）变更后 |
 

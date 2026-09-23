@@ -1,0 +1,15 @@
+9月 23 00:33:55 lubancat systemd[1]: starlight-demo.service: Failed with result 'exit-code'.
+9月 23 00:34:02 lubancat systemd[1]: starlight-demo.service: Failed with result 'exit-code'.
+9月 23 00:34:09 lubancat systemd[1]: starlight-demo.service: Failed with result 'exit-code'.
+9月 23 00:34:16 lubancat systemd[1]: starlight-demo.service: Failed with result 'exit-code'.
+9月 23 00:34:23 lubancat systemd[1]: starlight-demo.service: Failed with result 'exit-code'.
+9月 23 00:34:25 lubancat systemd[1]: starlight-demo.service: Start request repeated too quickly.
+9月 23 00:34:25 lubancat systemd[1]: starlight-demo.service: Failed with result 'exit-code'.
+=== 当前单元 + 帧推进 ===
+Result=success
+NRestarts=0
+ActiveState=active
+9月 23 00:35:24 lubancat python3[116406]: [sensor_lock] /dev/v4l-subdev2 vertical_blanking = 7906（回读一致）⇒ VMAX = 8986 行
+9月 23 00:35:24 lubancat python3[116406]: 2026-09-22T16:35:24.198Z 52571593763743 INFO main rsm_transition from=BOOT_CHECK to=RUN_DEMO reason=boot_ok rsm=RUN_DEMO fsm=IDLE
+		<- "m00_b_imx415 1-001a":0 [ENABLED]
+	pad1: Source

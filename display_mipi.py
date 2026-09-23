@@ -121,7 +121,8 @@ class DisplayMipi:
         self._last_idx = 0            # 最近一次已提交翻页的画布缓冲索引（供 TH5 镜像读源）
         self._fs_seq = 0              # 全屏态已绘制的 seq（内容静态：同一 seq 不重复贴图）
 
-    def init(self, with_osd: bool = True) -> int:
+    def init(self, with_osd: bool = True, osd_status_only: bool = False,
+             osd_no_stats: bool = False) -> int:
         # **几何单源（v3.86 就地裁定 O58）**：画布 / 两窗 / OSD 区 / 按钮区 rect 一律取自
         # `curve_estim.resolve_geometry(cfg)`；本模块**不再持有任何几何常量**。
         self.geom = curve_mod.resolve_geometry(self.cfg)
@@ -148,7 +149,8 @@ class DisplayMipi:
             return rc
         self._inited = True
         if with_osd:
-            self.osd = osd_mod.OsdRenderer(self.cfg, self.canvas_w, self.canvas_h)
+            self.osd = osd_mod.OsdRenderer(self.cfg, self.canvas_w, self.canvas_h,
+                                           status_only=osd_status_only, no_stats=osd_no_stats)
         return 0
 
     def shutdown(self) -> None:

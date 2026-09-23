@@ -1,0 +1,219 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "realtime",
+  "scope": "frame",
+  "started_utc": "2026-09-22T15:41:13+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": "ca8855b90df9a80fa4195a831f33d3476b1964f787eb70602797c773067f3b84",
+    "curve_level": "480x272",
+    "precision": "fp16",
+    "config_snapshot_hash": "2fe4800b084b5bc308e2260c89e084bb9437b08820107c9667cabdee123c4fc6"
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      1.9,
+      1.89,
+      1.8
+    ]
+  },
+  "soc_temp_c": 50.846,
+  "notes": [
+    "判据 = §13「实时帧率」行（无 HQ：≥14.99 FPS，O89/O93）与「端到端延迟」行（采集→MIPI 显示 P95 ≤80 ms，两段分解随报告给出）；判定 = 实现者 / 验收人",
+    "§6.5：时钟只用 `mono_ns`；配对按 `seq` 回填；≥300 帧滑窗 × 3 轮（每轮一个独立进程 ⇒ `stream_on_count` 恒为 1）",
+    "杠杆：HDMI 镜像耗时（§6.1 O85 行 ≤3 ms）取 `func_timing.hdmi_mirror_rga` 的 n / P50 / P90"
+  ],
+  "status": "ok",
+  "entry": "bench.py --scenario realtime（每轮一个独立进程跑 `main.py --report-json`；链路 = TH1…TH5）",
+  "rounds": 3,
+  "frames_per_round": 300,
+  "fps": {
+    "per_round": [
+      13.416537771655914,
+      13.332639527065753,
+      13.33885286350205
+    ],
+    "median": 13.33885286350205,
+    "n": 3,
+    "frames_total": 900,
+    "floor_ref": 14.99,
+    "steady_per_round": [
+      14.173907795829509,
+      14.395317299094774,
+      14.238031923625735
+    ],
+    "steady_median": 14.238031923625735,
+    "boot_s_per_round": [
+      1.1948112579993904,
+      1.6610605809983099,
+      1.42036183700111
+    ],
+    "note": "`per_round`/`median` = 现行口径（wall 含进程启动；§11.2 回归基线同口径）；`steady_*` = 分母扣 boot 的口径（§6.5 的\"帧滑窗\"不含启动）"
+  },
+  "latency": {
+    "n": 900,
+    "p50_ms": 52.375526,
+    "p95_ms": 106.1611,
+    "max_ms": 1383.987821,
+    "mean_ms": 70.88983966666666
+  },
+  "latency_segments": {
+    "capture_to_submit": {
+      "n": 900,
+      "p50_ms": 43.667698,
+      "p95_ms": 97.62253,
+      "max_ms": 1368.313454,
+      "mean_ms": 62.31585364111111
+    },
+    "submit_to_vblank": {
+      "n": 900,
+      "p50_ms": 8.318065,
+      "p95_ms": 16.170415,
+      "max_ms": 18.474277,
+      "mean_ms": 8.573986025555556
+    }
+  },
+  "pairing_rate": 1.0,
+  "paired_flips": 900,
+  "seq_coverage": {
+    "flips": 900,
+    "paired": 900,
+    "unpaired": 0
+  },
+  "discarded_frames": {
+    "flip_skipped": 0,
+    "unpaired": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0
+  },
+  "freeze_window": {
+    "total_ms": 0.0,
+    "marker": "display_mipi/freeze_enter|freeze_exit",
+    "excluded_from": [
+      "fps",
+      "latency",
+      "pairing"
+    ],
+    "note": "本场景不注入触发 ⇒ 期望恒为 0"
+  },
+  "func_timing": {
+    "hdmi_mirror_rga": {
+      "n": 300,
+      "p50_ms": 1.915983,
+      "p90_ms": 2.082818,
+      "max_ms": 2.389364
+    },
+    "stream_on_count": [
+      1,
+      1,
+      1
+    ],
+    "note": "本场景（无 HQ）的函数级打点只含 TH5 放大；RGA 合成 / OSD / 曲线应用见 osd-micro 等场景"
+  },
+  "f_est": 7.716784235522173,
+  "alpha": 0.4642,
+  "discarded_triggers": 0,
+  "panel_refresh_ms": 16.666666666666668,
+  "idle_link_baseline": [
+    17.538,
+    25.67,
+    9.165,
+    9.86,
+    8.768,
+    16.222
+  ],
+  "rounds_detail": [
+    {
+      "round": 1,
+      "fps_active": 13.416537771655914,
+      "fps_steady": 14.173907795829509,
+      "boot_s": 1.1948112579993904,
+      "wall_s": 22.360463265998987,
+      "frames": 300,
+      "lat_p50_ms": 49.761348,
+      "lat_p95_ms": 106.629623,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 300,
+        "p50_ms": 1.915983,
+        "p90_ms": 2.082818,
+        "max_ms": 2.389364
+      }
+    },
+    {
+      "round": 2,
+      "fps_active": 13.332639527065753,
+      "fps_steady": 14.395317299094774,
+      "boot_s": 1.6610605809983099,
+      "wall_s": 22.50117085900274,
+      "frames": 300,
+      "lat_p50_ms": 52.516403,
+      "lat_p95_ms": 102.028018,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 300,
+        "p50_ms": 1.909857,
+        "p90_ms": 2.107319,
+        "max_ms": 2.809078
+      }
+    },
+    {
+      "round": 3,
+      "fps_active": 13.33885286350205,
+      "fps_steady": 14.238031923625735,
+      "boot_s": 1.42036183700111,
+      "wall_s": 22.490689646998362,
+      "frames": 300,
+      "lat_p50_ms": 54.75918,
+      "lat_p95_ms": 115.042764,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "mirror_scale": {
+        "n": 300,
+        "p50_ms": 1.917733,
+        "p90_ms": 2.10236,
+        "max_ms": 2.431948
+      }
+    }
+  ],
+  "attribution": {
+    "status": "ok",
+    "idle_link_baseline": {
+      "p50_ms": 17.538,
+      "p95_ms": 25.67,
+      "capture_to_submit_p50_ms": 9.165,
+      "capture_to_submit_p95_ms": 9.86,
+      "submit_to_vblank_p50_ms": 8.768,
+      "submit_to_vblank_p95_ms": 16.222
+    },
+    "end_to_end_p95_minus_baseline_ms": 80.491,
+    "end_to_end_p50_minus_baseline_ms": 34.838,
+    "note": "差值 = 常态链路（含 TH2a/TH2b/OSD）− 空链路基线；两值须同口径（§6.1 / §6.5：跨口径差值不得入报告结论）",
+    "capture_to_submit_p95_minus_baseline_ms": 87.763,
+    "submit_to_vblank_p95_minus_baseline_ms": -0.052
+  }
+}

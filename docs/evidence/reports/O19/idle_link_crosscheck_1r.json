@@ -1,0 +1,153 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "idle-link",
+  "scope": "frame",
+  "started_utc": "2026-09-22T16:10:05+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": "ca8855b90df9a80fa4195a831f33d3476b1964f787eb70602797c773067f3b84",
+    "curve_level": "480x272",
+    "precision": "fp16",
+    "config_snapshot_hash": "2fe4800b084b5bc308e2260c89e084bb9437b08820107c9667cabdee123c4fc6"
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      1.79,
+      2.07,
+      2.07
+    ]
+  },
+  "soc_temp_c": 50.846,
+  "notes": [
+    "口径来源 = §6.1 的 v3.4「必读」段（*关闭增强，只跑\"采集 → RGA 原图窗 → MIPI 显示\"*）与 `docs/measurements.md` §1（O19）；**本口径不得与常态轮混填**",
+    "§6.5：时钟只用 `mono_ns`；配对按 `seq` 回填；延迟两段随报告给出；≥300 帧滑窗 × 3 轮（每轮一个独立进程 ⇒ `stream_on_count` 恒为 1）",
+    "O19 判定：`o19_trigger` —— P95 ≥ 60 ms 则自动触发 §13 重议（结论须在 M2 出口前），否则登记「不触发」并关闭 O19；回填落点 = `config.yaml` 的 `metrics.idle_link_baseline` + `docs/measurements.md` §1 三列",
+    "`counters.estimates` 应恒为 0（空链路不跑 TH2a）；非 0 即口径被破，须先查因"
+  ],
+  "status": "ok",
+  "entry": "bench.py --scenario idle-link --breakdown（每轮一个独立进程跑 `main.py --idle-link --report-json`）",
+  "link": "idle（关 TH2a / TH2b / OSD；保留 采集 → RGA 原图窗 → 画布合成 → pageflip，TH5 HDMI 镜像同构保留——它不是\"增强\"成本）",
+  "rounds": 1,
+  "frames_per_round": 300,
+  "latency": {
+    "n": 300,
+    "p50_ms": 18.314374,
+    "p95_ms": 25.649672,
+    "max_ms": 1100.798988,
+    "mean_ms": 31.389632133333333
+  },
+  "latency_segments": {
+    "capture_to_submit": {
+      "n": 300,
+      "p50_ms": 9.251476,
+      "p95_ms": 9.860531,
+      "max_ms": 1085.983553,
+      "mean_ms": 22.339370380000002
+    },
+    "submit_to_vblank": {
+      "n": 300,
+      "p50_ms": 9.374018,
+      "p95_ms": 16.407667,
+      "max_ms": 17.31039,
+      "mean_ms": 9.050261753333332
+    }
+  },
+  "fps": {
+    "per_round": [
+      13.509738400292058
+    ],
+    "median": 13.509738400292058,
+    "steady_per_round": [
+      14.432885656500373
+    ],
+    "steady_median": 14.432885656500373,
+    "frames_total": 300,
+    "note": "空链路轮的 fps **不是** §13「实时帧率」的判据对象（该判据针对常态链路）；仅作口径随行的旁证"
+  },
+  "pairing_rate": 1.0,
+  "paired_flips": 300,
+  "seq_coverage": {
+    "flips": 300,
+    "paired": 300,
+    "unpaired": 0
+  },
+  "discarded_frames": {
+    "flip_skipped": 0,
+    "unpaired": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0
+  },
+  "panel_refresh_ms": 16.666666666666668,
+  "baseline_candidate": {
+    "p50_ms": 18.314374,
+    "p95_ms": 25.649672,
+    "n": 300,
+    "capture_to_submit_p50_ms": 9.251476,
+    "capture_to_submit_p95_ms": 9.860531,
+    "submit_to_vblank_p50_ms": 9.374018,
+    "submit_to_vblank_p95_ms": 16.407667,
+    "per_round_p95_ms": [
+      25.737793
+    ],
+    "per_round_p50_ms": [
+      18.314374
+    ],
+    "panel_refresh_ms": 16.666666666666668,
+    "timestamp_source": "EOF（§6.5：驱动只给 EOF ⇒ 本基线为 EOF→vblank 口径；`metrics.timestamp_source` 定稿属 M1 十键，本场景不擅自定稿）",
+    "rounds": 1,
+    "frames_per_round": 300
+  },
+  "o19_trigger": {
+    "threshold_p95_ms": 60.0,
+    "measured_median_p95_ms": 25.737793,
+    "reopen_required": false
+  },
+  "idle_link_baseline": [
+    17.538,
+    25.67,
+    9.165,
+    9.86,
+    8.768,
+    16.222
+  ],
+  "rounds_detail": [
+    {
+      "round": 1,
+      "fps_active": 13.509738400292058,
+      "boot_s": 1.4203393770003458,
+      "wall_s": 22.206203488996834,
+      "frames": 300,
+      "flips": 300,
+      "lat_p50_ms": 18.314374,
+      "lat_p95_ms": 25.737793,
+      "lat_app_p50_ms": 9.251476,
+      "lat_app_p95_ms": 9.873704,
+      "lat_submit_p50_ms": 9.374018,
+      "pairing_rate": 1.0,
+      "stream_on_count": 1,
+      "estimates": 0
+    }
+  ]
+}

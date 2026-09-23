@@ -58,6 +58,7 @@ RSM_LEGAL = {
     RSM_FAULT_EXIT: (),
 }
 
+E_V4L2 = -1      # §5 契约 A：采集链路失败（TH1 的 init / stream_on_once 与**运行期掉流**同码）
 E_STATE = -5
 E_TIMEOUT = -6
 
@@ -268,6 +269,16 @@ class Capture:
         c["rsm"] = self.rsm
         c["fsm"] = self.fsm
         return c
+
+    def inject_v4l2_error(self, n: int, mode: int = 0) -> None:
+        """**[验证用钩子]** 注入 `n` 次"下一次 `acquire()` 失败"（§15 O24 的确定性注入）。
+
+        只服务于 O24 §4 前 2 类的**判据与处置分支**验证（**不是 config 键**、不新增返回码）：
+        注入的失败走**与真实故障同一个计数器**与同一条处置路径。
+        `mode` = 0：硬错误（计 `v4l2_errors`，返回 `E_V4L2`）；1：无帧超时（计 `lease_timeouts`，
+        返回 `E_TIMEOUT`）⇒ 两条判据分支（连续硬错误 ≥15 / 连续无帧 ≥1 s）可分别验证。
+        """
+        _n.capture.inject_error(int(n), int(mode))
 
 
 def main() -> int:

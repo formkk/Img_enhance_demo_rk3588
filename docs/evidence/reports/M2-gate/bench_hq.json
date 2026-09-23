@@ -1,0 +1,392 @@
+{
+  "schema_version": "bench/1.0",
+  "tool": "tools/bench.py",
+  "scenario": "hq",
+  "scope": "frame",
+  "started_utc": "2026-09-22T14:47:29+00:00",
+  "host": "lubancat",
+  "runtime": {
+    "librknnrt": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "python": "3.9.2",
+    "host": "lubancat",
+    "machine": "aarch64"
+  },
+  "clocks": {
+    "compare": "mono_ns",
+    "source": "CLOCK_MONOTONIC"
+  },
+  "measurement_conditions": {
+    "weight_hash": null,
+    "curve_level": null,
+    "precision": null,
+    "config_snapshot_hash": null
+  },
+  "scheduling": {
+    "cpu_count": 8,
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "loadavg": [
+      0.67,
+      1.67,
+      1.9
+    ]
+  },
+  "soc_temp_c": 49.923,
+  "notes": [
+    "判据 = §13「HQ 响应」行：触发→MIPI OSD ≤50 ms；触发→全屏 HQ 视图出图 ≤12 s（v3.58 裁定 O37 重排、v3.85 裁定 O83 语义改「两屏同时」）；判定 = 实现者",
+    "O90：HQ 期间实时链冻结 ⇒ fps 取**活动窗口径**（冻结窗已从分母排除）；`hq_flips_delta` 随 O90 作废，改记 `freeze_window`",
+    "§6.5：时钟只用 `mono_ns`；出图时点 = pageflip 的 vblank；配对按 `seq` 回填，禁止时间就近配对",
+    "本场景报告随带配对率与丢弃帧数；`--seq-log` 给出每周期 seq 级明细",
+    "触发→OSD / 全屏 的 P95 判据见 trigger_response.pass",
+    "`metrics.idle_link_baseline` 缺失 ⇒ 超标归因不可闭合（§6.5）"
+  ],
+  "entry": "bench.py --scenario hq --seq-log（同进程驱动 main.Demo；链路 = TH1…TH5）",
+  "hq_active_shape": "960x544",
+  "triggers_requested": 10,
+  "dump_canvas_dir": null,
+  "status": "ok",
+  "cycles_completed": 10,
+  "trigger_response": {
+    "osd": {
+      "n": 10,
+      "p50_ms": 12.158557,
+      "p95_ms": 20.094525,
+      "max_ms": 20.094525,
+      "mean_ms": 13.0158047
+    },
+    "fullscreen_mipi": {
+      "n": 10,
+      "p50_ms": 8234.257586,
+      "p95_ms": 8658.318243,
+      "max_ms": 8658.318243,
+      "mean_ms": 8241.2079842
+    },
+    "fullscreen_hdmi": {
+      "n": 10,
+      "p50_ms": 8248.259206,
+      "p95_ms": 8663.469053,
+      "max_ms": 8663.469053,
+      "mean_ms": 8252.6869794
+    },
+    "budget": {
+      "osd_ms": 50.0,
+      "fullscreen_ms": 12000.0
+    },
+    "pass": {
+      "osd_p95_le_50ms": true,
+      "fullscreen_mipi_p95_le_12s": true
+    },
+    "exit_reasons": {
+      "timeout": 10
+    }
+  },
+  "seq_coverage": {
+    "triggers": 10,
+    "osd_flip_seq_pair_ok": 10,
+    "fullscreen_mipi_seq_pair_ok": 10
+  },
+  "pairing_rate": 1.0,
+  "paired_flips": 247,
+  "discarded_frames": {
+    "flip_skipped": 0,
+    "unpaired": 0,
+    "dropped_stale": 0
+  },
+  "fps": {
+    "frames": 247,
+    "wall_s": 401.29410346000077,
+    "frozen_s": 382.48034699,
+    "active_window_fps": 13.128691252799538,
+    "floor_ref": 14.99
+  },
+  "latency": {
+    "n": 247,
+    "p50_ms": 53.808789,
+    "p95_ms": 76405.621668,
+    "max_ms": 77026.537941,
+    "mean_ms": 5647.599197801619
+  },
+  "latency_segments": {
+    "capture_to_submit": {
+      "n": 247,
+      "p50_ms": 44.620546,
+      "p95_ms": 76404.946743,
+      "max_ms": 77010.732161,
+      "mean_ms": 5639.088498068826
+    },
+    "submit_to_vblank": {
+      "n": 247,
+      "p50_ms": 8.50889,
+      "p95_ms": 15.901851,
+      "max_ms": 17.021864,
+      "mean_ms": 8.510699732793523
+    }
+  },
+  "func_timing": {
+    "hq_last_run_ns": 8384777676,
+    "hq_runs": 10,
+    "hq_core_mask_ret": 0,
+    "hdmi_mirror_rga_last_ns": 1840731,
+    "hdmi_mirror_rga": {
+      "n": 257,
+      "p50_ms": 1.911022,
+      "p90_ms": 2.106733,
+      "max_ms": 12.907566
+    },
+    "note": "本场景只含 TH3 推理与 TH5 放大两处函数级打点；RGA 合成 / OSD / 曲线应用的逐函数耗时见 realtime / osd-micro 场景"
+  },
+  "f_est": 6.365099094093803,
+  "alpha": 0.4642,
+  "discarded_triggers": 0,
+  "freeze_window": {
+    "cycles": 10,
+    "total_ms": 382481.002081,
+    "per_cycle_ms": [
+      38665.78995,
+      38204.463388,
+      38236.075949,
+      38243.446661,
+      37941.755556,
+      38136.838512,
+      38329.052634,
+      37911.319225,
+      38364.407543,
+      38447.852663
+    ],
+    "marker": "display_mipi/freeze_enter|freeze_exit",
+    "excluded_from": [
+      "fps",
+      "latency",
+      "pairing"
+    ]
+  },
+  "panel_refresh_ms": 16.666666666666668,
+  "idle_link_baseline": null,
+  "counters": {
+    "frames": 247,
+    "estimates": 124,
+    "flips": 247,
+    "flip_skipped": 0,
+    "dropped_stale": 0,
+    "lease_timeouts": 0,
+    "discarded_triggers": 0,
+    "pageflip_fail": 0,
+    "hq_started": 10,
+    "hq_done": 10,
+    "freeze_enter": 10,
+    "freeze_exit": 10,
+    "freeze_flips": 10,
+    "fullscreen_enter": 10,
+    "fullscreen_exit": 10
+  },
+  "th3_info": {
+    "model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+    "shape": "960x544",
+    "core_mask_ret": 0,
+    "runs": 10,
+    "last_run_ns": 8384777676,
+    "last_rc": 0,
+    "busy": false,
+    "slot_full": false,
+    "thread_alive": true
+  },
+  "th5_info": {
+    "slot": 1,
+    "configured": true,
+    "connector_id": 207,
+    "crtc_id": 70,
+    "mode_name": "1920x1080",
+    "hdisplay": 1920,
+    "vdisplay": 1080,
+    "vrefresh": 60,
+    "canvas_stride": 5760,
+    "canvas_count": 2,
+    "flip_count": 258,
+    "flip_skipped": 0,
+    "last_submit_ns": 46497303503091,
+    "last_flip_ns": 46497312248533,
+    "last_flip_seq": 247,
+    "connector_status": 1,
+    "drm_ok": true,
+    "idle_drawn": true,
+    "flips": 258,
+    "flip_skipped_slot": 0,
+    "last_scale_ns": 1840731,
+    "scale": {
+      "n": 257,
+      "p50_ms": 1.911022,
+      "p90_ms": 2.106733,
+      "max_ms": 12.907566
+    }
+  },
+  "seq_log": [
+    {
+      "seq_src": 1,
+      "t_trigger_ns": 46113427493444,
+      "t_freeze_enter_ns": 46113431269987,
+      "osd_flip_ns": 46113439652001,
+      "osd_flip_seq": 1,
+      "t_fullscreen_ns": 46122085847563,
+      "fs_mipi_flip_ns": 46122085811687,
+      "fs_mipi_seq": 1,
+      "fs_hdmi_flip_ns": 46122090962497,
+      "t_freeze_exit_ns": 46152097059937,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46122044587043
+    },
+    {
+      "seq_src": 2,
+      "t_trigger_ns": 46152226544937,
+      "t_freeze_enter_ns": 46152229319010,
+      "osd_flip_ns": 46152238842329,
+      "osd_flip_seq": 2,
+      "t_fullscreen_ns": 46160415003408,
+      "fs_mipi_flip_ns": 46160414968699,
+      "fs_mipi_seq": 2,
+      "fs_hdmi_flip_ns": 46160424812563,
+      "t_freeze_exit_ns": 46190433782398,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46160384029799
+    },
+    {
+      "seq_src": 3,
+      "t_trigger_ns": 46190593740585,
+      "t_freeze_enter_ns": 46190596094654,
+      "osd_flip_ns": 46190601460799,
+      "osd_flip_seq": 3,
+      "t_fullscreen_ns": 46198828040463,
+      "fs_mipi_flip_ns": 46198827998171,
+      "fs_mipi_seq": 3,
+      "fs_hdmi_flip_ns": 46198841999791,
+      "t_freeze_exit_ns": 46228832170603,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46198785212716
+    },
+    {
+      "seq_src": 4,
+      "t_trigger_ns": 46228977794582,
+      "t_freeze_enter_ns": 46228981289665,
+      "osd_flip_ns": 46228997889107,
+      "osd_flip_seq": 4,
+      "t_fullscreen_ns": 46237224262568,
+      "fs_mipi_flip_ns": 46237224222901,
+      "fs_mipi_seq": 4,
+      "fs_hdmi_flip_ns": 46237242451700,
+      "t_freeze_exit_ns": 46267224736326,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46237168787872
+    },
+    {
+      "seq_src": 5,
+      "t_trigger_ns": 46267378322014,
+      "t_freeze_enter_ns": 46267381515218,
+      "osd_flip_ns": 46267394035949,
+      "osd_flip_seq": 5,
+      "t_fullscreen_ns": 46275318346626,
+      "fs_mipi_flip_ns": 46275318311626,
+      "fs_mipi_seq": 5,
+      "fs_hdmi_flip_ns": 46275326236011,
+      "t_freeze_exit_ns": 46305323270774,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46275290959386
+    },
+    {
+      "seq_src": 6,
+      "t_trigger_ns": 46305445530134,
+      "t_freeze_enter_ns": 46305450001187,
+      "osd_flip_ns": 46305454500949,
+      "osd_flip_seq": 6,
+      "t_fullscreen_ns": 46313580308945,
+      "fs_mipi_flip_ns": 46313580275986,
+      "fs_mipi_seq": 6,
+      "fs_hdmi_flip_ns": 46313593296140,
+      "t_freeze_exit_ns": 46343586839699,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46313538420158
+    },
+    {
+      "seq_src": 7,
+      "t_trigger_ns": 46343713381777,
+      "t_freeze_enter_ns": 46343716697524,
+      "osd_flip_ns": 46343733199344,
+      "osd_flip_seq": 7,
+      "t_fullscreen_ns": 46352027116392,
+      "fs_mipi_flip_ns": 46352027048141,
+      "fs_mipi_seq": 7,
+      "fs_hdmi_flip_ns": 46352043809964,
+      "t_freeze_exit_ns": 46382045750158,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46351994512048
+    },
+    {
+      "seq_src": 8,
+      "t_trigger_ns": 46382179909875,
+      "t_freeze_enter_ns": 46382183335834,
+      "osd_flip_ns": 46382196751794,
+      "osd_flip_seq": 8,
+      "t_fullscreen_ns": 46390087637652,
+      "fs_mipi_flip_ns": 46390087571443,
+      "fs_mipi_seq": 8,
+      "fs_hdmi_flip_ns": 46390094174609,
+      "t_freeze_exit_ns": 46420094655059,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46390058020574
+    },
+    {
+      "seq_src": 9,
+      "t_trigger_ns": 46420230598631,
+      "t_freeze_enter_ns": 46420234071133,
+      "osd_flip_ns": 46420240423712,
+      "osd_flip_seq": 9,
+      "t_fullscreen_ns": 46428584470284,
+      "fs_mipi_flip_ns": 46428584425367,
+      "fs_mipi_seq": 9,
+      "fs_hdmi_flip_ns": 46428594649369,
+      "t_freeze_exit_ns": 46458598478676,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46428476219099
+    },
+    {
+      "seq_src": 10,
+      "t_trigger_ns": 46458730716077,
+      "t_freeze_enter_ns": 46458733654072,
+      "osd_flip_ns": 46458737434119,
+      "osd_flip_seq": 10,
+      "t_fullscreen_ns": 46467165544086,
+      "fs_mipi_flip_ns": 46467165477877,
+      "fs_mipi_seq": 10,
+      "fs_hdmi_flip_ns": 46467178509206,
+      "t_freeze_exit_ns": 46497181506735,
+      "exit_reason": "timeout",
+      "hq_model_id": "models/hq/hq_960x544_fp16_tk232.rknn",
+      "hq_active_shape": 0,
+      "hq_done_ns": 46467124909163
+    }
+  ]
+}

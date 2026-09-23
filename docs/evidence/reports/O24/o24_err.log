@@ -1,0 +1,24 @@
+[sensor_lock] /dev/v4l-subdev2 vertical_blanking = 7906（回读一致）⇒ VMAX = 8986 行
+2026-09-22T15:56:14.339Z 50221734130426 INFO main rsm_transition from=BOOT_CHECK to=RUN_DEMO reason=boot_ok rsm=RUN_DEMO fsm=IDLE
+[inject] 已在活动帧 30 注入 20 次 acquire 硬错误（§15 O24 验证钩子）
+2026-09-22T15:56:16.322Z 50223717878200 INFO main boot_check_item item=TH1 result=fail code=E_V4L2
+2026-09-22T15:56:16.454Z 50223849422701 INFO main degrade_action trigger=v4l2_stream_lost action=fault_exit rsm=RUN_DEMO fsm=IDLE
+2026-09-22T15:56:16.454Z 50223849634162 INFO main rsm_transition from=RUN_DEMO to=FAULT_EXIT reason=v4l2_stream_lost rsm=FAULT_EXIT fsm=IDLE
+2026-09-22T15:56:16.454Z 50223849737997 INFO main service_exit exit_code=1 uptime_s=3
+异常恢复越阈停机：reason=v4l2_stream_lost 连续硬错误=15 （阈值 15）或无帧 ≥1 s ⇒ RUN_DEMO → FAULT_EXIT，退出码 1（systemd 限次拉起）
+frames=30 estimates=15 flips=30 flip_skipped=0 dropped_stale=0 lease_timeouts=0 discarded_triggers=0 pageflip_fail=0 v4l2_errors=15
+[异常恢复] 越阈停机：reason=v4l2_stream_lost 退出码=1（§10.5 矩阵：RUN_DEMO → FAULT_EXIT ⇒ systemd Restart=on-failure 限次拉起）
+wall=4.43s  冻结窗合计=0.00s  fps（**活动窗口径**，O90）=6.8
+配对率=1.0000（已配对 30 / flip 30；未回填丢弃 0；过期帧丢弃 0）
+延迟·采集→提交（应用侧）    P50=34.4 ms  P95=1129.3 ms
+延迟·提交→vblank（显示排队）P50=8.0 ms  P95=17.2 ms
+延迟·端到端（采集→vblank）  P50=46.8 ms  P95=1139.6 ms
+实测面板刷新周期=16.67 ms（60 Hz）
+M1 空链路基线=[17.538, 25.67, 9.165, 9.86, 8.768, 16.222] ⇒ 超标归因尚不可闭合（§6.5）
+f_est=8.03 Hz  alpha=0.4642
+stream_on_count=1（契约：恒为 1）
+TH3: hq_started=0 hq_done=0 freeze_enter=0 freeze_exit=0 freeze_flips=0 fullscreen_enter=0 fullscreen_exit=0
+TH3 info（shutdown 前）: {'model_id': 'models/hq/hq_960x544_fp16_tk232.rknn', 'shape': '960x544', 'core_mask_ret': 0, 'runs': 0, 'last_run_ns': 0, 'last_rc': 0, 'busy': False, 'slot_full': False, 'thread_alive': True}
+TH5 HDMI: drm_ok=True flips=31 flip_skipped_slot=0 末次放大=1927651 ns
+镜像/HQ 放大（§6.1 O85 行 ≤3 ms）n=30 P50=1.911609 ms  P90=2.095944 ms  max=2.235363 ms
+rga_api version 1.9.2_[1]
