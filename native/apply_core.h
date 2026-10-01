@@ -61,8 +61,14 @@ typedef struct {
     uint32_t curve_h;    /* 曲线场有效区高 */
     uint32_t iters;      /* 迭代次数（§3.3 契约值；单遍融合） */
     cf_precision_t precision;
-    cf_csc_t csc;        /* 仅 apply_full 用 */
+    cf_csc_t csc;        /* apply_full 用；preserve_ratio 复用它推 Kr/Kb */
     cf_range_t range;    /* 仅 apply_full 用 */
+    /* 施加语义开关（交付实现选择，**非 §10.4 config 键**，**默认 1 = 保比语义**，见 §14 追加 159）：
+       1 = 保比语义：v 取三通道均值、对亮度 L 施加曲线后按标量 k=L2/L 回乘三通道
+           （见 apply_core.c 的实现注释）；
+       0 = 逐通道施加曲线（历史语义，通道间比值被压缩 ⇒ 去饱和）。**仅供 A/B**，
+           由 CLI 反向 opt-out `--no-preserve-ratio` 切出。由启动期 `configure` 一次性注入，之后只读。 */
+    int preserve_ratio;
 } cf_config_t;
 
 /* 返回码：0 = OK；负值取主基准 §5 契约 A（本文件只用 0 / -5 E_STATE）。 */

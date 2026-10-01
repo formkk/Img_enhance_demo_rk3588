@@ -35,6 +35,7 @@ static struct {
     cf_precision_t precision;
     cf_csc_t csc;
     cf_range_t range;
+    int preserve_ratio;      /* A/B 开关：0 = 旧语义（逐通道），1 = 保比语义（见 apply_fused_*） */
 } g;
 
 static int g_configured = 0;
@@ -76,6 +77,7 @@ int cf_configure(const cf_config_t* cfg) {
     g.precision = cfg->precision;
     g.csc = cfg->csc;
     g.range = cfg->range;
+    g.preserve_ratio = cfg->preserve_ratio ? 1 : 0;
     g.tap_w = g.tap_h = 0;   /* 曲线场几何变了 ⇒ 采样表作废 */
     g_configured = 1;
     return CF_OK;
@@ -118,51 +120,187 @@ static inline float cf_sample(const void* curve, uint32_t ch, int ix, int iy, fl
     return top + wy * (bot - top);
 }
 
+/* 亮度系数 Kr/Kg/Kb：**复用 nv12_to_rgb() 里的同一表达式**（同一三元 + 同一字面量）。
+ * `isp.csc_matrix` 当前为空 ⇒ `CF_CSC_UNSET` ⇒ 走 BT.601（与 native/rga_core.c:184 的
+ * `IM_YUV_TO_RGB_BT601_FULL` 一致）。仅 `preserve_ratio` 语义使用；NEON 与标量两路共用本函数
+ * ⇒ 系数逐位相同。 */
+static inline void luma_coeffs(float* kr, float* kg, float* kb) {
+    *kr = (g.csc == CF_CSC_BT709) ? 0.2126 : 0.299;
+    *kb = (g.csc == CF_CSC_BT709) ? 0.0722 : 0.114;
+    *kg = 1.0f - *kr - *kb;
+}
+
+/* ── 保比语义的快速倒数（替换逐像素精确除法 L2/L）─────────────────────────
+ * 原实现每像素一次 `vdivq_f32(L2, L)`（标量侧 `L2 / L`），实测使端到端 P95 中位
+ * 72.91 → 111.92 ms 而函数级 apply-micro 仅 +1.6 ms ⇒ 逐像素除法代价高昂，改用快速倒数。
+ *
+ * 算法：recip ← FRECPE(d)（`vrecpeq_f32`，8 bit 估计），再做 **2 次 Newton–Raphson** 细化
+ *       `recip ← recip·(2 − d·recip)`，最后 `k = L2·recip`。
+ * · **为什么 NR 两次**：FRECPE 相对误差 ~2^-8；一次 NR 后 ~2^-16，二次后 ~2^-24（≈ IEEE float
+ *   的 1 ULP，本文件实测与精确除法的相对误差 ≤1.2e-7 < 1e-6）⇒ k 的相对误差 ≤~1e-7，
+ *   最终 8-bit 量化（`×255` 后 `lrint`）不产生可见偏差。**不引入任何软件查表**（Neon 无 gather）。
+ * · **为什么两路必须同形**：`realtime_apply.py --selfcheck` 要求 NEON 与标量**逐字节一致**。
+ *   NR 迭代在 `-ffp-contract=off` 下以 `vfmaq_f32`/`vmulq_f32` 对 `fmaf`/显式乘即可同形；但**估计量
+ *   必须同源**——若标量以 `1.0f/L`（精确倒数）作种子，实测与 FRECPE 在 ~33% 的输入上相差 1 ULP，
+ *   逐字节自检即失败。A64 无标量 FRECPE，故标量侧对 1 元向量调 `vrecpeq_f32` 后取 lane 0。
+ * · **L==0 退化**：FRECPE(0)=+inf ⇒ 后续为 inf/nan，但对外仍以 `L==0` 掩码把 k 置 0（处理不变）。
+ */
+
 /* ── NEON 单遍融合：4 像素 × 3 通道一组（与 pipeline_probe 同形）────────── */
-static int apply_fused_neon(const uint8_t* rgb, const void* curve, uint8_t* dst,
-                            uint32_t w, uint32_t h) {
+
+/* 载入一个 4 像素组：曲线双线性采样 → C；原始通道 → Raw / 归一化 V（与旧内联代码**同形**）。 */
+static inline void load_group4(const uint8_t* rgb, const void* curve, uint32_t w,
+                               uint32_t y, uint32_t x, uint32_t CW, uint32_t CH_OFF,
+                               int iy, float wy,
+                               float32x4_t C[3], float32x4_t Raw[3], float32x4_t V[3]) {
+    float rv[3][4];
+    for (uint32_t ch = 0; ch < 3; ch++)
+        for (int l = 0; l < 4; l++)
+            rv[ch][l] = cf_sample(curve, ch, g.xt[x + (uint32_t)l].i0, iy,
+                                  g.xt[x + (uint32_t)l].w, wy, CW, CH_OFF);
+    C[0] = vld1q_f32(rv[0]); C[1] = vld1q_f32(rv[1]); C[2] = vld1q_f32(rv[2]);
+    uint8_t tmp[3][4];
+    for (int l = 0; l < 4; l++) {
+        const uint8_t* p = rgb + ((size_t)y * w + x + (uint32_t)l) * 3;
+        tmp[0][l] = p[0]; tmp[1][l] = p[1]; tmp[2][l] = p[2];
+    }
+    for (int ch = 0; ch < 3; ch++) {
+        uint8x8_t u8 = vld1_u8(tmp[ch]);
+        /* Raw = 原始通道值（0..255，float）；V = 归一化（旧语义与保比语义共用） */
+        Raw[ch] = vcvtq_f32_u32(vmovl_u16(vget_low_u16(vmovl_u8(u8))));
+        V[ch] = vmulq_n_f32(Raw[ch], 1.0f / 255.0f);
+    }
+}
+
+/* 保比语义前置量（NEON 与标量参考**同形**）：vmean（三通道均值）+ L（亮度）。
+ * 旧语义**逐通道**施加曲线 t ← t + v(t²−t)（逐点非线性 ⇒ 通道比值被压缩 ⇒ 去饱和）；
+ * 保比语义把 v 取**三通道均值**、对**亮度** L 施加同一曲线得 L2、再以**同一标量** k=L2/L
+ * 回乘三通道 ⇒ 比值 R:G:B **严格不变**，仅整体亮度被提（属交付实现选择）。 */
+static inline void ratio_head4(const float32x4_t C[3], const float32x4_t Raw[3],
+                               float32x4_t* vmean, float32x4_t* L) {
+    float kr, kg, kb;
+    luma_coeffs(&kr, &kg, &kb);
+    *vmean = vmulq_n_f32(vaddq_f32(vaddq_f32(C[0], C[1]), C[2]), 1.0f / 3.0f);
+    *L = vmulq_n_f32(
+        vaddq_f32(vaddq_f32(vmulq_n_f32(Raw[0], kr), vmulq_n_f32(Raw[1], kg)),
+                  vmulq_n_f32(Raw[2], kb)),
+        1.0f / 255.0f);
+}
+
+/* 保比语义后置量（NEON 与标量参考**同形**）：L2（8 次迭代）→ 快速倒数（FRECPE + 2 次 NR）
+ * → k → 回乘三通道。退化点 L==0（三通道全 0 ⇒ 0/0）置 k=0，**不引入 ε 阈值**。 */
+static inline void ratio_apply4(float32x4_t V[3], float32x4_t L, float32x4_t vmean) {
+    float32x4_t L2 = L;
+    for (uint32_t it = 0; it < g.iters; it++) {
+        float32x4_t t = vsubq_f32(vmulq_f32(L2, L2), L2);
+        L2 = vfmaq_f32(L2, t, vmean);      /* L2 + vmean*(L2²−L2) */
+    }
+    /* 快速倒数（见上方「保比语义的快速倒数」注释块）：FRECPE 起步 + 2 次 NR */
+    const float32x4_t two = vdupq_n_f32(2.0f);
+    float32x4_t recip = vrecpeq_f32(L);
+    recip = vmulq_f32(recip, vfmaq_f32(two, vnegq_f32(L), recip));
+    recip = vmulq_f32(recip, vfmaq_f32(two, vnegq_f32(L), recip));
+    const uint32x4_t z = vceqq_f32(L, vdupq_n_f32(0.0f));
+    const float32x4_t k = vbslq_f32(z, vdupq_n_f32(0.0f), vmulq_f32(L2, recip));
+    for (int ch = 0; ch < 3; ch++) V[ch] = vmulq_f32(V[ch], k);
+}
+
+/* 写出一个 4 像素组：钳位 → 量化 → 交错存回 RGB888（与旧内联代码**同形**）。 */
+static inline void store_group4(uint8_t* dst, uint32_t w, uint32_t y, uint32_t x,
+                                float32x4_t V[3]) {
+    for (int ch = 0; ch < 3; ch++)
+        V[ch] = vmaxq_f32(vminq_f32(V[ch], vdupq_n_f32(1.0f)), vdupq_n_f32(0.0f));
+    uint8x8_t q[3];
+    for (int ch = 0; ch < 3; ch++) {
+        int32x4_t s = vcvtnq_s32_f32(vmulq_n_f32(V[ch], 255.0f));
+        q[ch] = vqmovun_s16(vcombine_s16(vqmovn_s32(s), vqmovn_s32(s)));
+    }
+    uint8_t tmp[3][8];
+    for (int ch = 0; ch < 3; ch++) vst1_u8(tmp[ch], q[ch]);
+    for (int l = 0; l < 4; l++) {
+        uint8_t* o = dst + ((size_t)y * w + x + (uint32_t)l) * 3;
+        o[0] = tmp[0][l]; o[1] = tmp[1][l]; o[2] = tmp[2][l];
+    }
+}
+
+/* ── 保比语义：**批间交错**（software pipelining，恢复 ILP）─────────────────
+ * 保比路径的 `L → L2(8 次) → recip(2 次 NR) → k` 是**单条串行依赖链**；逐向量独发时 CPU 只能
+ * 等链尾 ⇒ 虽比旧语义少做大量曲线求值（旧 3 通道各 8 次 = 24 次 fma；新仅 8 次），却更慢约
+ * 1.6 ms（函数级 apply-micro 1080×608：旧 19.69 → 新 20.84 ms）。本实现**一次交错 2 个 4 像素
+ * 向量**，把两条独立链**交替发出**，让乱序/超标量核重叠它们 ⇒ 恢复 ILP。
+ * **逐位一致是硬闸门（`--selfcheck`）**：交错只发生在**跨向量**之间，**每条 lane 内部的运算
+ * 次序一字未改**（同一组 `vrecpeq_f32` / `vfmaq_f32`、同一迭代次数）；标量路径不变，其每像素
+ * 次序仍与 NEON 每 lane 完全相同 ⇒ `mismatch_bytes=0`。
+ * **尾部**：`w` 不足 8 的余数（仍为 4 的倍数，`apply_window` 只对 `w%4==0` 走 NEON）回退到
+ * 单向量路径，不越界读写。
+ */
+static int apply_fused_neon_ratio(const uint8_t* rgb, const void* curve, uint8_t* dst,
+                                  uint32_t w, uint32_t h) {
     const uint32_t CW = g.curve_w, CH_OFF = g.curve_h;
     ensure_taps(w, h);
     for (uint32_t y = 0; y < h; y++) {
         const int iy = g.yt[y].i0; const float wy = g.yt[y].w;
-        for (uint32_t x = 0; x < w; x += 4) {
-            float rv[3][4];
-            for (uint32_t ch = 0; ch < 3; ch++)
-                for (int l = 0; l < 4; l++)
-                    rv[ch][l] = cf_sample(curve, ch, g.xt[x + (uint32_t)l].i0, iy,
-                                          g.xt[x + (uint32_t)l].w, wy, CW, CH_OFF);
-            float32x4_t C[3] = { vld1q_f32(rv[0]), vld1q_f32(rv[1]), vld1q_f32(rv[2]) };
-            float32x4_t V[3];
-            {
-                uint8_t tmp[3][4];
-                for (int l = 0; l < 4; l++) {
-                    const uint8_t* p = rgb + ((size_t)y * w + x + (uint32_t)l) * 3;
-                    tmp[0][l] = p[0]; tmp[1][l] = p[1]; tmp[2][l] = p[2];
-                }
-                for (int ch = 0; ch < 3; ch++) {
-                    uint8x8_t u8 = vld1_u8(tmp[ch]);
-                    V[ch] = vmulq_n_f32(vcvtq_f32_u32(vmovl_u16(vget_low_u16(vmovl_u8(u8)))),
-                                        1.0f / 255.0f);
-                }
+        uint32_t x = 0;
+        for (; x + 8 <= w; x += 8) {                 /* 两向量交错（ILP） */
+            float32x4_t Ca[3], Ra[3], Va[3], Cb[3], Rb[3], Vb[3];
+            load_group4(rgb, curve, w, y, x, CW, CH_OFF, iy, wy, Ca, Ra, Va);
+            load_group4(rgb, curve, w, y, x + 4, CW, CH_OFF, iy, wy, Cb, Rb, Vb);
+            float32x4_t vma, La, vmb, Lb;
+            ratio_head4(Ca, Ra, &vma, &La);
+            ratio_head4(Cb, Rb, &vmb, &Lb);
+            float32x4_t L2a = La, L2b = Lb;
+            for (uint32_t it = 0; it < g.iters; it++) {   /* 两条链交替发出 */
+                float32x4_t ta = vsubq_f32(vmulq_f32(L2a, L2a), L2a);
+                float32x4_t tb = vsubq_f32(vmulq_f32(L2b, L2b), L2b);
+                L2a = vfmaq_f32(L2a, ta, vma);
+                L2b = vfmaq_f32(L2b, tb, vmb);
             }
+            const float32x4_t two = vdupq_n_f32(2.0f);
+            float32x4_t ra = vrecpeq_f32(La);
+            float32x4_t rb = vrecpeq_f32(Lb);
+            ra = vmulq_f32(ra, vfmaq_f32(two, vnegq_f32(La), ra));
+            rb = vmulq_f32(rb, vfmaq_f32(two, vnegq_f32(Lb), rb));
+            ra = vmulq_f32(ra, vfmaq_f32(two, vnegq_f32(La), ra));
+            rb = vmulq_f32(rb, vfmaq_f32(two, vnegq_f32(Lb), rb));
+            const uint32x4_t za = vceqq_f32(La, vdupq_n_f32(0.0f));
+            const uint32x4_t zb = vceqq_f32(Lb, vdupq_n_f32(0.0f));
+            const float32x4_t ka = vbslq_f32(za, vdupq_n_f32(0.0f), vmulq_f32(L2a, ra));
+            const float32x4_t kb = vbslq_f32(zb, vdupq_n_f32(0.0f), vmulq_f32(L2b, rb));
+            for (int ch = 0; ch < 3; ch++) {
+                Va[ch] = vmulq_f32(Va[ch], ka);
+                Vb[ch] = vmulq_f32(Vb[ch], kb);
+            }
+            store_group4(dst, w, y, x, Va);
+            store_group4(dst, w, y, x + 4, Vb);
+        }
+        for (; x < w; x += 4) {                      /* 尾部：单向量路径 */
+            float32x4_t C[3], Raw[3], V[3];
+            load_group4(rgb, curve, w, y, x, CW, CH_OFF, iy, wy, C, Raw, V);
+            float32x4_t vmean, L;
+            ratio_head4(C, Raw, &vmean, &L);
+            ratio_apply4(V, L, vmean);
+            store_group4(dst, w, y, x, V);
+        }
+    }
+    return CF_OK;
+}
+
+static int apply_fused_neon(const uint8_t* rgb, const void* curve, uint8_t* dst,
+                            uint32_t w, uint32_t h) {
+    const uint32_t CW = g.curve_w, CH_OFF = g.curve_h;
+    ensure_taps(w, h);
+    if (g.preserve_ratio) return apply_fused_neon_ratio(rgb, curve, dst, w, h);
+    for (uint32_t y = 0; y < h; y++) {
+        const int iy = g.yt[y].i0; const float wy = g.yt[y].w;
+        for (uint32_t x = 0; x < w; x += 4) {
+            float32x4_t C[3], Raw[3], V[3];
+            load_group4(rgb, curve, w, y, x, CW, CH_OFF, iy, wy, C, Raw, V);
             for (uint32_t it = 0; it < g.iters; it++)
                 for (int ch = 0; ch < 3; ch++) {
                     float32x4_t t = vsubq_f32(vmulq_f32(V[ch], V[ch]), V[ch]);
                     V[ch] = vfmaq_f32(V[ch], t, C[ch]);
                 }
-            for (int ch = 0; ch < 3; ch++)
-                V[ch] = vmaxq_f32(vminq_f32(V[ch], vdupq_n_f32(1.0f)), vdupq_n_f32(0.0f));
-            uint8x8_t q[3];
-            for (int ch = 0; ch < 3; ch++) {
-                int32x4_t s = vcvtnq_s32_f32(vmulq_n_f32(V[ch], 255.0f));
-                q[ch] = vqmovun_s16(vcombine_s16(vqmovn_s32(s), vqmovn_s32(s)));
-            }
-            uint8_t tmp[3][8];
-            for (int ch = 0; ch < 3; ch++) vst1_u8(tmp[ch], q[ch]);
-            for (int l = 0; l < 4; l++) {
-                uint8_t* o = dst + ((size_t)y * w + x + (uint32_t)l) * 3;
-                o[0] = tmp[0][l]; o[1] = tmp[1][l]; o[2] = tmp[2][l];
-            }
+            store_group4(dst, w, y, x, V);
         }
     }
     return CF_OK;
@@ -179,14 +317,40 @@ static int apply_fused_scalar(const uint8_t* rgb, const void* curve, uint8_t* ds
             const int ix = g.xt[x].i0; const float wx = g.xt[x].w;
             const uint8_t* p = rgb + ((size_t)y * w + x) * 3;
             uint8_t* o = dst + ((size_t)y * w + x) * 3;
-            for (uint32_t ch = 0; ch < 3; ch++) {
-                const float v = cf_sample(curve, ch, ix, iy, wx, wy, CW, CH_OFF);
-                float t = (float)p[ch] * (1.0f / 255.0f);
-                /* 与 NEON 的 `vfmaq_f32` 同形：显式融合乘加以保证两路逐位一致
-                   （写成 `t = t + v*(t*t-t)` 时编译器是否融合取决于 -ffp-contract，实测会差 1 个字节）。 */
-                for (uint32_t it = 0; it < g.iters; it++) t = fmaf(v, t * t - t, t);
-                if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
-                o[ch] = (uint8_t)lrintf(t * 255.0f);
+            float samp[3];
+            for (uint32_t ch = 0; ch < 3; ch++)
+                samp[ch] = cf_sample(curve, ch, ix, iy, wx, wy, CW, CH_OFF);
+            if (g.preserve_ratio) {
+                /* 保比语义：与 NEON 路径**同形**（同样的加法次序、fmaf、快速倒数）⇒ 逐位一致。
+                   语义与理由见 apply_fused_neon 上方「保比语义的快速倒数」注释块。 */
+                float kr, kg, kb;
+                luma_coeffs(&kr, &kg, &kb);
+                const float vmean = (samp[0] + samp[1] + samp[2]) * (1.0f / 3.0f);
+                const float R = (float)p[0], G = (float)p[1], B = (float)p[2];
+                const float L = ((kr * R + kg * G) + kb * B) * (1.0f / 255.0f);
+                float L2 = L;
+                for (uint32_t it = 0; it < g.iters; it++) L2 = fmaf(vmean, L2 * L2 - L2, L2);
+                /* 快速倒数：估计量取自同一条 FRECPE（A64 无标量 FRECPE ⇒ 1 元向量取 lane 0），
+                   NR 用显式 `fmaf`/乘（`-ffp-contract=off` 下与 NEON 的 `vfmaq_f32`/`vmulq_f32` 同形）。 */
+                float recip = vgetq_lane_f32(vrecpeq_f32(vdupq_n_f32(L)), 0);
+                recip = recip * fmaf(-L, recip, 2.0f);
+                recip = recip * fmaf(-L, recip, 2.0f);
+                const float k = (L == 0.0f) ? 0.0f : L2 * recip;   /* 仅 L==0 退化点置 0，无 ε */
+                for (uint32_t ch = 0; ch < 3; ch++) {
+                    float t = (float)p[ch] * (1.0f / 255.0f) * k;
+                    if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+                    o[ch] = (uint8_t)lrintf(t * 255.0f);
+                }
+            } else {
+                for (uint32_t ch = 0; ch < 3; ch++) {
+                    const float v = samp[ch];
+                    float t = (float)p[ch] * (1.0f / 255.0f);
+                    /* 与 NEON 的 `vfmaq_f32` 同形：显式融合乘加以保证两路逐位一致
+                       （写成 `t = t + v*(t*t-t)` 时编译器是否融合取决于 -ffp-contract，实测会差 1 个字节）。 */
+                    for (uint32_t it = 0; it < g.iters; it++) t = fmaf(v, t * t - t, t);
+                    if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+                    o[ch] = (uint8_t)lrintf(t * 255.0f);
+                }
             }
         }
     }

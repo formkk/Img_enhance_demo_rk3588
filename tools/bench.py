@@ -343,6 +343,10 @@ def scenario_realtime(args):
                 cmd.append(flag)
         if int(getattr(args, 'est_first', 0) or 0) > 0:
             cmd += ['--est-first', str(int(args.est_first))]
+        # **[A/B 开关] 保比语义**：默认保比；bench 的 `--no-preserve-ratio` → `main.py --no-preserve-ratio`
+        # （**非 config 键**；默认走保比语义，行为与本轮一致）
+        if not args.preserve_ratio:
+            cmd.append('--no-preserve-ratio')
         if args.config:
             cmd += ['--config', args.config]
         proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
@@ -411,6 +415,8 @@ def scenario_realtime(args):
         # **（v3.86 追加 96）** ①-2 子项拆分：本轮的**路径自述**与**剔除前**的同口径统计。
         'path_variant': {'no_est': bool(args.no_est), 'est_first': int(args.est_first),
                          'no_apply': bool(args.no_apply), 'no_osd': bool(args.no_osd),
+                         # [A/B 开关] 曲线应用语义（与 main.py 报告同名字段；默认 True = 保比）
+                         'apply_preserve_ratio': bool(args.preserve_ratio),
                          'osd_status_only': bool(args.osd_status_only),
                          'osd_no_stats': bool(args.osd_no_stats)},
         'skip_first': _skip,
@@ -854,7 +860,7 @@ def _apply_micro_native(args):
     cw, ch = int(effective[0]), int(effective[1])
 
     ra.shutdown()
-    rc = ra.configure_from_config(cfg)
+    rc = ra.configure_from_config(cfg, preserve_ratio=args.preserve_ratio)
     if rc != 0:
         raise SystemExit(f'realtime_apply.configure_from_config 返回 {rc}')
 
@@ -1068,6 +1074,12 @@ def main():
     p.add_argument('--skip-first', type=int, default=0,
                    help='V*：每轮**剔除前 N 帧样本**后再统计（与 `--est-first N` 配对；'
                         '两口径都随报告给出，剔除属**事先声明**的预热前缀，非事后筛选）')
+    # **[A/B 开关] 保比语义**（交付实现选择，**非 config 键**）：bench 开关 → 两处透传
+    #   · `realtime` 场景 → `main.py --no-preserve-ratio`（TH2b 应用语义，默认保比）；
+    #   · `apply-micro --impl native` → `configure_from_config(preserve_ratio=...)`。
+    # **默认保比语义**；本反向开关切回旧逐通道语义，仅供 A/B。
+    p.add_argument('--no-preserve-ratio', action='store_false', dest='preserve_ratio', default=True,
+                   help='[A/B 开关] 切回旧逐通道语义（默认走保比语义；本开关仅供 A/B）')
     p.add_argument('--baseline', action='store_true',
                    help='随报告给出「端到端 − `metrics.idle_link_baseline`」的归因差值'
                         '（§13「端到端延迟」行的复现命令；基线缺失时只标注）')

@@ -60,10 +60,20 @@ camera:
                                          #   `AecManualCtrl/LinearAE/{TimeValue,GainValue,IspDGainValue}`）
                                          #   ⇒ 本键语义改为「记 IQ 文件名 + sha256 + sensor subdev 实测回读」，
                                          #   **以 IQ 为准**（本键的值是**镜像**，仅供审计与闸门"零空缺"判定）；
-                                         #   `camera.gain_*` 同此（子键名仍随 M1 定义）
-  # `camera.gain_*`：§10.4 为**通配键名**（"实测重标结构"），**子键名未定** ⇒ 无法落盘
-  # （禁止自造表外键，规则 20-contracts.md §1）。**v3.29 裁定 O34-③**：该行定稿时点 = **M1**
-  # ⇒ 子键名随 M1 的 `v4l2-ctl -L` 实测一并定义；不参与 §11.2 M0-② 的判定
+                                         #   `camera.gain_*` 同此（**子键名已于 v3.86 随 `v4l2-ctl -L` 实测定稿**，见下）
+  # `camera.gain_*`（**v3.86 定稿：子键名随 `v4l2-ctl -L` 实测定义** —— v3.29 裁定 O34-③ 的执行）
+  # 实测口径：板端 **sensor subdev `/dev/v4l-subdev2`**、**取流中** `v4l2-ctl -L`（只读）——
+  #   该 subdev 上**唯一的增益控制** = `analogue_gain`（无独立数字增益口）；`exposure`
+  #   范围 4..8994、步进 1，**max = VMAX + 8 = 8986 + 8 = 8994**（与 vblank 7906 自洽）。
+  # 换算：**每步 0.3 dB**（§9.5 ②）⇒ `reg = 20·log10(gain)/0.3`；**三个实测点逐点自洽**：
+  #   4.0× → 40（v3.77 实测）/ 8.0× → 60（v3.83 定稿）/ 20.0× → 86.7 → **87**（O91 定稿）。
+  gain_ctrl: "analogue_gain"             # 控制名（subdev 上唯一增益控制）
+  gain_min: 0
+  gain_max: 240                          # = 72 dB ≈ 3981×（按上式反解）
+  gain_step: 1                           # 寄存器步进
+  gain_db_per_step: 0.3                  # 每步 0.3 dB（§9.5 ②）
+  gain_linear: 20.0                      # **【镜像值】**线性倍数（**取值 SSOT = IQ**；O91 定稿）
+  gain_reg: 87                           # **【镜像值】**subdev 实测回读（= 26.02 dB = 20×）
 
 # ── ISP（**v3.86 定稿 O145：本域 5 键全部定稿**；定稿时点 M1）─────────────
 # 两套档位（O62=(b)）：采集档 / 演示档 = 两套 IQ 文件，各自记文件名 + sha256，采集工具启动
@@ -107,8 +117,14 @@ isp:
     iq_file: "imx415_CMK-OT2022-PX1_IR0147-50IRC-8M-F20.json"
     iq_hash:
       stock: "4536f96a0bd594ed803c7a611aa928105c5be8903549b9b269a0e2b4764fa6e0"
-      collect: "ff7fb3e92865eabe53a0f5d4181ab0b3e99672682d54b37da73f9d65f67e2a6c"
-      demo: "2ed58401f2fc8b0b28864d5da68e53de4c441c1593462ca23f21d76c7ce198d0"   # 现役
+      # **（2026-09-29 回写 / O64 收口）两套已重建 = 锁 AWB**（`wb_v21.control.mode =
+      #   CALIB_WB_MODE_MANUAL` + `manualPara.cfg.mwbGain = [1.32703,1,1,3.31432]`）；
+      #   除 `wb_v21` 外其余子树**逐位未变**（gamma/ccm/blc/nr_2d/dpc 与 stock 一致、
+      #   `nr_3d` 仍为两档唯一 ISP 差异）。
+      collect: "81e61da407ef1846858fcf68a50885f50fed9f5f0bfc720720db1c31fb315585"
+      demo: "3a047b06e8266f02b04bdd4c2e86a0985187a26c6027b94f6c6b3640fae8ca88"
+      # ⚠️ 换档前 `/etc/iqfiles/` 仍驻留**旧 demo 档**（`2ed58401…`，进程内已加载）⇒ `iq_sets.py status`
+      #   此时报 `unknown`（该哈希已不在任何档）；采集前 `switch collect`、收尾 `switch demo` 即落到新哈希。
     gamma_table:
       src: "agamma_calib_v11/GammaTuningPara"
       gamma_en: 1                        # 进 gamma 开（重量级杠杆，本轮不动）
@@ -132,10 +148,12 @@ isp:
       enable_set2: 0                     # Blc1TuningPara（第二组未启用）
       iso_points: 13
       tuning_sha256_16: "a511de7cb4e7c348"
-    awb_lock: "auto"                     # ⚠️ `wb_v21.control.mode = CALIB_WB_MODE_AUTO` ⇒ **未锁定**
-                                         #   ⇒ §9.5 ⑤ 的「AWB 锁定」**未落地**、§15 **O64** 仍未闭合；
-                                         #   IQ 内既有手动增益留档（当前未启用）：
-                                         #   `manualPara.cfg.mwbGain = [1.32703, 1, 1, 3.31432]`
+    awb_lock: "manual"                   # **（2026-09-29 回写；O64 收口）** `wb_v21.control.mode =
+                                         #   CALIB_WB_MODE_MANUAL`、`manualPara.mode = CALIB_MWB_MODE_WBGAIN`、
+                                         #   `mwbGain = [1.32703, 1, 1, 3.31432]`（IQ 内既有手动预设）；
+                                         #   **两套 IQ 均锁**（采集档 + 演示档）⇒ §9.5 ⑤ 的「AWB 锁定」落地。
+                                         #   ⚠️ 效力边界：取值来源 = IQ 既有手动预设、**非本地场景标定**；
+                                         #   「改光源色温后 WB 增益不动」的板端观测未做（残留，见 §15 O64）
     nr_2d:
       src: "bayer2dnr_v2/TuningPara.enable"
       enable: 1                          # demo / collect 一致
@@ -278,7 +296,8 @@ ui:
                                          #   **v3.86 裁定 O109：5 → 4 字段（删 dmean）**——亮度增益改为**屏上不显示**
                                          #   （日志与 bench 报告不受影响）；同裁定：各字段拉开间隔 + 分色 + 「帧率：」中文标签
   osd_stats_decimate: 4                  # 【M2 定稿】v3.35：统计降采样率（512×288 → 128×72 = 9,216 样本）
-  osd_stats_hz: 1                        # 【M2 定稿】v3.35：统计更新频率
+  osd_stats_hz: 1                        # 【M2 定稿】v3.35：统计更新频率；**v3.86 裁定 O152（2026-10-01）：1 → 0.5，
+                                         #   经实测无收益 ⇒ 撤回，定稿值维持 1**（屏上数值刷新维持 1 s；撤回依据见主基准 §15 O152 / §14 追加 158）
   osd_font_px: [36, 26]                  # 【M2 定稿】状态行 36 px / 次行 26 px
   fullscreen_timeout_ms: 30000           # 【v3.85 新增·裁定 O79】全屏 HQ 视图无操作 30 s 兜底退出（§3.5）
   pointer_mouse_node: /dev/input/event7    # 【v3.85 新增·裁定 O81；**v3.86 落值**】鼠标 evdev 设备路径；

@@ -104,11 +104,13 @@ class Demo:
                  hdmi_every: int = 6, trigger_at: int = 0, trigger_times: int = 0,
                  trigger_interval_s: float = 15.0, touch_node: str = "", mouse_node: str = "",
                  dump_canvas_dir: str = "", dump_canvas_frames: int = 0,
-                 dump_after: int = 0, idle_link: bool = False,
+                 dump_after: int = 0, dump_curve_once: str = "", snapshot_port: int = 0,
+                 idle_link: bool = False,
                  inject_v4l2_error: int = 0, inject_v4l2_at: int = 30,
                  inject_v4l2_mode: str = "err",
                  no_est: bool = False, est_first: int = 0,
                  no_apply: bool = False, no_osd: bool = False,
+                 apply_preserve_ratio: bool = True,
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
                  step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
@@ -136,6 +138,10 @@ class Demo:
         self.est_first = max(0, int(est_first))
         self.no_apply = bool(no_apply)
         self.no_osd = bool(no_osd)
+        # **[A/B 开关] 保比语义**（交付实现选择，**非 config 键**，**默认开启 = 保比语义**，§14 追加 159）：
+        # 在 `boot()` 里随 `ra.configure_from_config()` 一次性注入 C 层（`preserve_ratio`），
+        # 使通道间比值在增强后保持不变（修去饱和）。**反向 opt-out = CLI `--no-preserve-ratio`**（仅供 A/B）。
+        self.apply_preserve_ratio = bool(apply_preserve_ratio)
         # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
         # `osd_no_stats` = 连统计也不做。**非 config 键**，只用于 ①-2 的 OSD 增量归因实验。
         self.osd_status_only = bool(osd_status_only)
@@ -190,6 +196,19 @@ class Demo:
         # ⇒ 用于取**稳态**画面（否则转储本身的 PNG 压缩开销会把帧率/延迟拖垮，得到的是"负载态"）。
         self.dump_after = max(0, int(dump_after))
         self._dump_n = 0
+        # **[取证钩子] 曲线场原样导出一次**（默认关闭）：首次拿到有效 `self.curve` 后把
+        # `field` 原样写一份二进制 + `PATH.json` 随行信息（`field` 类型不定 ⇒ 见 `_dump_curve_once`）。
+        self.dump_curve_once = dump_curve_once
+        self._curve_dumped = False
+        # **[调试钩子] 快照 HTTP 服务**（`--snapshot-port N`；**0 = 完全关闭**，既建线程不占端口）。
+        # 起在**独立守护线程**里（**纯 `socket` + `threading` 手写**——**不用 `http.server`**，见
+        # `_start_snapshot_server` 注释：板端 `cwd` 下有遮蔽标准库的同名文件），供**开发机浏览器**
+        # 看板端 demo 进程产出的**链路原样** MIPI 画布（复用 `self.disp.dump_png`，零色调后处理）
+        # ⇒ 对比"软件看到的像素"与"DMA 到屏的画面"。**帧路径零改动**（导出只在服务线程内做）。
+        self.snapshot_port = max(0, int(snapshot_port))
+        self._snapshot_srv = None
+        self._snapshot_lock = threading.Lock()   # 临时文件名自增序号（**不用 tempfile/random**）
+        self._snapshot_seq = 0
         # ── 指针 / 视图态 / HQ 结果与冻结（§3.5、O79、O81、O90）──────────
         self.ptr = None
         self.cursor = None
@@ -289,7 +308,7 @@ class Demo:
 
         # 曲线应用内核（§5 GAP-1：启动时一次性注入几何）
         ra.shutdown()
-        rc = ra.configure_from_config(cfg)
+        rc = ra.configure_from_config(cfg, preserve_ratio=self.apply_preserve_ratio)
         if rc != 0:
             self.log.event("main", "boot_check_item", item="realtime_apply", result="fail",
                            code=starlog.code_name(rc))
@@ -418,6 +437,10 @@ class Demo:
                 # 首拍（第 0 帧）等一次发布——与 O123 之前"首帧即持有有效曲线场"的行为一致；
                 # 此后一律 `latest()` 非阻塞取值，**帧路径不再等 worker**。
                 self.curve = self.est.wait_first() if i == 0 else self.est.latest()
+            # **[取证钩子]** `--dump-curve-once PATH`（默认关闭）：**首次**拿到有效曲线场后
+            # 把 `self.curve.field` **原样**写一次（二进制 + `PATH.json` 随行信息）。
+            if self.dump_curve_once and not self._curve_dumped and self.curve is not None:
+                self._dump_curve_once(i, int(f["seq"]))
             # **空链路（`--idle-link`）**：`self.curve` 恒为 `None` ⇒ 下面的 TH2b 与 OSD 统计
             # 两个 `if` 自然短路，链路只剩「采集 → RGA 原图窗 → 画布合成 → pageflip」。
 
@@ -806,6 +829,183 @@ class Demo:
             self.disp.dump_png(_os.path.join(self.dump_canvas_dir, f"f{k:02d}_slot1.png"),
                                1, idx=self.hdmi.last_flip_idx())
 
+    def _dump_curve_once(self, frame_index: int, seq: int) -> None:
+        """**[取证钩子]** 首次拿到有效曲线场后**原样**导出一次（默认关闭）。
+
+        `--dump-curve-once PATH`：把 `self.curve.field` 按**其原始字节**写入 `PATH`
+        （`field` 可能是 bytes / bytearray / memoryview / pybind buffer ⇒ 统一走
+        `bytes(memoryview(...))`，**不假设类型**），随行信息写入 `PATH + ".json"`。
+        只导一次（`self._curve_dumped` 守卫）；`PATH` 为空则整段不执行。
+        """
+        if not self.dump_curve_once or self.curve is None:
+            return
+        import os as _os
+        import json as _json
+        self._curve_dumped = True
+        raw = bytes(memoryview(self.curve.field))
+        _dir = _os.path.dirname(self.dump_curve_once)
+        if _dir:
+            _os.makedirs(_dir, exist_ok=True)
+        with open(self.dump_curve_once, "wb") as fh:
+            fh.write(raw)
+        g = self.est.geom
+        info = {
+            "eff_w": int(g["eff_w"]), "eff_h": int(g["eff_h"]),
+            "precision": self.est.precision(),
+            "bytes": len(raw),
+            "frame_index": int(frame_index),
+            "seq": int(seq),
+        }
+        with open(self.dump_curve_once + ".json", "w") as fh:
+            _json.dump(info, fh, ensure_ascii=False)
+
+    # ── **[调试钩子] 快照 HTTP 服务**（`--snapshot-port N`；默认 0 = 关闭）────────────
+    # **纯 `socket` + `threading` 手写的最小 HTTP/1.1 服务器**（**不用 `http.server`**）：
+    # 板端 `cwd` 下存在遮蔽标准库的同名文件（`bisect.py` 等）⇒ `import http.server` 会经
+    # `email.utils → random → bisect` 命中仓库内 `bisect.py` 而崩。本实现**只用** `socket` /
+    # `os` / `json`（`threading` 已在模块顶部导入）——这几个模块**不传递性拉入** `random` /
+    # `bisect` / `statistics`（并**特意避开 `tempfile`**：它 `from random import Random`）。
+    # 独立守护线程；导出复用既有 `dump_png(path, 0)`（链路原样、零色调后处理）。
+    # **帧路径零改动**：快照只在服务线程内做；每连接异常就地吞掉（返 500），绝不冒泡。
+    # 端口建议 8092（与采集工具 8091 错开）。
+    _SNAPSHOT_HTML = (
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        "<title>starlight canvas snapshot</title></head>"
+        "<body style=\"background:#111;color:#ddd;font-family:monospace\">"
+        "<h3>板端 demo 产出的 MIPI 画布（链路原样 / 零色调后处理）</h3>"
+        "<p>每 1 s 自动刷新。&nbsp; <code>/canvas.png</code> 当前画布；"
+        "<code>/status.json</code> 运行态。</p>"
+        "<img id=\"c\" src=\"/canvas.png\" style=\"max-width:100%;border:1px solid #444\">"
+        "<script>setInterval(function(){"
+        "document.getElementById('c').src='/canvas.png?t='+Date.now();},1000);</script>"
+        "</body></html>"
+    )
+    _SNAPSHOT_REASON = {200: "OK", 404: "Not Found", 405: "Method Not Allowed",
+                        500: "Internal Server Error"}
+
+    def _snapshot_png_bytes(self) -> bytes:
+        """导**当前 MIPI 画布**为 PNG 字节（**复用既有 `dump_png(path, 0)`**，链路原样）。
+
+        临时文件在 `TMPDIR`（缺省 `/tmp`）下自建（**不用 `tempfile`**——它会 `import random`），
+        文件名 = `pid` + 自增序号（加锁，无随机）；读完即删。`self.disp` 未就绪或导出失败则抛异常。
+        """
+        import os as _os
+        if self.disp is None:
+            raise RuntimeError("display not ready")
+        with self._snapshot_lock:
+            n = self._snapshot_seq
+            self._snapshot_seq += 1
+        tmpdir = _os.environ.get("TMPDIR") or "/tmp"
+        path = _os.path.join(tmpdir, f"snapshot_{_os.getpid()}_{n}.png")
+        try:
+            self.disp.dump_png(path, 0)
+            with open(path, "rb") as fh:
+                return fh.read()
+        finally:
+            try:
+                _os.unlink(path)
+            except OSError:
+                pass
+
+    def _snapshot_status(self) -> Dict[str, Any]:
+        """`/status.json` 载荷：`seq`（最近翻页）、`frames`、`flip_fail`、`curve_ready`、`snapshot_port`。"""
+        c = self.counters
+        return {
+            "seq": self.disp.last_flip_seq() if self.disp is not None else -1,
+            "frames": int(c.get("frames", 0)),
+            "flip_fail": int(c.get("pageflip_fail", 0)),
+            "curve_ready": self.curve is not None,
+            "snapshot_port": int(self.snapshot_port),
+        }
+
+    def _snapshot_respond(self, conn, code: int, ctype: str, body: bytes) -> None:
+        """写一个带 `Content-Length` + `Connection: close` 的 HTTP/1.1 响应（异常就地吞掉）。"""
+        reason = self._SNAPSHOT_REASON.get(code, "OK")
+        head = (f"HTTP/1.1 {code} {reason}\r\n"
+                f"Content-Type: {ctype}\r\n"
+                f"Content-Length: {len(body)}\r\n"
+                "Cache-Control: no-store\r\n"
+                "Connection: close\r\n\r\n").encode("latin-1")
+        try:
+            conn.sendall(head + body)
+        except Exception:
+            pass
+
+    def _snapshot_handle(self, conn) -> None:
+        """处理一条连接：手动解析请求行（只支持 `GET`，忽略请求头）→ 分发 → 关闭。
+
+        **本方法绝不抛异常冒泡**：任何异常就地转 500；连接必然关闭。
+        """
+        try:
+            import json as _json
+            conn.settimeout(5.0)
+            data = b""
+            while b"\r\n" not in data and len(data) < 8192:
+                chunk = conn.recv(1024)
+                if not chunk:
+                    break
+                data += chunk
+            line = data.split(b"\r\n", 1)[0].decode("latin-1", "replace").strip()
+            parts = line.split()
+            method = parts[0] if parts else ""
+            target = parts[1] if len(parts) > 1 else ""
+            path = target.split("?", 1)[0]
+            if method != "GET":
+                self._snapshot_respond(conn, 405, "text/plain; charset=utf-8",
+                                       b"method not allowed")
+            elif path == "/canvas.png":
+                self._snapshot_respond(conn, 200, "image/png", self._snapshot_png_bytes())
+            elif path == "/status.json":
+                body = _json.dumps(self._snapshot_status(), ensure_ascii=False).encode()
+                self._snapshot_respond(conn, 200, "application/json", body)
+            elif path in ("/", "/index.html"):
+                self._snapshot_respond(conn, 200, "text/html; charset=utf-8",
+                                       self._SNAPSHOT_HTML.encode())
+            else:
+                self._snapshot_respond(conn, 404, "text/plain; charset=utf-8", b"not found")
+        except Exception:
+            self._snapshot_respond(conn, 500, "text/plain; charset=utf-8", b"snapshot error")
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _snapshot_serve_forever(self, srv) -> None:
+        """接受循环（守护线程体）：每连接一个守护子线程；**永不抛异常**。"""
+        while True:
+            try:
+                conn, _addr = srv.accept()
+            except Exception:
+                return                     # 监听套接字被关/出错 ⇒ 静默退出线程
+            threading.Thread(target=self._snapshot_handle, args=(conn,),
+                             daemon=True).start()
+
+    def _start_snapshot_server(self) -> None:
+        """`--snapshot-port N > 0` 时起后台快照服务；**N = 0 时整段不执行**（不建线程、不占端口）。
+
+        **整体尽力而为**：端口占用 / import 失败 / 任何异常 ⇒ 打印一行、返回、**绝不抛出**。
+        """
+        if self.snapshot_port <= 0:
+            return
+        try:
+            import socket
+            srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            srv.bind(("0.0.0.0", self.snapshot_port))
+            srv.listen(16)
+        except Exception as e:
+            print(f"[快照服务] 启动失败（端口 {self.snapshot_port}）：{e}")
+            return
+        try:
+            self._snapshot_srv = srv
+            threading.Thread(target=self._snapshot_serve_forever, args=(srv,),
+                             name="TH-snapshot", daemon=True).start()
+            print(f"[快照服务] 已启动：http://0.0.0.0:{self.snapshot_port}/  "
+                  f"（/canvas.png 当前 MIPI 画布；/status.json 运行态；建议端口 8092）")
+        except Exception as e:
+            print(f"[快照服务] 线程启动失败：{e}")
+
     def _fps(self) -> float:
         """**最近 1 s 滑窗**的帧率（**v3.86 裁定 O108**）。
 
@@ -1020,6 +1220,17 @@ def main() -> int:
                    help="[取证钩子] 常规态逐帧导出画布 PNG 的帧数（槽 0/槽 1 各一张；0 = 关闭）")
     p.add_argument("--dump-after", type=int, default=0,
                    help="[取证钩子] 跳过前 N 个成功翻页后才开始逐帧转储（用于取**稳态**画面；默认 0）")
+    # **[取证钩子]** 首次拿到有效曲线场后**原样**导出一次：`PATH` = 二进制场；`PATH.json` = 随行信息。
+    # 默认空 = 关闭（既有行为不变）；**不新增日志事件与 config 键**。
+    p.add_argument("--dump-curve-once", default="",
+                   help="[取证钩子] 首次有效曲线场原样导出一次（写 PATH 与 PATH.json；默认空 = 关闭）")
+    # **[调试钩子] 快照 HTTP 服务**（默认 0 = 关闭）：**N > 0** 时在独立守护线程起**纯 `socket`
+    # 手写**的最小 HTTP/1.1 服务（**不用 `http.server`**——板端 `cwd` 下有遮蔽标准库的同名文件）
+    # 监听 `0.0.0.0:N`，供**开发机浏览器**看板端 demo 产出的**链路原样** MIPI 画布
+    # （`/canvas.png` 复用 `dump_png`、`/status.json` 运行态、`/` 1 s 自刷页）。
+    # **非 config 键、不新增日志事件与返回码、帧路径零改动**；端口建议 8092（采集工具用 8091）。
+    p.add_argument("--snapshot-port", type=int, default=0,
+                   help="[调试钩子] 快照 HTTP 端口（0 = 关闭；建议 8092，采集工具用 8091）")
     # **[计量钩子] 空链路基线**（§6.1 v3.4「必读」段：*"关闭增强，只跑采集 → RGA 原图窗 →
     # MIPI 显示"*；采集方式见 `docs/measurements.md` §1 与 §13「端到端延迟」行的
     # `bench.py --scenario idle-link --breakdown`）。**不是 config 键**、不改任何取值。
@@ -1041,6 +1252,12 @@ def main() -> int:
                    help="[验证钩子] 只前 N 帧请求估计，之后冻结最近发布场（0 = 一直估计）")
     p.add_argument("--no-apply", action="store_true",
                    help="[验证钩子] 跳过 TH2b 增强应用（窗内显示 RGA 原图）")
+    # **[A/B 开关] 保比语义**（交付实现选择，**非 config 键、不新增日志事件与返回码**）：
+    # **默认走保比语义**：v 取三通道均值、对亮度 L 施加曲线得 L2、按标量 k=L2/L 回乘三通道
+    # ⇒ 通道间比值不变（修去饱和）。本**反向开关切回旧逐通道语义，仅供 A/B**。实现见 native/apply_core.c。
+    p.add_argument("--no-preserve-ratio", action="store_false", dest="apply_preserve_ratio",
+                   default=True,
+                   help="[A/B 开关] 切回旧逐通道语义（默认走保比语义；本开关仅供 A/B）")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
@@ -1078,11 +1295,14 @@ def main() -> int:
              trigger_times=args.trigger_times, trigger_interval_s=args.trigger_interval_s,
              touch_node=args.pointer_touch_node, mouse_node=args.pointer_mouse_node,
              dump_canvas_dir=args.dump_canvas_dir, dump_canvas_frames=args.dump_canvas_frames,
-             dump_after=args.dump_after, idle_link=args.idle_link,
+             dump_after=args.dump_after, dump_curve_once=args.dump_curve_once,
+             snapshot_port=args.snapshot_port,
+             idle_link=args.idle_link,
              inject_v4l2_error=args.inject_v4l2_error, inject_v4l2_at=args.inject_v4l2_at,
              inject_v4l2_mode=args.inject_v4l2_mode,
              no_est=args.no_est, est_first=args.est_first,
              no_apply=args.no_apply, no_osd=args.no_osd,
+             apply_preserve_ratio=args.apply_preserve_ratio,
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,
              step_exp_times=args.step_exp_times, step_exp_interval_s=args.step_exp_interval_s,
              step_exp_low=args.step_exp_low, step_exp_high=args.step_exp_high,
@@ -1106,6 +1326,15 @@ def main() -> int:
     # **[口径记录]** 启动耗时（RGA 配置 + 模型加载 + `stream on` + 预热）——**不计入帧窗口**
     t_boot_done = time.monotonic()
     boot_s = t_boot_done - t0
+    # **[调试钩子]** `--snapshot-port N > 0` 时起后台快照 HTTP（**默认 0 ⇒ 整段不执行**）。
+    # 放在 `t_boot_done` 之后 ⇒ 不计入启动耗时；帧路径零改动（导出只在服务线程内做）。
+    # **只挂"成功路径"**：上面 `rc != 0` 时已 `return 1` ⇒ 启动自检失败（含 TH1 的
+    # `v4l2_init_failed` ⇒ `BOOT_CHECK → FAULT_EXIT`，其 `cap.init()` 返非 0）**根本走不到这里**。
+    # 外面**再包一层 try/except** 作双保险：任何异常只打一行提示、**绝不影响主流程与退出码**。
+    try:
+        d._start_snapshot_server()
+    except Exception as e:
+        print(f"[快照服务] 启动异常（已忽略，不影响主流程）：{e}")
     # **（v3.86 裁定 O97）** `t_run_done` = **帧循环退出**时刻（`shutdown()` 之前）
     # ⇒ 帧率分母 = `t_run_done − t_boot_done − 冻结窗`（**扣进程启动与退出序**）。
     t_run_done = 0.0
@@ -1233,6 +1462,8 @@ def main() -> int:
             "path_variant": {"idle_link": bool(d.idle_link), "no_est": bool(d.no_est),
                              "est_first": int(d.est_first), "no_apply": bool(d.no_apply),
                              "no_osd": bool(d.no_osd),
+                             # [A/B 开关] 曲线应用语义（false = 旧逐通道；true = 保比）。**非 config 键**。
+                             "apply_preserve_ratio": bool(d.apply_preserve_ratio),
                              "osd_status_only": bool(d.osd_status_only),
                              "osd_no_stats": bool(d.osd_no_stats)},
             "mirror_scale": th5.get("scale"), "th5": th5, "th3": th3_info,

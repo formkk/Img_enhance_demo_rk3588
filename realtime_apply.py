@@ -67,15 +67,22 @@ def _geometry_from_config(cfg: Any) -> Tuple[Tuple[int, int], str, str, str]:
 
 
 def configure(curve_w: int, curve_h: int, precision: str,
-              csc: str = "unset", rng: str = "unset", iters: int = CURVE_ITERS) -> int:
-    """一次性注入曲线场几何与色彩参数。**必须在任何工作线程启动前调用。**"""
-    return int(_native.configure(curve_w, curve_h, iters, precision, csc, rng))
+              csc: str = "unset", rng: str = "unset", iters: int = CURVE_ITERS,
+              preserve_ratio: bool = True) -> int:
+    """一次性注入曲线场几何与色彩参数。**必须在任何工作线程启动前调用。**
+
+    `preserve_ratio`（**非 §10.4 config 键**，交付实现选择）：True = 保比语义
+    （v 取三通道均值、对亮度施加曲线后按标量回乘，通道间比值不变），**默认 True**；
+    False = 旧逐通道语义，可由 `main.py --no-preserve-ratio` CLI 反向 opt-out（仅供 A/B）。
+    """
+    return int(_native.configure(curve_w, curve_h, iters, precision, csc, rng,
+                                 bool(preserve_ratio)))
 
 
-def configure_from_config(cfg: Any) -> int:
+def configure_from_config(cfg: Any, preserve_ratio: bool = True) -> int:
     """按 §10.4 键表注入配置（推荐入口，由 main.py 在启动序里调用一次）。"""
     (cw, ch), precision, csc, rng = _geometry_from_config(cfg)
-    return configure(cw, ch, precision, csc, rng)
+    return configure(cw, ch, precision, csc, rng, preserve_ratio=preserve_ratio)
 
 
 def is_configured() -> bool:
@@ -129,11 +136,15 @@ def synth_curve(cw: int, ch: int, precision: str, seed: int = 7) -> bytes:
     return bytes(int(v * 255.0 + 0.5) for v in vals)
 
 
-def _selfcheck(precision: str, w: int = 512, h: int = 288,
+def _selfcheck(precision: str, preserve_ratio: bool = False,
+               w: int = 512, h: int = 288,
                cw: int = 480, ch: int = 270) -> int:
-    """NEON vs 标量逐位对账 + 基本健全性检查（§11.2 的数值一致性检查子项）。"""
+    """NEON vs 标量逐位对账 + 基本健全性检查（§11.2 的数值一致性检查子项）。
+
+    `preserve_ratio` 两档都须检查：旧逐通道语义与保比语义各跑一次（两路都要逐位一致）。
+    """
     shutdown()
-    rc = configure(cw, ch, precision)
+    rc = configure(cw, ch, precision, preserve_ratio=preserve_ratio)
     assert rc == OK, f"configure 失败 rc={rc}"
     rgb = synth_rgb(w, h, seed=3)
     curve = synth_curve(cw, ch, precision, seed=11)
@@ -142,15 +153,16 @@ def _selfcheck(precision: str, w: int = 512, h: int = 288,
     rc1 = apply_window(rgb, curve, a, w, h)
     rc2 = apply_scalar(rgb, curve, b, w, h)
     assert rc1 == OK and rc2 == OK, f"apply rc={rc1}/{rc2}"
+    tag = "preserve_ratio" if preserve_ratio else "per_channel"
     mismatch = sum(1 for i in range(len(a)) if a[i] != b[i])
     max_abs = max((abs(a[i] - b[i]) for i in range(len(a))), default=0)
-    print(f"[{precision}] {w}x{h} curve={cw}x{ch} NEON-vs-scalar "
+    print(f"[{precision}/{tag}] {w}x{h} curve={cw}x{ch} NEON-vs-scalar "
           f"mismatch_bytes={mismatch} max_abs={max_abs}")
     if mismatch != 0:
         raise SystemExit(f"FAIL: NEON 与标量不一致（mismatch={mismatch}）")
     if not any(a):
         raise SystemExit("FAIL: 输出全 0，链路可疑")
-    print(f"[{precision}] OK（NEON 与标量逐位一致，输出非空）")
+    print(f"[{precision}/{tag}] OK（NEON 与标量逐位一致，输出非空）")
     return 0
 
 
@@ -159,7 +171,8 @@ def main() -> int:
 
     if len(sys.argv) > 1 and sys.argv[1] == "--selfcheck":
         for prec in ("fp16", "u8"):
-            _selfcheck(prec)
+            for pr in (False, True):
+                _selfcheck(prec, pr)
         shutdown()
         return 0
     print(f"impl: {impl_id()}")

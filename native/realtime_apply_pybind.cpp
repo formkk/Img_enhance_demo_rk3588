@@ -58,7 +58,7 @@ void require_size(const py::buffer_info& info, size_t need, const char* what) {
 
 int py_configure(uint32_t curve_w, uint32_t curve_h, uint32_t iters,
                  const std::string& precision, const std::string& csc,
-                 const std::string& range) {
+                 const std::string& range, bool preserve_ratio) {
     cf_config_t cfg;
     std::memset(&cfg, 0, sizeof(cfg));
     cfg.curve_w = curve_w;
@@ -67,6 +67,8 @@ int py_configure(uint32_t curve_w, uint32_t curve_h, uint32_t iters,
     cfg.precision = parse_precision(precision);
     cfg.csc = parse_csc(csc);
     cfg.range = parse_range(range);
+    /* 施加语义开关（**非 §10.4 config 键**）：true = 保比语义（**默认**）；false = 旧逐通道语义（仅 A/B）。 */
+    cfg.preserve_ratio = preserve_ratio ? 1 : 0;
     return cf_configure(&cfg);
 }
 
@@ -136,7 +138,9 @@ PYBIND11_MODULE(_realtime_apply, m) {
 
     m.def("configure", &py_configure, py::arg("curve_w"), py::arg("curve_h"), py::arg("iters"),
           py::arg("precision"), py::arg("csc"), py::arg("range"),
-          "一次性注入曲线场几何与色彩参数（启动时调用，之后只读）");
+          py::arg("preserve_ratio") = true,
+          "一次性注入曲线场几何与色彩参数（启动时调用，之后只读）；"
+          "preserve_ratio=true 启用保比语义（**默认**）；false = 旧逐通道语义（仅 A/B）");
     m.def("is_configured", &cf_is_configured, "是否已完成 configure");
     m.def("shutdown", &cf_shutdown, "释放配置（进程退出用）");
     m.def("impl_id", &cf_impl_id, "内核标识串");
