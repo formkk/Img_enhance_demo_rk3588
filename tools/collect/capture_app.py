@@ -161,6 +161,198 @@ def iq_guard(iq_dir, manifest_path, bypass=False):
         return True
     return False
 
+# ── ISP 指纹（主基准 §9.5 / 设计档 §6.1；能力缺口 **G5**）─────────────────────
+# 记录口径 = **只记「IQ 内路径 + 可观测状态 + 规范化子树哈希前 16 位」，不复制取值**
+# （SSOT = IQ 文件，规则 `00-ssot.md` §3.1）。子树边界**已板端实测确认**（与 config.yaml
+# §isp.fingerprint 已归档的 16 位逐位一致）⇒ **不照文档推测**。失败**不得静默**：解析不到
+# 即 `ok=False` 并把该项留在 `_pending`（规则 `10-evidence.md` §2，禁填占位假值）。
+IQFP = {'ok': False, 'why': '尚未解析', 'scenes': [], 'ae': {}, 'src': None}
+
+# 最近一次 `sensor_ctrl` 回读（供页面回显；逐帧随 sidecar 落盘）
+SENSOR = {'ok': False, 'why': '尚未回读', 'device': None, 'readback': {}}
+
+# 光照/光源（G3）：批次级设定 + 最近一帧的 Y 均值（供页面回显）
+LIGHT = {'lux_anchor': None, 'lux_anchor_note': None, 'y_mean': None,
+         'type': None, 'cct_k': None, 'dimming': None, 'distance_m': None, 'note': None}
+
+# 子树跳径 → 已归档哈希（板端实测命中，作自检用；不符即在页面告警）
+_FP_EXPECT = {
+    'agamma_calib_v11': '881b76242a6f2650',
+    'ccm_calib/TuningPara': '85e5727b30c11272',
+    'ablc_calib/BlcTuningPara': 'a511de7cb4e7c348',
+    'bayer2dnr_v2/TuningPara': '16ee259977494109',
+    'adpcc_calib': '79da0940d59eea65',
+}
+
+
+def _sha16(obj):
+    """规范化子树哈希前 16 位（口径同 config.yaml §isp.fingerprint 注释）。"""
+    return hashlib.sha256(
+        json.dumps(obj, sort_keys=True, separators=(',', ':')).encode()
+    ).hexdigest()[:16]
+
+
+def _iq_fp_scene(isp, idx, src):
+    """由单个 `scene_isp30` 子树构造 8 子项指纹（**值来自 IQ 实测，不硬编码**）。"""
+    gt = isp['agamma_calib_v11']['GammaTuningPara']
+    dg = (isp.get('adegamma_calib') or {}).get('DegammaTuningPara') or {}
+    tp = isp['ccm_calib']['TuningPara']
+    blc = isp['ablc_calib']
+    wb = isp['wb_v21']
+    return {
+        'scene_index': idx, 'src': src,
+        'gamma_table': {
+            'src': 'agamma_calib_v11/GammaTuningPara',
+            'gamma_en': gt.get('Gamma_en'),
+            'curve_points': len(gt.get('Gamma_curve') or []),
+            'gamma_out_offset': gt.get('Gamma_out_offset'),
+            'curve_sha256_16': _sha16(gt['Gamma_curve']),
+            'subtree_sha256_16': _sha16(isp['agamma_calib_v11']),
+            'degamma_en': dg.get('degamma_en'),
+        },
+        'ccm': {
+            'src': 'ccm_calib/TuningPara',
+            'enable': (isp['ccm_calib'].get('control') or {}).get('enable'),
+            'matrices': len(tp.get('matrixAll') or []),
+            'illuminants': len(tp.get('aCcmCof') or []),
+            'damp_enable': tp.get('damp_enable'),
+            'interp_enable': (tp.get('illu_estim') or {}).get('interp_enable'),
+            'default_illu': (tp.get('illu_estim') or {}).get('default_illu'),
+            'subtree_sha256_16': _sha16(tp),
+        },
+        'black_level': {
+            'src': 'ablc_calib/BlcTuningPara',
+            'enable': blc['BlcTuningPara'].get('enable'),
+            'iso_points': len((blc['BlcTuningPara'].get('BLC_Data') or {}).get('ISO') or []),
+            'enable_set2': (blc.get('Blc1TuningPara') or {}).get('enable'),
+            'subtree_sha256_16': _sha16(blc['BlcTuningPara']),
+        },
+        'awb_lock': {
+            'src': 'wb_v21.control.mode',
+            'mode': (wb.get('control') or {}).get('mode'),
+            'manual_mode': (wb.get('manualPara') or {}).get('mode'),
+            'mwbGain': ((wb.get('manualPara') or {}).get('cfg') or {}).get('mwbGain'),
+        },
+        'nr_2d': {
+            'src': 'bayer2dnr_v2/TuningPara.enable',
+            'enable': isp['bayer2dnr_v2']['TuningPara'].get('enable'),
+            'subtree_sha256_16': _sha16(isp['bayer2dnr_v2']['TuningPara']),
+        },
+        'nr_3d': {
+            'src': 'bayertnr_v2/TuningPara.enable',
+            'enable': isp['bayertnr_v2']['TuningPara'].get('enable'),
+            'subtree_sha256_16': _sha16(isp['bayertnr_v2']['TuningPara']),
+        },
+        'dpc': {
+            'src': 'adpcc_calib/DpccTuningPara/Enable',
+            'enable': isp['adpcc_calib']['DpccTuningPara'].get('Enable'),
+            'subtree_sha256_16': _sha16(isp['adpcc_calib']),
+        },
+    }
+
+
+def iq_fp_build(iq_dir):
+    """解析当前 IQ → 静态指纹（8 子项 × 每 `scene_isp30`）+ AE 手动档期望值。**失败不静默**。"""
+    IQFP.update(ok=False, scenes=[], ae={}, why='', src=None)
+    if not IQ['file']:
+        IQFP['why'] = 'IQ 文件名未知（iq_guard 未通过？）'
+        return False
+    path = os.path.join(iq_dir, IQ['file'])
+    try:
+        with open(path) as f:
+            d = json.load(f)
+        scenes = [_iq_fp_scene(ms['sub_scene'][0]['scene_isp30'], i,
+                               'main_scene[%d].sub_scene[0].scene_isp30' % i)
+                  for i, ms in enumerate(d['main_scene'])]
+        isp0 = d['main_scene'][0]['sub_scene'][0]['scene_isp30']
+        ae = isp0.get('ae_calib', {})
+        cc = ae.get('CommCtrl', {})
+        mc = cc.get('AecManualCtrl', {}).get('LinearAE', {})
+        fm = cc.get('AecFrameRateMode', {})
+        IQFP['ae'] = {
+            'aec_op_mode': cc.get('AecOpType'),
+            'time_value_s': mc.get('TimeValue'), 'gain_value': mc.get('GainValue'),
+            'isp_dgain_value': mc.get('IspDGainValue'),
+            'manual_en': {k: mc.get(k) for k in
+                          ('ManualTimeEn', 'ManualGainEn', 'ManualIspDgainEn')},
+            'is_fps_fix': fm.get('isFpsFix'), 'fps_value': fm.get('FpsValue'),
+        }
+    except Exception as e:
+        IQFP['why'] = 'IQ 解析失败（%s）：%s' % (path, e)
+        return False
+    if not scenes:
+        IQFP['why'] = 'IQ 中未找到 main_scene[*].sub_scene[0].scene_isp30'
+        return False
+    # 自检：子树哈希须与 config.yaml 已归档值一致，否则页面告警（防解析错位）
+    bad = [(k, v) for k, v in _FP_EXPECT.items() if
+           _sha16(_dig(d['main_scene'][0]['sub_scene'][0]['scene_isp30'],
+                       tuple(k.split('/')))) != v]
+    IQFP.update(ok=True, scenes=scenes,
+                src='%s ×%d scene_isp30' % (path, len(scenes)),
+                why=('⚠ 子树哈希自检不符（解析可能错位）：%s' % bad) if bad else '')
+    return True
+
+
+def _dig(node, path):
+    cur = node
+    for k in path:
+        cur = cur[k]
+    return cur
+
+
+def _sensor_ctrl(a):
+    """采集时刻只读回读 sensor subdev 三控制（G5 的「运行期指纹」）。失败**不静默** → (None, 原因)。"""
+    node = LOCK.get('node') or a.sensor_subdev
+    if not node:
+        return None, 'sensor subdev 未解析（30 fps 锁定未施加？）'
+    ctrls = ('exposure', 'analogue_gain', 'vertical_blanking')
+    try:
+        r = subprocess.run(['v4l2-ctl', '-d', node, '--get-ctrl', ','.join(ctrls)],
+                           capture_output=True, text=True, timeout=5)
+    except Exception as e:
+        return None, 'v4l2-ctl 调用异常：%s' % e
+    vals = {}
+    for line in ((r.stdout or '') + (r.stderr or '')).splitlines():
+        if ':' in line:
+            k, v = line.split(':', 1)
+            if k.strip() in ctrls:
+                try:
+                    vals[k.strip()] = int(v.strip())
+                except ValueError:
+                    vals[k.strip()] = v.strip()
+    if r.returncode != 0 or not vals:
+        return None, 'v4l2-ctl 回读失败（rc=%d）' % r.returncode
+    return {
+        'device': node,
+        'readback': vals,                       # 采集时刻**实测生效值**
+        'expected': {                           # 期望值（来自锁定与 IQ 手动档，非设定回读）
+            'vblank_lines': LOCK.get('vblank_lines'),
+            'aec_op_mode': IQFP['ae'].get('aec_op_mode'),
+            'time_value_s': IQFP['ae'].get('time_value_s'),
+            'gain_value': IQFP['ae'].get('gain_value'),
+            'is_fps_fix': IQFP['ae'].get('is_fps_fix'),
+            'fps_value': IQFP['ae'].get('fps_value'),
+        },
+        '_note': 'readback = 采集时刻实测；expected = 锁定/IQ 手动档的期望值。二者不一致即漂移信号。',
+    }, ''
+
+
+def _y_mean(raw, w, h, stride, step=4):
+    """逐帧 **Y 平面均值**（相对光照指标；设计档 §12.3）。
+
+    口径 = **隔行隔列取 1/step**（与 §3.4 OSD 的降采样同族），零额外取数成本
+    （数据本就在手的无损 NV12）。⚠️ **诚实的局限**：帧均值与场景反射率混淆 ⇒
+    **跨场景不可直接比**；跨场景光照比较只能靠批次级照度锚点（§12.4）。
+    """
+    s = 0
+    n = 0
+    for y in range(0, h, step):
+        row = raw[y * stride:y * stride + w]
+        sub = row[::step]
+        s += sum(sub)
+        n += len(sub)
+    return (s / n if n else 0.0), n
+
 # ── 1080p@30 锁定防呆（主基准 §9.5 ④ / §10.4 `camera.vblank_lines`）─────────────
 # 采集**必须发生在 30 fps 锁定下**：60 fps 的 VMAX（1080+1154 = 2234 行）把 manual 曝光钳到
 # 2242 行 ⇒ 1/30 s（4485 行）不可达（O63）；且 VMAX 改变即改变噪声统计 ⇒ 与演示链路不同构。
@@ -335,23 +527,37 @@ def frame_name(scene, slot, kind):
 def _sidecar(scene, slot, kind, path, raw_bytes, a):
     """写**该帧**的 sidecar（**逐帧一份**，不再每场景一份 ⇒ 天然消除覆盖）。
 
-    **只写本应用能确知的字段**；ISP 指纹/传感器 ctrl/照度等需另行取数，
-    一律置 null 并列入 `_pending`，**不得填占位假值**（规则 `10-evidence.md` §2）。
+    **只写本应用能确知的字段**；取不到的项一律置 `null` 并列入 `_pending`，
+    **不得填占位假值**（规则 `10-evidence.md` §2）。
+
+    **G5（v3.86 本轮补齐）**：`isp_fingerprint` 由「仅 IQ 名+哈希」扩为 **8 子项 × 每 scene_isp30**
+    （静态，来自 IQ 实测解析），`sensor_ctrl` 由 `null` 改为 **v4l2-ctl 采集时刻回读**。
+    `csc` 仍为 `null`，但**理由入 `_not_applicable`**（采集链路 v4l2 直出、未过 RGA，无 CSC 可记）。
 
     字段分组依 `docs/design/dataset.md` §6.1。
     """
     mono = time.monotonic_ns()                       # 计量域，唯一可比较的时钟
     utc = datetime.now(timezone.utc).isoformat()     # 仅供人读
+    sc, sc_why = _sensor_ctrl(a)
+    SENSOR.update(ok=bool(sc), why=sc_why, device=(sc or {}).get('device'),
+                  readback=(sc or {}).get('readback', {}))
+    ymean, nsamp = _y_mean(raw_bytes, a.w, a.h, RAW['stride'])   # 逐帧相对光照指标（§12.3）
+    LIGHT.update(lux_anchor=a.lux_anchor, lux_anchor_note=(a.lux_anchor_note or None),
+                 y_mean=round(ymean, 4), type=(a.light_type or None), cct_k=a.light_cct_k,
+                 dimming=(a.light_dimming or None), distance_m=a.light_distance_m,
+                 note=(a.light_note or None))
+    light_pending = [k for k, v in (('type', a.light_type), ('cct_k', a.light_cct_k),
+                                    ('dimming', a.light_dimming),
+                                    ('distance_m', a.light_distance_m)) if v in (None, '')]
     pending = [
-        # 「ISP 指纹」**已部分落地**（O62 ④(i)：IQ 文件名 + 哈希 + 档位）⇒ 不再整项列此，
-        # 其余子项见 `isp_fingerprint._pending`。
-        'csc',                  # RGA CSC 矩阵 + range —— 本链路未过 RGA，取流为 v4l2 直出
-        'sensor_ctrl',          # 曝光 / 模拟增益 / 数字增益 实测读回值 —— 需 v4l2-ctl 取数（未实现）
-        'illuminance',          # 实测照度 + 测量方式（照度计型号/位置）—— 需人工录入（未实现）
         'optics',               # 镜头型号 + 对焦判据实测值 —— O31 关闭后才有
         'split',                # train/val/test 标签 —— 采集期不定，划分时回填
         'dataset_version',      # 数据集版本哈希 —— 打包时回填
     ]
+    if not sc:
+        pending.append('sensor_ctrl')                # 回读失败 ⇒ 留在 _pending，不填假值
+    if not IQFP['ok']:
+        pending.append('isp_fingerprint_static')
     stem = os.path.splitext(os.path.basename(path))[0]
     other = 'gt' if kind == 'dark' else 'dark'
     return {
@@ -379,22 +585,46 @@ def _sidecar(scene, slot, kind, path, raw_bytes, a):
             'geometry_alignment': 'same_frame_no_motion',   # 同机位、仅改光源 ⇒ 天然对齐
         },
         'file': {'name': os.path.basename(path), 'bytes': len(raw_bytes)},
-        # ISP 指纹**部分落地**（主基准 §15 O62 ④(i)）：IQ 文件名 + sha256 + 档位 = 本应用可确知项；
-        # 其余子项仍需板上 rkisp 侧取数（未实现）⇒ 置 `_pending`，**不填占位假值**。
+        # ISP 指纹（§9.5 全项，G5 补齐）：**静态 8 子项 × 每 scene_isp30**（口径 = 只记路径 +
+        # 可观测状态 + 规范化子树哈希前 16 位，**不复制取值**，SSOT = IQ 文件）+ IQ 名/哈希/档位。
         'isp_fingerprint': {
             'iq_file': IQ['file'],                   # 当前 /etc/iqfiles/ 下的 IQ 文件名
             'iq_hash': IQ['sha256'],                 # 该文件 sha256（= §9.5 指纹的 iq_hash）
             'iq_set': IQ['tag'],                     # collect / demo / stock / unknown
             'iq_guard': IQ['guard'],                 # ok（= 采集档）/ bypassed（人工绕过，须审计）
-            '_pending': ['gamma_table', 'ccm', 'black_level', 'awb_lock',
-                         'nr_2d', 'nr_3d', 'dpc'],
+            'src': IQFP.get('src'),                  # 静态指纹来源（IQ 路径 × scene 数）
+            'scenes': IQFP['scenes'],                # 8 子项 × 每 scene_isp30（解析失败则空）
+            '_pending': [] if IQFP['ok'] else ['isp_fingerprint_static'],
         },
-        'csc': None,
-        'sensor_ctrl': None,
-        'illuminance': None,
+        'sensor_ctrl': sc,                           # 采集时刻 v4l2-ctl 回读（失败则 null）
+        'sensor_ctrl_error': (sc_why or None) if not sc else None,   # 回读失败原因（不静默）
+        'csc': None,                                 # 采集链路 v4l2 直出、未过 RGA ⇒ 无 CSC 可记
+        # 光照（**G3 补齐**，§12.3/§12.4）：**逐帧** Y 均值（零人工）+ **批次**照度锚点（一次录入）。
+        # ⚠️ 帧均值与场景反射率混淆 ⇒ 跨场景不可直接比；跨场景光照比较只能靠锚点。
+        'illuminance': {
+            'method': 'y_mean + batch_anchor',   # 口径声明（§12.3 / §12.4）
+            'frame_y_mean': round(ymean, 4),     # 逐帧 Y 平面均值（相对光照指标）
+            'y_mean_sampling': '1/4 隔行隔列 → %d 样本' % nsamp,
+            'lux_anchor': a.lux_anchor,          # 批次级照度计实测（Lux）；null = 未录
+            'lux_anchor_note': (a.lux_anchor_note or None),
+            '_pending': [] if a.lux_anchor is not None else ['lux_anchor'],
+        },
+        # 光源（批次级；**本组为设计选择，不涉 config 键**，见 `dataset.md` §6.1）
+        'light_source': {
+            'type': (a.light_type or None),
+            'cct_k': a.light_cct_k,
+            'dimming': (a.light_dimming or None),   # 与色温漂移判别直接相关
+            'distance_m': a.light_distance_m,
+            'note': (a.light_note or None),
+            '_pending': light_pending,
+        },
         'optics': None,
         'split': None,
         'dataset_version': None,
+        '_not_applicable': {
+            'csc': '采集链路为 RKISP mainpath v4l2 直出，未过 RGA ⇒ 无 CSC 矩阵/range 可记；'
+                   'O54 的 CSC 显式化只影响交付链路与离线 RGB 转换工具',
+        },
         '_pending': pending,
     }
 
@@ -482,6 +712,10 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  .iq.ok{background:#1d3a1d;color:#bfb}
  .lk{padding:8px 10px;background:#3a2a1d;color:#fdb;white-space:pre-wrap;display:none}
  .lk.ok{background:#1d3a2d;color:#bfb}
+ .fp{padding:8px 10px;background:#2a1d3a;color:#dcb;white-space:pre-wrap;display:none}
+ .fp.ok{background:#1d2a3a;color:#bdf}
+ .lg{padding:8px 10px;background:#1d2a2a;color:#bdd;white-space:pre-wrap}
+ .lg.warn{background:#3a2a1d;color:#fdb}
  .wrap{display:flex;flex-wrap:wrap;gap:8px;padding:8px}
  .pane{flex:1 1 46%;min-width:300px}
  canvas{width:100%;background:#000;display:block}
@@ -497,6 +731,8 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
 </div>
 <div class="iq" id="iq"></div>
 <div class="lk" id="lk"></div>
+<div class="fp" id="fp"></div>
+<div class="lg" id="lg"></div>
 <div class="ctl">
  <button class="gt" id="bgt">采集亮帧 GT</button>
  <button id="bdk">采集暗帧</button>
@@ -516,7 +752,7 @@ const im=document.getElementById('im'),c1=document.getElementById('c1'),c2=docum
       d=document.getElementById('d'),sc=document.getElementById('sc'),dk=document.getElementById('dk'),
       gt=document.getElementById('gt'),ba=document.getElementById('ba'),msg=document.getElementById('msg'),
       sl=document.getElementById('sl'),rq=document.getElementById('rq'),iq=document.getElementById('iq'),
-      lk=document.getElementById('lk');
+      lk=document.getElementById('lk'),fp=document.getElementById('fp'),lg=document.getElementById('lg');
 let best=0,n=0,t0=performance.now();
 
 function mark(el,on){ el.textContent = on?'已采':'未采'; el.className = on?'ok':'no'; }
@@ -568,9 +804,35 @@ async function loop(){
     if(j.lock){
       lk.style.display='block';
       lk.className='lk'+(j.lock.ok?' ok':'');
-      lk.textContent='30 fps 锁定：'+(j.lock.ok
+      lk.textContent='帧率锁定：'+(j.lock.ok
           ? '✓ 已施加（'+j.lock.node+' vertical_blanking='+j.lock.readback+' ⇒ VMAX '+(j.lock.readback+1080)+' 行），可采集'
           : '✗ 未生效，拒绝采集')+(j.lock.why?'　—　'+j.lock.why:'');
+    }
+    if(j.fp){
+      fp.style.display='block';
+      fp.className='fp'+((j.fp.ok&&j.sensor&&j.sensor.ok)?' ok':'');
+      const rb=j.sensor&&j.sensor.readback||{};
+      fp.textContent='ISP 指纹（G5）：'+(j.fp.ok
+            ? '✓ 静态 8 子项 × '+j.fp.scenes+' 场景已解析'
+            : '✗ 解析失败'+(j.fp.why?'（'+j.fp.why+'）':''))
+        +'　|　传感器回读：'+((j.sensor&&j.sensor.ok)
+            ? '✓ '+j.sensor.device+' exposure='+rb.exposure+' analogue_gain='+rb.analogue_gain
+              +' vertical_blanking='+rb.vertical_blanking
+            : '✗ '+(j.sensor&&j.sensor.why||'未回读'));
+    }
+    if(j.light){
+      const L=j.light, miss=[];
+      if(L.lux_anchor==null) miss.push('照度锚点');
+      if(!L.type) miss.push('光源类型');
+      if(L.cct_k==null) miss.push('色温');
+      if(!L.dimming) miss.push('调光方式');
+      lg.className='lg'+(miss.length?' warn':'');
+      lg.textContent='光照/光源（G3）：照度锚点='+(L.lux_anchor==null?'未录':L.lux_anchor+' Lux')
+        +'　光源='+(L.type||'-')+' / '+(L.cct_k==null?'-':L.cct_k+'K')+' / 调光='+(L.dimming||'-')
+        +' / '+(L.distance_m==null?'-':L.distance_m+' m')
+        +(L.note?'（'+L.note+'）':'')
+        +'　本帧 Y 均值='+(L.y_mean==null?'（尚未采集）':L.y_mean)
+        +(miss.length?'　⚠ 缺：'+miss.join('、'):'');
     }
   }catch(e){}
   n++; const el=(performance.now()-t0)/1000;
@@ -624,6 +886,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         'lock': {'ok': LOCK['ok'], 'node': LOCK['node'],
                                  'vblank_lines': LOCK['vblank_lines'], 'readback': LOCK['readback'],
                                  'why': LOCK['why']},
+                        'fp': {'ok': IQFP['ok'], 'scenes': len(IQFP['scenes']),
+                               'src': IQFP['src'], 'why': IQFP['why']},
+                        'sensor': {'ok': SENSOR['ok'], 'device': SENSOR['device'],
+                                   'readback': SENSOR['readback'], 'why': SENSOR['why']},
+                        'light': dict(LIGHT),
                         'last': STATE['last']})
         else:
             self._send(PAGE.encode(), 'text/html; charset=utf-8')
@@ -664,11 +931,31 @@ def main():
     ap.add_argument('--no-iq-guard', action='store_true',
                     help='**调试用**：绕过 O62 ④(ii) 的"当前 IQ = 采集档"防呆。'
                          '绕过会记入 sidecar（isp_fingerprint.iq_guard = bypassed）以便审计')
-    ap.add_argument('--vblank-lines', type=int, default=3405,
-                    help='1080p@30 锁定的 `vertical_blanking` 值 = config `camera.vblank_lines`'
-                         '（§10.4；默认 3405 ⇒ VMAX 4485 行 = 1/30 s）。**须在取流前施加**')
+    ap.add_argument('--vblank-lines', type=int, default=7906,
+                    help='帧率锁定的 `vertical_blanking` 值 = config `camera.vblank_lines`'
+                         '（§10.4；**O91 定稿 = 7906 ⇒ VMAX 8986 行 ≈ 66.8 ms ≈ 15 fps**；'
+                         '历史 v3.79 的 3405 = 30 fps 值，已作废）。**须在取流前施加**')
     ap.add_argument('--sensor-subdev', default=None,
                     help='显式指定 sensor subdev（调试用；默认按"唯一暴露 V4L2_CID_VBLANK"运行时解析）')
+    # ── 光照与光源（**G3 补齐**；设计档 §12.3/§12.4）──────────────────────────
+    # **批次级**：逐帧只算 Y 均值（零人工），照度与光源信息**每批次录一次**（§12.4）。
+    # 光源条件若在批次中途变化 ⇒ 应换 `--batch` 重开一批（否则记录与事实不符）。
+    ap.add_argument('--lux-anchor', type=float, default=None,
+                    help='批次级**照度计实测**（Lux，一次）。写入每帧 sidecar 的 illuminance.lux_anchor；'
+                         '不填 = null（**不臆造**）。⚠️ 系统本身仍需手动档 + Y 均值作相对指标')
+    ap.add_argument('--lux-anchor-note', default='',
+                    help='照度锚点的测量方式/照度计型号/测点位置（人读）')
+    ap.add_argument('--light-type', default='',
+                    help='光源类型（如 LED / 白炽 / 荧光 / 自然光）')
+    ap.add_argument('--light-cct-k', type=int, default=None,
+                    help='光源标称色温（K）；未测则不填')
+    ap.add_argument('--light-dimming', default='',
+                    help='调光方式（none / pwm / current / 换灯 / 遮挡 …）——'
+                         '**与色温漂移判别直接相关**，建议填写')
+    ap.add_argument('--light-distance-m', type=float, default=None,
+                    help='光源到被摄物距离（m）')
+    ap.add_argument('--light-note', default='',
+                    help='光源自由说明（数量 / 布光方式 / 位置 …）')
     a = ap.parse_args()
 
     os.makedirs(a.outdir, exist_ok=True)
@@ -690,14 +977,46 @@ def main():
               '[capture]   预览/对焦仍可用；换档后重启本工具即可解除' % IQ['why'])
     sys.stdout.flush()
 
-    # 1080p@30 锁定（§9.5 ④）：**必须在 v4l2src 开流之前**施加（停流即复位 ⇒ 每次启动都要重施）
+    # 1080p 帧率锁定（§9.5 ④ / §10.4 `camera.vblank_lines`）：**必须在 v4l2src 开流之前**施加
+    # （停流即复位 ⇒ 每次启动都要重施）。O91 定稿 = 15 fps ⇒ 默认 `--vblank-lines 7906`。
     if lock_guard(a.vblank_lines, a.sensor_subdev):
-        print('[capture] 30 fps 锁定：**已施加**（%s vertical_blanking=%d，回读 %s ⇒ VMAX %d 行）'
+        print('[capture] 帧率锁定：**已施加**（%s vertical_blanking=%d，回读 %s ⇒ VMAX %d 行）'
               % (LOCK['node'], LOCK['vblank_lines'], LOCK['readback'],
                  LOCK['readback'] + a.h))
     else:
-        print('[capture] ✗ 30 fps 锁定：**未生效**——%s\n'
+        print('[capture] ✗ 帧率锁定：**未生效**——%s\n'
               '[capture]   预览/对焦仍可用；**采集会被拒绝**（见页面提示）' % LOCK['why'])
+    sys.stdout.flush()
+
+    # G5：解析当前 IQ 的静态指纹（8 子项 × 每 scene_isp30）+ AE 手动档期望值。
+    # 失败**不静默**：页面/日志告警，sidecar 相应字段留 `_pending`。
+    if IQ['file'] and not iq_fp_build(a.iq_dir):
+        print('[capture] ⚠ ISP 指纹解析失败（G5）：%s\n'
+              '[capture]   采集仍可进行，但 sidecar 的 isp_fingerprint 仅含 iq_file/iq_hash'
+              % IQFP['why'])
+    elif IQFP['ok']:
+        print('[capture] ISP 指纹（G5）：已解析 %d 个 scene_isp30 子项（%s）%s'
+              % (len(IQFP['scenes']), IQFP['src'], IQFP['why'] or ''))
+    sys.stdout.flush()
+
+    # G3：光照/光源记录状态（**批次级**，缺项不阻断，但启动时讲清楚）
+    # 先把**批次设定**灌进 LIGHT ⇒ 页面横幅在**首帧之前**就能显示它们
+    # （否则 `LIGHT` 只在 `_sidecar` 里更新，首帧前会误示"照度锚点=未录"）
+    LIGHT.update(lux_anchor=a.lux_anchor, lux_anchor_note=(a.lux_anchor_note or None),
+                 type=(a.light_type or None), cct_k=a.light_cct_k,
+                 dimming=(a.light_dimming or None), distance_m=a.light_distance_m,
+                 note=(a.light_note or None))
+    _lm = [k for k, v in (('--light-type', a.light_type), ('--light-cct-k', a.light_cct_k),
+                          ('--light-dimming', a.light_dimming),
+                          ('--light-distance-m', a.light_distance_m)) if v in (None, '')]
+    if a.lux_anchor is None or _lm:
+        print('[capture] ⚠ 光照/光源记录**不完整**：照度锚点=%s；光源缺项=%s\n'
+              '[capture]   逐帧 Y 均值仍照常写入；缺项在 sidecar 记 null + _pending（不臆造）'
+              % ('未录' if a.lux_anchor is None else '%g Lux' % a.lux_anchor,
+                 '、'.join(_lm) or '无'))
+    else:
+        print('[capture] 光照/光源：照度锚点 %g Lux；光源 %s / %sK / 调光 %s / %.2f m'
+              % (a.lux_anchor, a.light_type, a.light_cct_k, a.light_dimming, a.light_distance_m))
     sys.stdout.flush()
 
     # 裸 NV12 几何：rkisp mainpath 实测单平面 continuous、bytesperline = w、sizeimage = w*h*3/2
@@ -737,7 +1056,11 @@ def main():
 
     def stop(*_):
         proc.send_signal(signal.SIGINT)
-        srv.shutdown()
+        # ⚠️ `srv.shutdown()` **必须在另一线程调用**：`serve_forever()` 跑在主线程，
+        # 而信号处理函数也在主线程 ⇒ 原地直调会**自锁**（shutdown 阻塞等 serve_forever 返回，
+        # 后者又永远不返回）⇒ 进程退出后仍占着端口、下次启动报 `Address already in use`
+        # （2026-09-29 实测：gst 已退、`/dev/video11` 已释放，但 python 仍 LISTEN 8091）。
+        threading.Thread(target=srv.shutdown, daemon=True).start()
     signal.signal(signal.SIGTERM, stop)
     try:
         srv.serve_forever()
