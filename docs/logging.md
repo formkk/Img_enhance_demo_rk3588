@@ -75,6 +75,8 @@
 | display_mipi | `reset_key` | `press=short / long` · `seq=`（短按软复位 → 触发 `rsm_transition`；长按 → `service_exit`，主文档 §10.6-C）。**（v3.86 裁定 O114）** 长按之后由 `main()` 执行 `systemctl isolate graphical.target` **恢复桌面**——该动作**不新增事件、不新增字段**（成功静默、失败仅 stdout 提示，见主文档 §10.6-C） |
 | 任意 | `degrade_action` | `trigger=` · `action=`（动作名同主文档 §10.5 矩阵"降级动作"列） |
 
+**（v3.86 追加 72）O24 前 2 类（CSI/V4L2 掉流、传感器 I2C/DMA 错误）的登记结论 = 本表与 §5「零新增」**：该两类的停机路径**复用既有事件与码**——`main/degrade_action`（`trigger=v4l2_stream_lost` / `sensor_i2c_dma`、`action=fault_exit`）+ `main/rsm_transition`（`RUN_DEMO → FAULT_EXIT`，`reason=` 同上）+ `main/boot_check_item`（`item=TH1`、`result=fail`、`code=E_V4L2`，**沿用 `TH3_request` 的既有点位写法**）+ `main/service_exit`（`exit_code=1`）。**不新增 `event`、不新增字段、不新增码**（留档要求见主基准 §10.5 与 `docs/measurements.md` §4）。
+
 ## 5. 错误码
 
 - 日志中的错误码**只允许取自主基准 §5 契约 A 节**：`0 = OK`、`-1 E_V4L2`、`-2 E_NPU`、`-3 E_DRM`、`-4 E_IO`、`-5 E_STATE`、`-6 E_TIMEOUT`。

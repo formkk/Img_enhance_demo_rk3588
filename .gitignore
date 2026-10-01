@@ -25,6 +25,13 @@ docs/evidence/reports/**/*.rgb
 docs/evidence/reports/**/*.onnx
 docs/evidence/reports/**/*.rknn
 docs/evidence/reports/**/*.raw
+# ⚠️ 证据报告素材：**整目录本地留档、不入库**（2026-10-01 裁定）
+#   理由 = 累积已达约 1.5 GB（PNG 约 0.5 GB + 大 JSON/其它约 0.95 GB，637 个非 PNG 文件），
+#          且均可由 `docs/evidence/*.md` 记录的复现命令重生成 ⇒ 沿用本文件"可重生成项不入库"的既有原则。
+#   可追溯性不受损：素材路径已登记于主基准 §10.3，量化结论与其报告文件名见对应证据档。
+#   **本条有意覆盖下方「证据目录下的原始日志必须入库」那条** —— 累积量已使原设计不可执行；
+#   若日后需要其中某一份素材入库，请用 `git add -f <path>` 单独加入并在此登记。
+docs/evidence/reports/
 
 # rknn-toolkit2 在**当前工作目录**留下的内部 onnx 优化中间文件（实测：每次 build 都会生成）
 *_optimize.onnx
@@ -53,3 +60,6 @@ storage/
 #   refs/Img_Enchance_Demo_explore.zip  3588 出厂资料归档（3.73 GiB，含前身工作区）
 #   refs/野火鲁班猫/                     鲁班猫（野火）官方开发板资料
 refs/
+
+# 进度汇报演示文稿（对外汇报用的一次性产物，非工程资产；2026-10-01 裁定不入库）
+*.pptx
