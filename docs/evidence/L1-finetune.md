@@ -87,7 +87,7 @@
 | 输入几何 | 内容 960×540 + 上下各 2 行零 pad → 960×544 | 同 | ✅ |
 | 随机种子 | 100 | 同（切分 / 数据序 / torch 三处同种子） | ✅ |
 | 数据增强 | 「水平/垂直翻转、90° 旋转」 | **hflip / vflip（恒等 / hflip / vflip / 180° 二面体子群）** | ⚠️ **偏离，见下** |
-| 通道序 | —（设计未写） | **不转换**：`cv2.imread` 直出 BGR 喂模型 | ✅ **与 `tools/l1_eval.py` 及官方 `test_from_dataset.py` 同口径** |
+| 通道序 | —（设计未写） | ~~**不转换**：`cv2.imread` 直出 BGR 喂模型~~ ⇒ **（v3.86 追加 162 更正，2026-10-02）训练侧当时误用 BGR：`cv2.imread` 后未做 BGR→RGB** ⇒ 已修（`l1_finetune.py: load_pool()` 补 `cv2.cvtColor(..., COLOR_BGR2RGB)`） | ⚠️ **原记「与 `l1_eval` 同口径」有误**：`tools/l1_eval.py`（经官方 `Enhancement/utils.py: load_img` 的 `COLOR_BGR2RGB`）与 `tools/hq_eval.py:151-154` **均为 RGB**，链路真实注册亦为 **RGB**（主基准 §14 追加 138）⇒ **只有训练侧偏离** |
 | 批大小 | —（设计未写） | **`bs = 1`** | — |
 | 混合精度 | —（设计未写） | **`torch.cuda.amp`**（**仅提速 / 省显存，不改配方**：损失、优化器、调度、几何、增强均不变） | — |
 | 验证指标 | 官方 PSNR、`GT_mean` 关 | 直接调 `Enhancement/utils.py: PSNR` | ✅ |

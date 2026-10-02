@@ -156,7 +156,7 @@ ssh board "sudo pkill -f 'v4l2src device=/dev/video11'"    # 必要时
 | `capture_condition`（设备 / 分辨率 / 像素格式 / gst 管线） | ✅ 本应用写入。**（v3.69）无损落盘落地后须增 `stride` / `uv_offset` / `size_bytes`**（裸 NV12 无自描述，**缺此三项开发机侧会按 `W×H×1.5` 错位解析**） |
 | `pair`（配对帧 ID / GT 来源 / 几何对齐方式） | ✅ 本应用写入 |
 | `file`（文件名 / 字节数） | ✅ 本应用写入 |
-| `isp_fingerprint` | ✅ **全项落地（2026-09-29，G5 补齐）**：`iq_file` / `iq_hash` / `iq_set` / `iq_guard` + **8 子项 × 每 `scene_isp30`**（`gamma_table` / `ccm` / `black_level` / `awb_lock` / `nr_2d` / `nr_3d` / `dpc`；**口径 = IQ 内路径 + 可观测状态 + 规范化子树哈希前 16 位**，**不复制取值**）。子树边界**以板端实测确定**（与 `config.yaml` 已归档 16 位逐位一致）；解析失败**不静默**（页面横幅 + `_pending`） |
+| `isp_fingerprint` | ✅ **全项落地（2026-09-29，G5 补齐）**：`iq_file` / `iq_hash` / `iq_set` / `iq_guard` + **7 子项 × 每 `scene_isp30`**（`gamma_table` / `ccm` / `black_level` / `awb_lock` / `nr_2d` / `nr_3d` / `dpc`；**口径 = IQ 内路径 + 可观测状态 + 规范化子树哈希前 16 位**，**不复制取值**）。**（v3.86 追加 161）子项数更正：实测 = 实现 `_iq_fp_scene()` 与 `config.yaml` 均为 7 子项，原写"8"为计数错误**。子树边界**以板端实测确定**（与 `config.yaml` 已归档 16 位逐位一致）；解析失败**不静默**（页面横幅 + `_pending`） |
 | `sensor_ctrl`（曝光 / 模拟增益 / vblank 回读） | ✅ **落地（2026-09-29，G5）**：采集时刻 `v4l2-ctl -d <subdev> --get-ctrl exposure,analogue_gain,vertical_blanking` 实测值 + IQ 手动档期望值（`time_value_s` / `gain_value` / `is_fps_fix` / `fps_value`）；失败则**保留 `null` 并把原因记入 `sensor_ctrl_error`** |
 | `csc`（RGA CSC 矩阵 + range） | ⛔ `null` + **`_not_applicable.csc` 说明**（本链路为 v4l2 直出、未过 RGA ⇒ **无 CSC 可记**；O54 的 CSC 显式化只影响交付链路与离线转换工具） |
 | `illuminance`（光照） | ✅ **落地（2026-09-29，G3）**：`frame_y_mean`（**逐帧** Y 平面 1/16 隔行隔列降采样，零人工）+ `lux_anchor` / `lux_anchor_note`（**批次级**，`--lux-anchor`）+ `method` 口径声明。缺锚点 ⇒ `lux_anchor=null` + `_pending:['lux_anchor']` |
@@ -173,7 +173,7 @@ ssh board "sudo pkill -f 'v4l2src device=/dev/video11'"    # 必要时
 1. ~~图像为 JPEG 有损~~ → **已解决（v3.70）**：落盘改走**裸 NV12**（§9），**JPEG 仅供预览、不进数据集**。
 2. ~~sidecar 每场景一份~~ → **已解决（v3.70）**：改为**逐帧一份**（§11），同场景多帧不再互相覆盖。
 3. ~~**无照度录入 UI**~~ → **✅ 已解决（2026-09-29，G3）**：改为**零人工 + 每批一次**——逐帧 Y 均值自动算，照度/光源走 CLI（`--lux-anchor` / `--light-*`）。**不提供页面输入框**（避免运行期改值与批次语义冲突）。
-4. ~~**ISP 指纹仅部分落地**~~ → **✅ 已解决（2026-09-29，G5 补齐）**：`isp_fingerprint` 扩为 **8 子项 × 每 `scene_isp30`**、`sensor_ctrl` 改为采集时刻回读、`csc` 判 N/A（理由入 `_not_applicable`）。**⚠️ 仍受 O54 影响的是「离线 RGB 转换工具的 CSC/range」**（属交付链路，不属本工具）。
+4. ~~**ISP 指纹仅部分落地**~~ → **✅ 已解决（2026-09-29，G5 补齐）**：`isp_fingerprint` 扩为 **7 子项 × 每 `scene_isp30`**（**v3.86 追加 161 更正 8 → 7**）、`sensor_ctrl` 改为采集时刻回读、`csc` 判 N/A（理由入 `_not_applicable`）。**⚠️ 仍受 O54 影响的是「离线 RGB 转换工具的 CSC/range」**（属交付链路，不属本工具）。
 5. **冻帧拦截（v3.70 改口径）**：陈旧判定**跟数据源走**——数据取自路② 裸帧，故以
    **裸帧是否仍在更新**为准（>1 s 未更新即拒绝采集）；`dup_run`（路① JPEG 的重复帧计数）
    **降为页面诊断指标**。理由：`dup_run` 是 `mppjpegenc` 陈旧缓冲的征候、**与路② 数据无关**，
@@ -494,7 +494,7 @@ v4l2src → videoconvert(videoconvert 前置拷贝) → tee
 ### 13.1 能力缺口清单（**采集子系统能否满足采集计划**；2026-09-19 核查）
 
 > **结论（2026-09-29 更新）**：**G1 / G2 已于 v3.70 实施、v3.71 板上实测通过**（真机双 `fdsink` 共存、路② 帧长 3110400、命名/帧槽/逐帧 sidecar 落盘、裸帧解码目视；证据 `docs/evidence/M1-collect-tool-board.md`）；
-> **G5 已于 2026-09-29 实施**（ISP 指纹 8 子项 + `sensor_ctrl` 回读入 sidecar；见主基准 §14 **追加 152**）；**G3 已于 2026-09-29 实施**
+> **G5 已于 2026-09-29 实施**（ISP 指纹 **7 子项**（**v3.86 追加 161 更正 8 → 7**）+ `sensor_ctrl` 回读入 sidecar；见主基准 §14 **追加 152**）；**G3 已于 2026-09-29 实施**
 > （逐帧 Y 均值 + 批次照度锚点 + 光源字段）；**U1 不需要 G3**（v3.69 裁定 O59）；**G4 沿用现状**即可。
 > ⇒ **M1 采集开工前的必办缺口已清零（G1/G2/G3/G5 全落地）**。
 
@@ -504,7 +504,7 @@ v4l2src → videoconvert(videoconvert 前置拷贝) → tee
 | ~~G2~~ | ~~无无损落盘（落的是有损 JPEG）~~ | 旧采集源 = `STATE['jpg']`（有损） | ~~是~~ | **✅ 已实施（v3.70）**：gst `tee` + 双 `fdsink`，路② 写裸 NV12（§9） |
 | ~~**G3**~~ | ~~**无光照档标注与批次锚点** ⇒ "**每档覆盖**"无法机械核验~~ | 命名只有场景号 + 档位；`.capture_state.json` 只记场景号 / 批次 / 计数 | ~~U1 否 / U4 是~~ | **✅ 已实施（2026-09-29）**：逐帧 `illuminance.frame_y_mean`（**相对档位**由此可机械核验）+ 批次 `lux_anchor`（绝对刻度）+ `light_source.*`（含**调光方式**，与色温漂移判别相关）。方案见 §12.3/§12.4；实现 = `capture_app.py` 内联（**未新增文件**） |
 | **G4** | **`split` 字段留空** ⇒ U1/U2/U3/U4 用途分离靠场景号人工记账 | sidecar 有 `split` 字段但标"采集期不定、划分时回填" | 否 | **可接受，沿用现状**（须登记） |
-| ~~**G5**~~ | ~~`isp_fingerprint` / `sensor_ctrl` 为 `null` ⇒ 校准集溯源不完整~~ | sidecar 的 `_pending` 清单 | ~~是~~ | **✅ 已实施（2026-09-29）**：`isp_fingerprint` 扩为 **8 子项 × 每 `scene_isp30`**、`sensor_ctrl` 改为采集时刻 `v4l2-ctl` 回读、`csc` 判 **N/A**（理由入 `_not_applicable`）。实现**内联于 `capture_app.py`**（未新增 `isp_fingerprint.py` 模块，保持自包含单文件部署）；`config.yaml` 的 `isp.fingerprint` 8 子项作**自检对照**（子树哈希逐位一致）。**与 O54 的关系已澄清**：O54 只阻塞「离线 RGB 转换工具的 CSC/range」，**不阻塞本工具** |
+| ~~**G5**~~ | ~~`isp_fingerprint` / `sensor_ctrl` 为 `null` ⇒ 校准集溯源不完整~~ | sidecar 的 `_pending` 清单 | ~~是~~ | **✅ 已实施（2026-09-29）**：`isp_fingerprint` 扩为 **7 子项 × 每 `scene_isp30`**（**v3.86 追加 161 更正 8 → 7**）、`sensor_ctrl` 改为采集时刻 `v4l2-ctl` 回读、`csc` 判 **N/A**（理由入 `_not_applicable`）。实现**内联于 `capture_app.py`**（未新增 `isp_fingerprint.py` 模块，保持自包含单文件部署）；`config.yaml` 的 `isp.fingerprint` 7 子项作**自检对照**（子树哈希逐位一致；**其注释仍写"8 子项"，因本轮硬约束不改 `config.yaml`，已登记于 §14 追加 161**）。**与 O54 的关系已澄清**：O54 只阻塞「离线 RGB 转换工具的 CSC/range」，**不阻塞本工具** |
 
 **与"无损 → 开发机 → 转格式"路线的衔接**：G2 落地后**板上只写裸 NV12**，**RGB 转换留作开发机侧离线工具**——该工具**必须用与 RGA 完全相同的 CSC / range**（否则**训练域 ≠ 部署域**，直接污染 PSNR/SSIM 结论），故 **G5（CSC 显式化，O54）是该离线工具的正确性前提**。
 

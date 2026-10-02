@@ -15,8 +15,11 @@
         数据增强 = 仅几何（hflip / vflip / rot90）
   评测  验证 PSNR 用官方 `Enhancement/utils.py: PSNR`，**GT_mean 关**（主判据口径）
 
-通道序口径：官方 `test_from_dataset.py` 用 `cv2.imread` 直出（BGR）喂模型，`tools/l1_eval.py`
-原样复刻该口径 ⇒ 本脚本同样**不做 BGR→RGB 转换**，保证训练 / 评测口径一致。
+通道序口径：评测侧（`tools/l1_eval.py` 经官方 `Enhancement/utils.py: load_img`、`tools/hq_eval.py`
+均做 BGR→RGB）为 **RGB**，链路真实注册亦为 **RGB**（主基准 §14 追加 138）。
+⇒ 本脚本在 `load_pool()` 内**统一做 BGR→RGB**，与评测 / 链路一致。
+（v3.86 追加 162 更正：早期版本误按 `test_from_dataset.py` 的 `cv2.imread` 直出（BGR）喂模型，
+与 RGB 评测口径背离，已修复。）
 
 用法（数据机）：
   python3 l1_finetune.py --dump-split /tmp/split_seed100.json
@@ -78,12 +81,14 @@ def make_split(seed=SPLIT_SEED):
 
 # ---------------------------------------------------------------- 数据
 def load_pool(ids):
-    """按部署几何（960×540）预载为 uint8，省内存。"""
+    """按部署几何（960×540）预载为 uint8，省内存。**BGR→RGB** 与评测口径一致。"""
     out = []
     for sid in ids:
         lo = cv2.imread(os.path.join(TRAIN_LOW, f"low{sid:05d}.png"))
         hi = cv2.imread(os.path.join(TRAIN_HIGH, f"normal{sid:05d}.png"))
         assert lo is not None and hi is not None, sid
+        lo = cv2.cvtColor(lo, cv2.COLOR_BGR2RGB)      # RGB：与 l1_eval/hq_eval 及链路注册口径一致
+        hi = cv2.cvtColor(hi, cv2.COLOR_BGR2RGB)
         lo = cv2.resize(lo, (W, CONTENT_H), interpolation=cv2.INTER_AREA)
         hi = cv2.resize(hi, (W, CONTENT_H), interpolation=cv2.INTER_AREA)
         out.append((lo, hi))
