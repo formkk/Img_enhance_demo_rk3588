@@ -227,8 +227,8 @@ conda activate rknn && python --version  # Python 3.8.20
         "/home/jenkolux/PKU_WH/Img_enhance_demo/.trae/mcp/board-ops/server.py"
       ],
       "env": {
-        "BOARD_SSH_HOST": "192.168.0.104",
-        "BOARD_SSH_USER": "<板上用户，本档未核实>",
+        "BOARD_SSH_HOST": "192.168.0.103",
+        "BOARD_SSH_USER": "cat",
         "BOARD_SSH_PORT": "22"
       }
     }

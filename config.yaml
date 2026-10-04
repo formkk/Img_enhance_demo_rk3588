@@ -88,21 +88,21 @@ isp:
       gain: 20.0                         # 线性倍数（sensor 模拟段）
       fps: 15
       iq_set: "demo"
-      nr_3d: "IQ 现值（enable=1）"
+      nr_3d: "IQ 现值（enable=0）"         # 2026-10-05 起：演示档（与采集档同为 3DNR 关）
     night:                               # 夜景
       scene: "夜景"
       exposure_us: 66666
       gain: 20.0
       fps: 15
       iq_set: "demo"
-      nr_3d: "IQ 现值（enable=1）"
+      nr_3d: "IQ 现值（enable=0）"         # 2026-10-05 起：演示档（与采集档同为 3DNR 关）
     face:                                # 弱光人脸
       scene: "弱光人脸"
       exposure_us: 66666
       gain: 20.0
       fps: 15
       iq_set: "demo"
-      nr_3d: "IQ 现值（enable=1）"
+      nr_3d: "IQ 现值（enable=0）"         # 2026-10-05 起：演示档（与采集档同为 3DNR 关）
     note: >-
       取值 SSOT = IQ 文件（§9.5 ⑦）：本表数值是**镜像 + 依据**，生效值只写在 IQ 里（档位文件
       与 sha256 见本域 `fingerprint.iq_*`）。⚠️ **本轮三档同值**（用户 2026-09-23 选定：曝光/
@@ -120,9 +120,12 @@ isp:
       # **（2026-09-29 回写 / O64 收口）两套已重建 = 锁 AWB**（`wb_v21.control.mode =
       #   CALIB_WB_MODE_MANUAL` + `manualPara.cfg.mwbGain = [1.32703,1,1,3.31432]`）；
       #   除 `wb_v21` 外其余子树**逐位未变**（gamma/ccm/blc/nr_2d/dpc 与 stock 一致、
-      #   `nr_3d` 仍为两档唯一 ISP 差异）。
+      #   **2026-10-05 起两档 `nr3d_enable` 均为 0 ⇒ 两档实际内容等价，差异只剩 sha / `built_utc`；
+      #   `O62=(b)` 两套档位的去留见 §15 O157（待裁定）；原「`nr_3d` 为两档唯一 ISP 差异」作废**）。
       collect: "81e61da407ef1846858fcf68a50885f50fed9f5f0bfc720720db1c31fb315585"
-      demo: "3a047b06e8266f02b04bdd4c2e86a0985187a26c6027b94f6c6b3640fae8ca88"
+      demo: "ab19ae2a26177971768a0287204da6d71e574cbfdff4fc9e21d5f22b718d23c9"
+      # **（2026-10-05 起）** 演示档 IQ 关闭 3DNR（`bayertnr_v2/TuningPara/enable` 1→0）后的档位库／加载点
+      #   一致 sha；manifest `sets.demo.sha256` 已更新为该值、`nr3d_enable` 由 `[1]` 改为 `[0]`（详见 §14 追加 190）。
       # ⚠️ 换档前 `/etc/iqfiles/` 仍驻留**旧 demo 档**（`2ed58401…`，进程内已加载）⇒ `iq_sets.py status`
       #   此时报 `unknown`（该哈希已不在任何档）；采集前 `switch collect`、收尾 `switch demo` 即落到新哈希。
     gamma_table:
@@ -162,11 +165,11 @@ isp:
       tuning_sha256_16: "16ee259977494109"
     nr_3d:
       src: "bayertnr_v2/TuningPara.enable"
-      enable: {demo: 1, collect: 0}      # **两套 IQ 的唯一 ISP 差异**
+      enable: {demo: 0, collect: 0}      # **2026-10-05 起两档 `nr3d_enable` 均为 0 ⇒ 两档实际内容等价，差异只剩 sha / `built_utc`；`O62=(b)` 两套档位的去留见 §15 O157（待裁定）**
       tuning_sets: 2
       iso_points: 13
       tuning_sha256_16:                  # 按 [isp30[0], isp30[1]]
-        demo: ["be05bac5d36d4eca", "8868e41f867ce167"]      # = stock 逐位一致（原厂值）
+        demo: ["3231321eaddd45e7", "31be6ead629da008"]   # 2026-10-05 **实算**（非猜测）：子树 = `bayertnr_v2.TuningPara`；口径经「以 collect 已知值反推」验证 —— 同口径可精确复现 collect 的已知值 ⇒ 可信；demo 与 collect 的 TuningPara 现已等价（两者 enable 均为 0）
         collect: ["3231321eaddd45e7", "31be6ead629da008"]   # 仅 enable 翻 0
     dpc:
       src: "adpcc_calib/DpccTuningPara/Enable"
@@ -183,7 +186,7 @@ isp:
     #    （`bayertnr_v2` 只暴露 `enable` + 2 组 `Setting` × 13 ISO 点 = 17 字段，无任何 ref/frame 字段）
     #    ⇒ 不以猜测值填充；本键改记「3DNR 时域项的**可回读状态** + 其**帧级固有延迟的 A/B 实测**」。
     src: "bayertnr_v2/TuningPara"
-    enable: {demo: 1, collect: 0}
+    enable: {demo: 0, collect: 0}    # 2026-10-05：demo 档 `bayertnr_v2.enable` 已改 0（§14 追加 190）
     ref_frames: "IQ 未暴露（不得猜值）"
     ab:                                  # 3DNR 开 / 关 同场景 A/B（各 3 轮 × 300 帧，idle-link）
       reports: ["docs/evidence/reports/M1-5/idle_3dnr_on.json",
