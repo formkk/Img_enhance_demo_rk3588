@@ -22,6 +22,7 @@
 #include "rga_core.h"
 #include "rknn_core.h"
 #include "hq_core.h"
+#include "mfa_core.h"
 #include "v4l2_core.h"
 
 namespace py = pybind11;
@@ -493,4 +494,31 @@ PYBIND11_MODULE(_starlight_native, m) {
                               py::bytes(reinterpret_cast<const char*>(ho), sizeof(ho)),
                               py::bytes(reinterpret_cast<const char*>(he), sizeof(he)));
     }, py::arg("raw"), py::arg("enh"), py::arg("w"), py::arg("h"), py::arg("decimate") = 4);
+
+    /* ── mfa（HQ 输入侧「N 帧时域平均」；**§15 O158，非契约入口**）──────────
+     * 只服务 `main.py --hq-mfa-frames`（**默认关**）的试验性 A/B：调用方逐帧把 HQ 目标
+     * 缓冲（RGA 输出 RGB888）累加进 `acc`，最后一次取均写回目标缓冲。
+     * **不新增日志事件 / 返回码 / config 键**；口径与前置条件见 `native/mfa_core.h`。 */
+    auto mfa = m.def_submodule("mfa", "HQ 输入侧 N 帧时域平均的逐像素内核（O158；非契约入口）");
+    mfa.def("zero", [](Buffer& acc) {
+        py::gil_scoped_release rel;
+        mfa_zero(static_cast<uint16_t*>(acc.ptr()), acc.len() / 2);
+    }, py::arg("acc"), "16bit 累加器清零（元素个数 = 字节数/2）");
+    mfa.def("accum", [](Buffer& src, Buffer& acc) {
+        if (acc.readonly()) throw py::value_error("累加器只读");
+        const size_t n = acc.len() / 2;
+        if (src.len() < n) throw py::value_error("mfa.accum：源缓冲小于累加器元素数");
+        py::gil_scoped_release rel;
+        mfa_accum(static_cast<const uint8_t*>(src.ptr()),
+                  static_cast<uint16_t*>(acc.ptr()), n);
+    }, py::arg("src"), py::arg("acc"), "把一帧 RGB888 累加进 16bit 累加器");
+    mfa.def("mean", [](Buffer& acc, Buffer& dst, uint32_t nframes) {
+        if (dst.readonly()) throw py::value_error("目标缓冲只读");
+        if (nframes == 0) throw py::value_error("mfa.mean：nframes 须 ≥ 1");
+        const size_t n = acc.len() / 2;
+        if (dst.len() < n) throw py::value_error("mfa.mean：目标缓冲小于累加器元素数");
+        py::gil_scoped_release rel;
+        mfa_mean(static_cast<const uint16_t*>(acc.ptr()),
+                 static_cast<uint8_t*>(dst.ptr()), n, nframes);
+    }, py::arg("acc"), py::arg("dst"), py::arg("nframes"), "取均（四舍五入）写回 u8 目标缓冲");
 }

@@ -111,6 +111,7 @@ class Demo:
                  no_est: bool = False, est_first: int = 0,
                  no_apply: bool = False, no_osd: bool = False,
                  apply_preserve_ratio: bool = True, hq_curve_in: bool = False,
+                 hq_mfa_frames: int = 0,
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
                  step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
@@ -146,6 +147,12 @@ class Demo:
         # 开启后 TH3 在 RGA 缩放后、入模前，把 TH2a 最近一次已发布曲线场施加到 HQ 内容区
         # （应用语义随 `apply_preserve_ratio`，默认保比）。接线见 `keyframe_infer._apply_input_curve`。
         self.hq_curve_in = bool(hq_curve_in)
+        # **[A/B 开关] HQ 输入侧「N 帧时域平均」**（= §15 O158 的「自制 3DNR」；**非 config 键**，
+        # **默认 0 = 关闭 ⇒ 交付链路行为不变**）：>1 时，TH3 触发受理后取 N 帧（含触发帧）、
+        # **逐帧 RGA 缩放到 HQ 目标几何后累加**（取时拷走、**不持 lease** ⇒ 不动 V4L2 池），
+        # 平均结果作 HQ 输入。实现位置 = O158 ④ 的「RGA 缩到 HQ 目标之后」；核 = native `mfa`。
+        self.hq_mfa_frames = max(0, int(hq_mfa_frames))
+        self._mfa_acc = None         # 16bit 累加器（**惰性分配**：只有开启该开关才占内存）
         # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
         # `osd_no_stats` = 连统计也不做。**非 config 键**，只用于 ①-2 的 OSD 增量归因实验。
         self.osd_status_only = bool(osd_status_only)
@@ -460,22 +467,31 @@ class Demo:
             if ev is not None and self.kf is not None:
                 # 「触发」时点 = TH1 FSM 受理（§13「HQ 响应」行的计时起点，`mono_ns`）
                 t_trig = time.monotonic_ns()
-                # `request` 返回后本帧即可释放 lease（§5-C：先复制源帧再释放）
-                rc_kf = self.kf.request(ev["seq_src"], f)
+                self._cur_trig = {
+                    "seq_src": int(ev["seq_src"]), "t_trigger_ns": t_trig,
+                    "t_freeze_enter_ns": 0, "osd_flip_ns": 0, "osd_flip_seq": 0,
+                    "t_fullscreen_ns": 0, "fs_mipi_flip_ns": 0, "fs_mipi_seq": 0,
+                    "fs_hdmi_flip_ns": 0, "t_freeze_exit_ns": 0, "exit_reason": "",
+                    "hq_model_id": "", "hq_active_shape": 0, "hq_done_ns": 0,
+                }
+                # **先把「冻结帧 + 处理中」上屏**（`mark_busy` 同步完成合成与翻页）⇒ §6.2 的
+                # 「触发 → OSD ≤50 ms」不会被下面的 MFA 取帧（~0.35 s）推迟。
+                self._freeze_enter(ev["seq_src"])
+                # `request` 返回后本帧即可释放 lease（§5-C：先复制源帧再释放）。
+                # **[A/B 开关]** `--hq-mfa-frames N>1` ⇒ 先做 N 帧时域平均（§15 O158），
+                # 再以 `pre_scaled=True` 交 TH3（跳过其内部那次 RGA 缩放）。
+                if self.hq_mfa_frames > 1:
+                    rc_kf = self._mfa_submit(ev["seq_src"], f)
+                else:
+                    rc_kf = self.kf.request(ev["seq_src"], f)
                 if rc_kf != 0:
                     self.log.event("main", "boot_check_item", item="TH3_request",
                                    result="fail", code=starlog.code_name(rc_kf))
                     self.cap.hq_done()          # 受理失败即回 IDLE，避免 FSM 卡在 HQ_BUSY
+                    self._cur_trig = None       # 该周期未起 ⇒ 不落 seq 级明细
+                    self._freeze_exit()         # 冻结已提前 ⇒ 必须解冻，否则显示停在"处理中"
                 else:
                     self.counters["hq_started"] += 1
-                    self._cur_trig = {
-                        "seq_src": int(ev["seq_src"]), "t_trigger_ns": t_trig,
-                        "t_freeze_enter_ns": 0, "osd_flip_ns": 0, "osd_flip_seq": 0,
-                        "t_fullscreen_ns": 0, "fs_mipi_flip_ns": 0, "fs_mipi_seq": 0,
-                        "fs_hdmi_flip_ns": 0, "t_freeze_exit_ns": 0, "exit_reason": "",
-                        "hq_model_id": "", "hq_active_shape": 0, "hq_done_ns": 0,
-                    }
-                    self._freeze_enter(ev["seq_src"])
 
             # 释放 lease（TH1 引用计数归零后 QBUF 回池）
             self.cap.release(f["lease_id"])
@@ -793,6 +809,49 @@ class Demo:
                 # 触发 → OSD 提示上屏（§13：≤50 ms）——取该次 flip 的 **vblank** 时刻与回调 seq
                 self._cur_trig["osd_flip_ns"] = self.disp.last_flip_ns()
                 self._cur_trig["osd_flip_seq"] = self.disp.last_flip_seq()
+
+    def _mfa_submit(self, seq_src: int, f: Dict[str, Any]) -> int:
+        """**[A/B 开关]（非契约入口）** §15 O158 的「N 帧时域平均」上板实现。
+
+        口径（O158 ④⑤）：触发受理后取 **N 帧（含触发帧）**，**逐帧** RGA 缩放到 HQ 目标几何
+        （`hq_w×hq_h` RGB888，`native/rga_core.c` 的 `RGA_DST_HQ`）后累加进 16bit 累加器
+        （核 = native `_starlight_native.mfa`），**每帧 RGA 完立即释放 lease**（= 「取时拷走」，
+        **不持 lease ⇒ 不动 V4L2 池的 4 帧容量**）；取均后**写回 HQ 目标缓冲**，再以
+        `pre_scaled=True` 交 TH3（跳过其内部那次 RGA）。
+
+        调用时点 = **`_freeze_enter()` 之后**（冻结帧 + 「处理中」已上屏 ⇒ 本段取帧耗时
+        不影响 §6.2 的「触发 → OSD ≤50 ms」）。
+
+        返回码与 `KeyframeInfer.request` 同义；取帧不足 N 时**按实得帧数取均**并如实打印。
+        """
+        g = self.est.geom
+        n_px = int(g["hq_w"]) * int(g["hq_h"]) * 3
+        if self._mfa_acc is None:
+            self._mfa_acc = _n.alloc(n_px * 2)   # 16bit 累加器（960×544 时 3.1 MB）
+        hq = _n.rga.hq(g)                        # HQ 目标（**可写** ⇒ 取均结果写回这里）
+        want = self.hq_mfa_frames
+        extra: list = []                         # 除触发帧 `f` 之外的 (want−1) 帧
+        got = 0
+        try:
+            while 1 + len(extra) < want:
+                nf = self.cap.acquire(1, 500)
+                if nf is None:
+                    break
+                extra.append(nf)
+            _n.mfa.zero(self._mfa_acc)
+            for d in [f] + extra:
+                if _n.rga.blit_nv12_fd(int(d["dmabuf_fd"]), kf_mod.RGA_DST_HQ) == 0:
+                    _n.mfa.accum(hq, self._mfa_acc)
+                    got += 1
+        finally:
+            # **触发帧 `f` 不在此释放**（主循环随后统一 `release`）；这里只放本函数自己取的。
+            for d in extra:
+                self.cap.release(d["lease_id"])
+        if got == 0:
+            return kf_mod.E_NPU
+        _n.mfa.mean(self._mfa_acc, hq, got)
+        print(f"[hq-mfa] seq_src={seq_src} 取帧 {got}/{want} → 取均写回 HQ 目标缓冲（§15 O158）")
+        return self.kf.request(seq_src, None, pre_scaled=True)
 
     def _freeze_exit(self) -> None:
         """冻结终点（HQ 完成并退出全屏后）：累计冻结窗，供 **fps 活动窗口径** 排除（O90）。"""
@@ -1265,6 +1324,9 @@ def main() -> int:
                    help="[A/B 开关] 切回旧逐通道语义（默认走保比语义；本开关仅供 A/B）")
     p.add_argument("--hq-curve-in", action="store_true",
                    help="[A/B 开关] HQ 输入侧接 ZDE++ 曲线（语义随 --no-preserve-ratio，默认保比；默认关）")
+    p.add_argument("--hq-mfa-frames", type=int, default=0,
+                   help="[A/B 开关] HQ 输入侧 N 帧时域平均（§15 O158；0/1 = 关闭；"
+                        ">1 每触发取 N 帧取时拷走、逐帧 RGA 后 16bit 累加取均；非 config 键）")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
@@ -1311,6 +1373,7 @@ def main() -> int:
              no_apply=args.no_apply, no_osd=args.no_osd,
              apply_preserve_ratio=args.apply_preserve_ratio,
              hq_curve_in=args.hq_curve_in,
+             hq_mfa_frames=args.hq_mfa_frames,
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,
              step_exp_times=args.step_exp_times, step_exp_interval_s=args.step_exp_interval_s,
              step_exp_low=args.step_exp_low, step_exp_high=args.step_exp_high,

@@ -251,29 +251,36 @@ class KeyframeInfer:
                            done_ns=done_ns)
 
     # ── §5-C 契约入口 ──────────────────────────────────────────────────
-    def request(self, seq_src: int, frame: Dict[str, Any]) -> int:
+    def request(self, seq_src: int, frame: Optional[Dict[str, Any]] = None,
+                pre_scaled: bool = False) -> int:
         """受理一帧 HQ 请求。**非阻塞**：同步只做 RGA 缩放（复制源帧），推理交 worker。
 
         `frame` = FrameDesc 的必要字段：`dmabuf_fd`（TH1 持有，本函数只读）、`seq`、`t_capture_ns`。
         返回 0 / E_STATE（未 init 或已有在途）/ E_NPU（RGA 失败）。
 
         **返回后调用方即可释放 lease**——RGA 缩放已在返回前完成（§5-C `request` 行）。
+
+        **[A/B 钩子]（非契约入口）** `pre_scaled=True` = **跳过 RGA 缩放**：调用方已把 HQ 目标
+        缓冲（`_n.rga.hq(geom)`，`hq_w×hq_h` RGB888）准备好——用于 §15 **O158** 的「N 帧时域
+        平均」（平均结果由 native `mfa` 内核写回该缓冲）。此时 `frame` 可为 `None`。
         """
         if not self._inited:
             return E_STATE
-        fd = int(frame.get("dmabuf_fd", -1))
-        if fd < 0:
-            return E_STATE
+        if not pre_scaled:
+            fd = int(frame.get("dmabuf_fd", -1)) if frame else -1
+            if fd < 0:
+                return E_STATE
         with self._mtx:
             if self._busy:
                 return E_STATE        # 已有在途（正常态下 TH1 的 FSM_HQ_BUSY 已拦住，此处为兜底）
             self._busy = True
         # ① 同步：RGA 缩放（触发暗帧 NV12 → hq.active_shape RGB888）—— 复制源帧，仅数毫秒
-        rc = _n.rga.blit_nv12_fd(fd, RGA_DST_HQ)
-        if rc != 0:
-            with self._mtx:
-                self._busy = False
-            return E_NPU
+        if not pre_scaled:
+            rc = _n.rga.blit_nv12_fd(fd, RGA_DST_HQ)
+            if rc != 0:
+                with self._mtx:
+                    self._busy = False
+                return E_NPU
         # ② 异步：唤醒 worker（打包 + NPU 推理，~8 s）
         with self._cv:
             self._pending = True
