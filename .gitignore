@@ -17,13 +17,16 @@ models/**/*.pt
 models/**/*.pth
 
 # ── 例外（2026-10-08 用户裁定「生产用的权重入库」；见主基准 §14 追加 8）────────────
-# 仅这 **2 个生产在跑件**纳入 git；**其余** .rknn/.onnx/.pt/.pth 仍不入库。
+# 仅这 **3 个生产在跑件 / 权重本体**纳入 git；**其余** .rknn/.onnx/.pt/.pth 仍不入库。
 #   · `models/hq/hq_960x544_fp16_tk232.rknn` = 生产 HQ 主模型（E 权重；sha256 6d774c3f…，
 #     见 §14 追加 169「生产环境 HQ 权重 = E」）
 #   · `models/zde/zde_curve_256x272_int8_tk232.rknn` = 现役 ZDE 曲线模型（`curve_estim._default_model()`）
+#   · `models/zde/Epoch99.pth` = **实时路曲线估计网络的权重本体**（官方 Epoch99；
+#     sha256 `ca8855b9…` 与 config.yaml `model.zde_weight_hash` 逐位一致）
 # 语法前提：否定规则须位于上述忽略规则**之后**，且父目录未被整体忽略（本目录未被忽略）⇒ 生效。
 !models/hq/hq_960x544_fp16_tk232.rknn
 !models/zde/zde_curve_256x272_int8_tk232.rknn
+!models/zde/Epoch99.pth
 
 # 证据报告中的大张量中间产物（可由 docs/evidence 记录的复现命令重生成，不入库）
 docs/evidence/reports/**/*.npy
