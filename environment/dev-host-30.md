@@ -16,7 +16,7 @@
 | 本机身份 | **开发机 / 上位机（PC 端）**，Trae IDE 在此运行，仓库 `Img_enhance_demo` 位于 `/home/jenkolux/PKU_WH/` |
 | 架构 | **x86_64** —— 与目标平台 aarch64 不同架构，**不能**作为板上运行期结论的来源（`docs/build.md` §1） |
 | 在本项目中的职责 | ① 代码编辑与版本管理；② `docs/build.md` §4 的 pybind11 模块**交叉编译备选路径**；③ §10.2 的**模型转换链**（`torch.onnx.export` → `onnxsim` → `rknn-toolkit2`）；④ 代用数据准备与离线评测 |
-| 明确不在本机 | V4L2 / DMABUF / RGA / NPU / DRM 双 CRTC 等**板上专属**链路——本机无 `/dev/video*`、无 NPU、非目标平台，相关验证只能在演示板 192.168.0.104 上做 |
+| 明确不在本机 | V4L2 / DMABUF / RGA / NPU / DRM 双 CRTC 等**板上专属**链路——本机无 `/dev/video*`、无 NPU、非目标平台，相关验证只能在演示板 192.168.0.103 上做 |
 
 ## 2. 硬件清单（采集时点：2026-09-17 16:54 CST；GPU 行 17:0x 复采修正）
 
@@ -281,7 +281,7 @@ python3-config --extension-suffix; python3 -c "import sys,sysconfig;print(sys.ve
 python3 -m pip list            # 取 §3.3 的包版本；缺失项逐环境 import 复核
 lsusb; ls /dev/video*          # 代用数据源核验
 ssh -o BatchMode=yes jenkolux@192.168.0.30 'hostname; whoami'   # 免密核验
-ping -c 2 -W 2 192.168.0.104; timeout 5 bash -c 'cat </dev/null >/dev/tcp/192.168.0.104/22'
+ping -c 2 -W 2 192.168.0.103; timeout 5 bash -c 'cat </dev/null >/dev/tcp/192.168.0.103/22'
 ```
 
 ### 7.1 第二次采集追加的命令（§3.2 / §3.3 / §3.4 / §3.6）

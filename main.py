@@ -110,7 +110,7 @@ class Demo:
                  inject_v4l2_mode: str = "err",
                  no_est: bool = False, est_first: int = 0,
                  no_apply: bool = False, no_osd: bool = False,
-                 apply_preserve_ratio: bool = True,
+                 apply_preserve_ratio: bool = True, hq_curve_in: bool = False,
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
                  step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
@@ -142,6 +142,10 @@ class Demo:
         # 在 `boot()` 里随 `ra.configure_from_config()` 一次性注入 C 层（`preserve_ratio`），
         # 使通道间比值在增强后保持不变（修去饱和）。**反向 opt-out = CLI `--no-preserve-ratio`**（仅供 A/B）。
         self.apply_preserve_ratio = bool(apply_preserve_ratio)
+        # **[A/B 开关] HQ 输入侧接 ZDE++ 曲线**（**非 config 键**，**默认关 = 交付链路行为不变**）：
+        # 开启后 TH3 在 RGA 缩放后、入模前，把 TH2a 最近一次已发布曲线场施加到 HQ 内容区
+        # （应用语义随 `apply_preserve_ratio`，默认保比）。接线见 `keyframe_infer._apply_input_curve`。
+        self.hq_curve_in = bool(hq_curve_in)
         # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
         # `osd_no_stats` = 连统计也不做。**非 config 键**，只用于 ①-2 的 OSD 增量归因实验。
         self.osd_status_only = bool(osd_status_only)
@@ -338,7 +342,8 @@ class Demo:
         # 若内联在主循环会让 MIPI 冻结 8 s，违反 §5「TH4 不得因结果槽空而锁帧」。
         # 前置：RGA 已 configure（TH2 的 `est.init()` 里唯一一次，含 hq_w/hq_h 目标缓冲）。
         # 失败（如模型缺失）**不阻塞主链路**——触发时 `request` 会返 E_STATE。
-        self.kf = kf_mod.KeyframeInfer(cfg, self.log, self.est.geom)
+        self.kf = kf_mod.KeyframeInfer(cfg, self.log, self.est.geom,
+                                       curve_src=(self.est.latest if self.hq_curve_in else None))
         rc = self.kf.init()
         if rc != 0:
             self.log.event("main", "boot_check_item", item="TH3", result="fail",
@@ -1258,6 +1263,8 @@ def main() -> int:
     p.add_argument("--no-preserve-ratio", action="store_false", dest="apply_preserve_ratio",
                    default=True,
                    help="[A/B 开关] 切回旧逐通道语义（默认走保比语义；本开关仅供 A/B）")
+    p.add_argument("--hq-curve-in", action="store_true",
+                   help="[A/B 开关] HQ 输入侧接 ZDE++ 曲线（语义随 --no-preserve-ratio，默认保比；默认关）")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
@@ -1303,6 +1310,7 @@ def main() -> int:
              no_est=args.no_est, est_first=args.est_first,
              no_apply=args.no_apply, no_osd=args.no_osd,
              apply_preserve_ratio=args.apply_preserve_ratio,
+             hq_curve_in=args.hq_curve_in,
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,
              step_exp_times=args.step_exp_times, step_exp_interval_s=args.step_exp_interval_s,
              step_exp_low=args.step_exp_low, step_exp_high=args.step_exp_high,

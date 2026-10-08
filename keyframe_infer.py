@@ -54,6 +54,7 @@ from typing import Any, Dict, Optional
 import _starlight_native as _n
 
 import log as starlog
+import realtime_apply as ra
 
 E_NPU = -2
 E_STATE = -5
@@ -90,10 +91,15 @@ class KeyframeInfer:
     """TH3 主体（**独立 OS 线程**；`request()` 非阻塞，推理在 worker 内进行）。"""
 
     def __init__(self, cfg: Any, logger: starlog.Logger, geom: Dict[str, int],
-                 model_dir: str = "models/hq"):
+                 model_dir: str = "models/hq", curve_src: Any = None):
         self.cfg = cfg
         self.log = logger
         self.geom = geom
+        # **[A/B 钩子]（非 config 键）** HQ 输入侧接 ZDE++ 曲线的曲线场来源：
+        # 传入 `CurveEstimator.latest`（无参可调用，返回 `CurveSnapshot` 或 `None`）= 开启；
+        # `None` = 关闭（**默认，交付链路行为不变**）。曲线应用语义由 `realtime_apply` 的
+        # `preserve_ratio` 决定（生产保比）。接线见 `main.py --hq-curve-in`。
+        self.curve_src = curve_src
         self.hq_w = int(geom["hq_w"])
         self.hq_h = int(geom["hq_h"])
         # **（v3.86 追加 35）** §3.1 pad 口径（唯一来源 = `curve_estim.resolve_geometry()`）：
@@ -170,7 +176,29 @@ class KeyframeInfer:
                 "busy": self._busy,
                 "slot_full": self._slot is not None,
                 "thread_alive": bool(self._th and self._th.is_alive()),
+                "curve_in": self.curve_src is not None,
             }
+
+    # ── **[A/B 钩子]** HQ 输入侧曲线应用（非契约步；默认不启用）────────────
+    def _apply_input_curve(self, hq_rgb: Any) -> Any:
+        """把 TH2a **最近一次已发布**的 ZDE++ 曲线场施加到 HQ 输入的**内容区**。
+
+        口径：只作用于 `hq_pad_top .. hq_pad_top+hq_content_h` 行（上下 pad 保持零）；应用实现
+        = 交付 `realtime_apply.apply_window`（NEON 单遍融合，语义由 `preserve_ratio` 决定）。
+        无有效曲线场（首拍尚未发布）或应用失败时**原样返回**（不改变既有行为）。
+        """
+        snap = self.curve_src()
+        if snap is None or snap.field is None:
+            return hq_rgb
+        row = self.hq_w * 3
+        a = self.hq_pad_top * row
+        b = a + self.hq_content_h * row
+        full = bytearray(hq_rgb.to_bytes())
+        dst = bytearray(self.hq_w * self.hq_content_h * 3)
+        if ra.apply_window(full[a:b], snap.field, dst, self.hq_w, self.hq_content_h) != 0:
+            return hq_rgb
+        full[a:b] = dst
+        return full
 
     # ── worker ─────────────────────────────────────────────────────────
     def _worker(self) -> None:
@@ -186,6 +214,8 @@ class KeyframeInfer:
             rc, out, run_ns = E_NPU, b"", 0
             try:
                 hq_rgb = _n.rga.hq(self.geom)
+                if self.curve_src is not None:
+                    hq_rgb = self._apply_input_curve(hq_rgb)
                 _n.rknn_hq.pack_rgb888_nhwc_f32(hq_rgb, self._in_f32, self.hq_w, self.hq_h)
                 out = bytearray(self.hq_w * self.hq_h * 3 * 4)
                 rc = _n.rknn_hq.run(self._in_f32, out)
