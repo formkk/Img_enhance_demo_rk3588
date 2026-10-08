@@ -110,8 +110,8 @@ class Demo:
                  inject_v4l2_mode: str = "err",
                  no_est: bool = False, est_first: int = 0,
                  no_apply: bool = False, no_osd: bool = False,
-                 apply_preserve_ratio: bool = True, hq_curve_in: bool = False,
-                 hq_mfa_frames: int = 0,
+                 apply_preserve_ratio: bool = True, hq_curve_in: bool = True,
+                 hq_mfa_frames: int = 6,
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
                  step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
@@ -143,14 +143,16 @@ class Demo:
         # 在 `boot()` 里随 `ra.configure_from_config()` 一次性注入 C 层（`preserve_ratio`），
         # 使通道间比值在增强后保持不变（修去饱和）。**反向 opt-out = CLI `--no-preserve-ratio`**（仅供 A/B）。
         self.apply_preserve_ratio = bool(apply_preserve_ratio)
-        # **[A/B 开关] HQ 输入侧接 ZDE++ 曲线**（**非 config 键**，**默认关 = 交付链路行为不变**）：
-        # 开启后 TH3 在 RGA 缩放后、入模前，把 TH2a 最近一次已发布曲线场施加到 HQ 内容区
-        # （应用语义随 `apply_preserve_ratio`，默认保比）。接线见 `keyframe_infer._apply_input_curve`。
+        # **[A/B 开关] HQ 输入侧接 ZDE++ 曲线**（**非 config 键**；**2026-10-08 目测通过后定为默认开**，
+        # 反向 opt-out = `--no-hq-curve-in`，与 `--no-preserve-ratio` 同例）：开启后 TH3 在入模前
+        # 把 TH2a 最近一次已发布曲线场施加到 HQ 内容区（应用语义随 `apply_preserve_ratio`，默认保比）。
+        # 接线见 `keyframe_infer._apply_input_curve`。
         self.hq_curve_in = bool(hq_curve_in)
-        # **[A/B 开关] HQ 输入侧「N 帧时域平均」**（= §15 O158 的「自制 3DNR」；**非 config 键**，
-        # **默认 0 = 关闭 ⇒ 交付链路行为不变**）：>1 时，TH3 触发受理后取 N 帧（含触发帧）、
-        # **逐帧 RGA 缩放到 HQ 目标几何后累加**（取时拷走、**不持 lease** ⇒ 不动 V4L2 池），
-        # 平均结果作 HQ 输入。实现位置 = O158 ④ 的「RGA 缩到 HQ 目标之后」；核 = native `mfa`。
+        # **[A/B 开关] HQ 输入侧「N 帧时域平均」**（= §15 O158 的「自制 3DNR」；**非 config 键**；
+        # **2026-10-08 目测通过后定为默认 N=6**，反向 opt-out = `--hq-mfa-frames 0/1`）：
+        # >1 时，TH3 触发受理后取 N 帧（含触发帧）、**逐帧 RGA 缩放到 HQ 目标几何后累加**
+        # （取时拷走、**不持 lease** ⇒ 不动 V4L2 池），平均结果作 HQ 输入。
+        # 实现位置 = O158 ④ 的「RGA 缩到 HQ 目标之后」；核 = native `mfa`。
         self.hq_mfa_frames = max(0, int(hq_mfa_frames))
         self._mfa_acc = None         # 16bit 累加器（**惰性分配**：只有开启该开关才占内存）
         # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
@@ -830,23 +832,25 @@ class Demo:
             self._mfa_acc = _n.alloc(n_px * 2)   # 16bit 累加器（960×544 时 3.1 MB）
         hq = _n.rga.hq(g)                        # HQ 目标（**可写** ⇒ 取均结果写回这里）
         want = self.hq_mfa_frames
-        extra: list = []                         # 除触发帧 `f` 之外的 (want−1) 帧
+        _n.mfa.zero(self._mfa_acc)
         got = 0
-        try:
-            while 1 + len(extra) < want:
-                nf = self.cap.acquire(1, 500)
-                if nf is None:
-                    break
-                extra.append(nf)
-            _n.mfa.zero(self._mfa_acc)
-            for d in [f] + extra:
-                if _n.rga.blit_nv12_fd(int(d["dmabuf_fd"]), kf_mod.RGA_DST_HQ) == 0:
+        # 第 1 帧 = **已持有的触发帧 `f`**（本函数**不释放**它，由主循环统一 `release`）。
+        if _n.rga.blit_nv12_fd(int(f["dmabuf_fd"]), kf_mod.RGA_DST_HQ) == 0:
+            _n.mfa.accum(hq, self._mfa_acc)
+            got += 1
+        # 其余 N−1 帧：**逐帧「取 → RGA 复制 → 立即释放」**（= O158 ⑤「取时拷走」）。
+        # **关键**：不可先攒齐 lease 再处理 —— V4L2 池只有 **4** 帧，多持一个 lease 就会把池耗尽、
+        # 使下一次 `acquire` 超时（实测表现为「取帧 4/6」且 `lease_timeouts` 每次触发 +1）。
+        while got < want:
+            nf = self.cap.acquire(1, 500)
+            if nf is None:
+                break
+            try:
+                if _n.rga.blit_nv12_fd(int(nf["dmabuf_fd"]), kf_mod.RGA_DST_HQ) == 0:
                     _n.mfa.accum(hq, self._mfa_acc)
                     got += 1
-        finally:
-            # **触发帧 `f` 不在此释放**（主循环随后统一 `release`）；这里只放本函数自己取的。
-            for d in extra:
-                self.cap.release(d["lease_id"])
+            finally:
+                self.cap.release(nf["lease_id"])
         if got == 0:
             return kf_mod.E_NPU
         _n.mfa.mean(self._mfa_acc, hq, got)
@@ -1322,11 +1326,13 @@ def main() -> int:
     p.add_argument("--no-preserve-ratio", action="store_false", dest="apply_preserve_ratio",
                    default=True,
                    help="[A/B 开关] 切回旧逐通道语义（默认走保比语义；本开关仅供 A/B）")
-    p.add_argument("--hq-curve-in", action="store_true",
-                   help="[A/B 开关] HQ 输入侧接 ZDE++ 曲线（语义随 --no-preserve-ratio，默认保比；默认关）")
-    p.add_argument("--hq-mfa-frames", type=int, default=0,
-                   help="[A/B 开关] HQ 输入侧 N 帧时域平均（§15 O158；0/1 = 关闭；"
-                        ">1 每触发取 N 帧取时拷走、逐帧 RGA 后 16bit 累加取均；非 config 键）")
+    p.add_argument("--no-hq-curve-in", action="store_false", dest="hq_curve_in",
+                   default=True,
+                   help="[A/B 开关] 关闭 HQ 输入侧 ZDE++ 曲线提亮（**2026-10-08 定稿后默认开**；"
+                        "本开关仅供 A/B 与回退；非 config 键）")
+    p.add_argument("--hq-mfa-frames", type=int, default=6,
+                   help="[A/B 开关] HQ 输入侧 N 帧时域平均（§15 O158；**2026-10-08 定稿后默认 6**；"
+                        "0/1 = 关闭；>1 每触发取 N 帧取时拷走、逐帧 RGA 后 16bit 累加取均；非 config 键）")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
