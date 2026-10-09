@@ -111,7 +111,7 @@ class Demo:
                  no_est: bool = False, est_first: int = 0,
                  no_apply: bool = False, no_osd: bool = False,
                  apply_preserve_ratio: bool = True, hq_curve_in: bool = True,
-                 hq_mfa_frames: int = 6,
+                 hq_mfa_frames: int = 6, hq_chroma_gain: float = 1.0,
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
                  step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
@@ -154,6 +154,11 @@ class Demo:
         # （取时拷走、**不持 lease** ⇒ 不动 V4L2 池），平均结果作 HQ 输入。
         # 实现位置 = O158 ④ 的「RGA 缩到 HQ 目标之后」；核 = native `mfa`。
         self.hq_mfa_frames = max(0, int(hq_mfa_frames))
+        # **[A/B 开关] 链路末显式色度增强（§15 O161；非 config 键）**：在 HQ 模型输出之后、
+        # `to_rgb888`/OSD 之前，做「保持亮度的线性色度增益 `Y+k·(C−Y)`」。
+        # **`1.0` = 逐位恒等 ⇒ 交付行为不变（默认）**；具体取值**待 GT 标定**。
+        # 接线见 `keyframe_infer._apply_output_chroma`。
+        self.hq_chroma_gain = float(hq_chroma_gain)
         self._mfa_acc = None         # 16bit 累加器（**惰性分配**：只有开启该开关才占内存）
         # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
         # `osd_no_stats` = 连统计也不做。**非 config 键**，只用于 ①-2 的 OSD 增量归因实验。
@@ -352,7 +357,8 @@ class Demo:
         # 前置：RGA 已 configure（TH2 的 `est.init()` 里唯一一次，含 hq_w/hq_h 目标缓冲）。
         # 失败（如模型缺失）**不阻塞主链路**——触发时 `request` 会返 E_STATE。
         self.kf = kf_mod.KeyframeInfer(cfg, self.log, self.est.geom,
-                                       curve_src=(self.est.latest if self.hq_curve_in else None))
+                                       curve_src=(self.est.latest if self.hq_curve_in else None),
+                                       chroma_gain=self.hq_chroma_gain)
         rc = self.kf.init()
         if rc != 0:
             self.log.event("main", "boot_check_item", item="TH3", result="fail",
@@ -1333,6 +1339,10 @@ def main() -> int:
     p.add_argument("--hq-mfa-frames", type=int, default=6,
                    help="[A/B 开关] HQ 输入侧 N 帧时域平均（§15 O158；**2026-10-08 定稿后默认 6**；"
                         "0/1 = 关闭；>1 每触发取 N 帧取时拷走、逐帧 RGA 后 16bit 累加取均；非 config 键）")
+    p.add_argument("--hq-chroma-gain", type=float, default=1.0,
+                   help="[A/B 开关] 链路末色度增强增益 k（§15 O161；**默认 1.0 = 逐位恒等、行为不变**；"
+                        "口径 = 保持亮度的线性色度增益 Y+k*(C-Y)，作用于 HQ 模型输出之后、OSD 之前；"
+                        "取值待 GT 标定；非 config 键）")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
@@ -1380,6 +1390,7 @@ def main() -> int:
              apply_preserve_ratio=args.apply_preserve_ratio,
              hq_curve_in=args.hq_curve_in,
              hq_mfa_frames=args.hq_mfa_frames,
+             hq_chroma_gain=args.hq_chroma_gain,
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,
              step_exp_times=args.step_exp_times, step_exp_interval_s=args.step_exp_interval_s,
              step_exp_low=args.step_exp_low, step_exp_high=args.step_exp_high,

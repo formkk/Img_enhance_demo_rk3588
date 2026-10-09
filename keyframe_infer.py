@@ -51,6 +51,8 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
+import numpy as np
+
 import _starlight_native as _n
 
 import log as starlog
@@ -91,7 +93,8 @@ class KeyframeInfer:
     """TH3 主体（**独立 OS 线程**；`request()` 非阻塞，推理在 worker 内进行）。"""
 
     def __init__(self, cfg: Any, logger: starlog.Logger, geom: Dict[str, int],
-                 model_dir: str = "models/hq", curve_src: Any = None):
+                 model_dir: str = "models/hq", curve_src: Any = None,
+                 chroma_gain: float = 1.0):
         self.cfg = cfg
         self.log = logger
         self.geom = geom
@@ -100,6 +103,12 @@ class KeyframeInfer:
         # `None` = 关闭（**默认，交付链路行为不变**）。曲线应用语义由 `realtime_apply` 的
         # `preserve_ratio` 决定（生产保比）。接线见 `main.py --hq-curve-in`。
         self.curve_src = curve_src
+        # **[A/B 钩子]（非 config 键）链路末显式色度增强** —— 在 HQ 模型输出（NCHW f32 [0,1]）
+        # **之后**、`to_rgb888`/OSD 合成**之前**，对结果幅做**保持亮度的线性色度增益**（口径见
+        # `_apply_output_chroma`）。`1.0` = **逐位恒等 ⇒ 交付链路行为不变**；
+        # 具体取值**待 GT 标定**（§15 O161，见主基准 §14 追加 9）。
+        self.chroma_gain = float(chroma_gain)
+        self._last_clip_pct = 0.0
         self.hq_w = int(geom["hq_w"])
         self.hq_h = int(geom["hq_h"])
         # **（v3.86 追加 35）** §3.1 pad 口径（唯一来源 = `curve_estim.resolve_geometry()`）：
@@ -177,6 +186,8 @@ class KeyframeInfer:
                 "slot_full": self._slot is not None,
                 "thread_alive": bool(self._th and self._th.is_alive()),
                 "curve_in": self.curve_src is not None,
+                "chroma_gain": self.chroma_gain,
+                "chroma_clip_pct": self._last_clip_pct,
             }
 
     # ── **[A/B 钩子]** HQ 输入侧曲线应用（非契约步；默认不启用）────────────
@@ -199,6 +210,27 @@ class KeyframeInfer:
             return hq_rgb
         full[a:b] = dst
         return full
+
+    # ── **[A/B 钩子]** 链路末显式色度增强（非契约步；`k=1.0` 时逐位恒等）──────────
+    def _apply_output_chroma(self, buf: bytes) -> bytes:
+        """HQ 结果幅 → **保持亮度的线性色度增益** → 同布局同长度输出。
+
+        口径（§15 O161）：
+            `Y  = 0.299R + 0.587G + 0.114B`（Rec.601，与链路 CSC 同族）
+            `C' = clip(Y + k·(C − Y), 0, 1)`，C ∈ {R,G,B}
+        ⇒ **Y 逐像素不变**（亮度不动），只把色度线性缩放 ⇒ `k` 可由 GT 直接标定。
+        取值：`k = 1.0` **提前返回原对象 ⇒ 逐位恒等**（交付行为不变）；`k > 1` 提饱和、`k < 1` 降饱和。
+        布局不变（3 个通道面各 `hq_content_h×hq_w` 个 float32）⇒ 下游 `to_rgb888` 无感。
+        `_last_clip_pct` = 逐值削顶率（k>1 时 >0，作为过饱和的安全信号，经 `info()` 暴露）。
+        """
+        k = self.chroma_gain
+        if k == 1.0 or not buf:
+            return buf
+        a = np.frombuffer(buf, dtype="<f4").reshape(3, -1)
+        y = np.float32(0.299) * a[0] + np.float32(0.587) * a[1] + np.float32(0.114) * a[2]
+        raw = a + np.float32(k - 1.0) * (a - y)
+        self._last_clip_pct = float(((raw < 0.0) | (raw > 1.0)).mean()) * 100.0
+        return np.clip(raw, 0.0, 1.0).astype("<f4", copy=False).tobytes()
 
     # ── worker ─────────────────────────────────────────────────────────
     def _worker(self) -> None:
@@ -232,8 +264,9 @@ class KeyframeInfer:
                     done_ns = time.monotonic_ns()
                     self._slot = {
                         # HqResult.buffer（模型 raw output 的**内容幅**：NCHW f32 [0,1]，已裁 pad 行）
-                        "buffer": crop_nchw_f32_pad(out, self.hq_w, self.hq_h,
-                                                    self.hq_pad_top, self.hq_content_h),
+                        "buffer": self._apply_output_chroma(
+                            crop_nchw_f32_pad(out, self.hq_w, self.hq_h,
+                                              self.hq_pad_top, self.hq_content_h)),
                         "seq_src": int(seq),
                         "model_id": self._model_id,
                         "active_shape": SHAPE_ENUM.get(f"{self.hq_w}x{self.hq_h}", 0),
