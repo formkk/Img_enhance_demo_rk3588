@@ -127,6 +127,8 @@ class Demo:
                  apply_preserve_ratio: bool = True, hq_curve_in: bool = True,
                  hq_mfa_frames: int = 8, hq_chroma_gain: float = 1.5,
                  hq_chroma_denoise: int = 2,
+                 hq_luma_denoise_r: int = 2, hq_luma_denoise_eps: float = 0.001,
+                 hq_luma_denoise_lambda: float = 0.5,
                  hq_tm_b: float = 0.8, hq_tm_target: float = 106.0, hq_tm_first: bool = False,
                  mipi_wb_preset: str = "strong",
                  osd_status_only: bool = False, osd_no_stats: bool = False,
@@ -185,6 +187,17 @@ class Demo:
         # **2026-10-09 目测定稿 = `R = 2`**（用户目视「噪点明显改善」并验收定稿）；
         # **反向 opt-out = `--hq-chroma-denoise 0`**（= 逐位恒等）。
         self.hq_chroma_denoise = max(0, int(hq_chroma_denoise))
+        # **[A/B 开关] 只滤 luma 高频（guided filter 保边降噪；非 config 键）** —— 对 HQ 模型输出的
+        # **亮度 Y** 做自引导 guided filter（保边），三通道同加 `(Y'−Y)` ⇒ **保色度、只降 luma 噪声**；
+        # 位置 = 色度低通**之前**。口径见 `keyframe_infer._apply_luma_denoise`。
+        # **依据** = 2026-10-09 噪声成分诊断：暗区 luma 高频 σ 为色度的 **4.5~9 倍** ⇒ 残余噪声以 luma 为主。
+        # `R = 0` 或 `EPS = 0` 或 `λ ≥ 1` ⇒ **逐位恒等**（全关；opt-out = `--hq-luma-denoise ""`）。
+        # **2026-10-09 目测定稿 = `R=2, EPS=1e-3, λ=0.5`**（用户目视「噪点明显改善、锐度可接受」验收定稿）。
+        self.hq_luma_denoise_r = max(0, int(hq_luma_denoise_r))
+        self.hq_luma_denoise_eps = float(hq_luma_denoise_eps)
+        # **细节补偿 λ（B 方案）**：`Y'' = Y' + λ·(Y − Y')`（λ = 0 全量降噪；λ→1 逐位趋近原图）。
+        # 空间降噪与锐度在**同一根轴上连续可调**；`λ ≥ 1` ⇒ 逐位恒等。
+        self.hq_luma_denoise_lambda = float(hq_luma_denoise_lambda)
         # **[A/B 开关] 曲线后的黑位锚定色调映射（§15 O162；非 config 键）** —— 位置在
         # **曲线之后、进模型之前**（`keyframe_infer._tonemap_content`）。`tm_b` = 黑位锚定比例
         # （`b = tm_b × 曲线后 p1`）、`tm_target` = 目标 Y 均值。
@@ -402,6 +415,9 @@ class Demo:
                                        curve_src=(self.est.latest if self.hq_curve_in else None),
                                        chroma_gain=self.hq_chroma_gain,
                                        chroma_denoise_r=self.hq_chroma_denoise,
+                                       luma_denoise_r=self.hq_luma_denoise_r,
+                                       luma_denoise_eps=self.hq_luma_denoise_eps,
+                                       luma_denoise_lambda=self.hq_luma_denoise_lambda,
                                        tm_b=self.hq_tm_b, tm_target=self.hq_tm_target,
                                        tm_first=self.hq_tm_first)
         rc = self.kf.init()
@@ -833,6 +849,17 @@ class Demo:
             if self._cur_trig is not None:
                 self._cur_trig["fs_hdmi_flip_ns"] = self.hdmi.last_flip_ns()
         self._dump_canvas("fullscreen")
+        # **[调试钩子]** 把**生产链末的 HQ 输出**（`self.hq_rgb`，960×540 RGB888，与全屏投屏同一缓冲）
+        # 原样落 PNG（**零色调后处理**，规则 `10-evidence.md` §2）；仅当 `--dump-canvas-dir` 生效。
+        # 与 `_dump_canvas` 的差别：**直接落 HQ 缓冲**，不含画布黑边 / OSD、无 1:1 之外的缩放，
+        # 也**不依赖画布双缓冲的奇偶**（`dump_png(…, 0)` 在全屏期可能读到另一缓冲的陈旧常规帧）。
+        # 用途 = 离线诊断 HQ 输出的噪声成分（luma vs chroma）。
+        if self.dump_canvas_dir:
+            import os as _os
+            _os.makedirs(self.dump_canvas_dir, exist_ok=True)
+            display_mod._write_png_rgb888(
+                _os.path.join(self.dump_canvas_dir, f"hq_final_{self.hq_seq}.png"),
+                self.hq_rgb.to_bytes(), w, h)
 
     def _exit_fullscreen(self, reason: str) -> None:
         """退出全屏（`click` / `timeout`）→ 回常规视图并**解除冻结**（§3.5、O90）。"""
@@ -1392,6 +1419,12 @@ def main() -> int:
                    help="[A/B 开关] 只滤高频色度（网后空间降噪；§15 新增 O 项）—— 在 HQ 模型输出之后、"
                         "色度增益之前，对**色度**做半径 R 的分离式盒式低通（保亮度 / 保色比语义，直击彩斑）；"
                         "**2026-10-09 目测定稿 = 默认 2**；`0` = 关闭（逐位恒等，回退）；非 config 键）")
+    p.add_argument("--hq-luma-denoise", default="2,0.001,0.5",
+                   help="[A/B 开关] 只滤 luma 高频（guided filter 保边降噪；§15 新增 O 项）—— 对 HQ 模型"
+                        "输出的**亮度**做自引导 guided filter（保边），保色度、只降 luma 噪声；格式 "
+                        "\"R,EPS[,LAMBDA]\"（R = 盒式半径、EPS = [0,1]² 的方差正则、LAMBDA = 细节补偿，"
+                        "`Y''=Y'+λ(Y−Y')`）；**2026-10-09 目测定稿 = 默认 \"2,0.001,0.5\"**；"
+                        "**空串 = 关闭（逐位恒等，回退）**；非 config 键）")
     p.add_argument("--hq-input-tm", default="0.8,106",
                    help="[A/B 开关] 曲线后（进模型前）黑位锚定色调映射，格式 \"B,TARGET\""
                         "（§15 O162；**2026-10-09 定稿默认 0.8,106**；B = 黑位锚定比例×曲线后 p1、"
@@ -1439,6 +1472,14 @@ def main() -> int:
         _tm_p = str(args.hq_input_tm).split(",")
         if len(_tm_p) == 2:
             _tm_b, _tm_tgt = float(_tm_p[0]), float(_tm_p[1])
+    # **[A/B 开关] `--hq-luma-denoise "R,EPS[,LAMBDA]"` → 半径(整) + eps + λ(浮点)**（空串 = 关闭）。
+    _ldn_r, _ldn_eps, _ldn_lam = 0, 0.0, 0.0
+    if args.hq_luma_denoise:
+        _ldn_p = str(args.hq_luma_denoise).split(",")
+        if len(_ldn_p) >= 2:
+            _ldn_r, _ldn_eps = int(float(_ldn_p[0])), float(_ldn_p[1])
+        if len(_ldn_p) >= 3:
+            _ldn_lam = float(_ldn_p[2])
     d = Demo(cfg, logger, frames=frames, est_every=args.est_every,
              hdmi_every=args.hdmi_every, trigger_at=args.trigger_at,
              trigger_times=args.trigger_times, trigger_interval_s=args.trigger_interval_s,
@@ -1456,6 +1497,8 @@ def main() -> int:
              hq_mfa_frames=args.hq_mfa_frames,
              hq_chroma_gain=args.hq_chroma_gain,
              hq_chroma_denoise=args.hq_chroma_denoise,
+             hq_luma_denoise_r=_ldn_r, hq_luma_denoise_eps=_ldn_eps,
+             hq_luma_denoise_lambda=_ldn_lam,
              hq_tm_b=_tm_b, hq_tm_target=_tm_tgt, hq_tm_first=args.hq_tm_first,
              mipi_wb_preset=args.mipi_wb_preset,
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,

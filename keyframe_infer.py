@@ -94,6 +94,8 @@ class KeyframeInfer:
     def __init__(self, cfg: Any, logger: starlog.Logger, geom: Dict[str, int],
                  model_dir: str = "models/hq", curve_src: Any = None,
                  chroma_gain: float = 1.0, chroma_denoise_r: int = 0,
+                 luma_denoise_r: int = 0, luma_denoise_eps: float = 0.0,
+                 luma_denoise_lambda: float = 0.0,
                  tm_b: float = 0.0, tm_target: float = 0.0,
                  tm_first: bool = False):
         self.cfg = cfg
@@ -126,6 +128,19 @@ class KeyframeInfer:
         # `--hq-chroma-denoise 0`）。见主基准 §14 追加 15 / §15 O164。
         self.chroma_denoise_r = max(0, int(chroma_denoise_r))
         self._last_cdn_clip_pct = 0.0
+        # **[A/B 钩子]（非 config 键）「只滤 luma 高频」的保边空间降噪** —— 对 HQ 模型输出的
+        # **亮度 Y** 做 **guided filter（自引导，保边）**，三通道同加 `(Y'−Y)` ⇒ **保色度、只降 luma 噪声**；
+        # 与 O164 的色度低通**互不干涉**（本步在色度低通**之前**）。`r ≤ 0` 或 `eps ≤ 0` ⇒ **逐位恒等**。
+        # 依据 = 2026-10-09 噪声成分诊断：暗区（Y<60）luma 高频 σ **9.5~19.5 LSB**，为色度的 **4.5~9 倍**
+        # （尺度 1~2 px）⇒ 残余噪声以 **luma 为主**。**2026-10-09 目测定稿 = `R=2, EPS=1e-3, λ=0.5`**
+        # （由 `main.py` 的 `Demo` 默认注入）；见主基准 §14 追加 16 / §15 O165。
+        self.luma_denoise_r = max(0, int(luma_denoise_r))
+        self.luma_denoise_eps = float(luma_denoise_eps)
+        # **细节补偿 λ（B 方案）**：`Y'' = Y' + λ·(Y − Y')`（`Y'` = guided 输出）。
+        # λ = 0 ⇒ 全量降噪（原行为）；λ→1 ⇒ 逐位趋近原图（**空间降噪与锐度即同一根轴上的连续可调**）。
+        # **取值档待目视定稿**。
+        self.luma_denoise_lambda = float(luma_denoise_lambda)
+        self._last_ldn_clip_pct = 0.0
         self.hq_w = int(geom["hq_w"])
         self.hq_h = int(geom["hq_h"])
         # **（v3.86 追加 35）** §3.1 pad 口径（唯一来源 = `curve_estim.resolve_geometry()`）：
@@ -207,6 +222,10 @@ class KeyframeInfer:
                 "chroma_clip_pct": self._last_clip_pct,
                 "chroma_denoise_r": self.chroma_denoise_r,
                 "chroma_dn_clip_pct": self._last_cdn_clip_pct,
+                "luma_denoise_r": self.luma_denoise_r,
+                "luma_denoise_eps": self.luma_denoise_eps,
+                "luma_denoise_lambda": self.luma_denoise_lambda,
+                "luma_dn_clip_pct": self._last_ldn_clip_pct,
             }
 
     # ── **[A/B 钩子]** HQ 输入侧曲线应用（非契约步；默认不启用）────────────
@@ -447,6 +466,124 @@ class KeyframeInfer:
         self._last_cdn_clip_pct = 100.0 * clipped / (3.0 * n)
         return orr.tobytes() + og.tobytes() + ob.tobytes()
 
+    # ── **[A/B 钩子]** 只滤 luma 高频（guided filter 保边降噪；`r<=0`/`eps<=0` 逐位恒等）──
+    @staticmethod
+    def _box_blur(src, w: int, h: int, r: int):
+        """分离式盒式模糊（**边缘复制**），返回新 `array('f')`。O(w·h)、与 `r` 无关。"""
+        n = w * h
+        tmp = array.array("f", bytes(4 * n))
+        out = array.array("f", bytes(4 * n))
+        inv = 1.0 / (2 * r + 1)
+        for y0 in range(h):                          # 水平
+            base = y0 * w
+            s = src[base] * r                        # 左侧越界 ⇒ 复制第 0 列
+            for t in range(0, r + 1):
+                xx = t if t < w else w - 1
+                s += src[base + xx]
+            tmp[base] = s * inv
+            for x in range(1, w):
+                add = x + r
+                if add >= w:
+                    add = w - 1
+                sub = x - 1 - r
+                if sub < 0:
+                    sub = 0
+                s += src[base + add] - src[base + sub]
+                tmp[base + x] = s * inv
+        for x in range(w):                           # 垂直
+            s = tmp[x] * r                           # 上侧越界 ⇒ 复制第 0 行
+            for t in range(0, r + 1):
+                yy = t if t < h else h - 1
+                s += tmp[yy * w + x]
+            out[x] = s * inv
+            for y0 in range(1, h):
+                add = y0 + r
+                if add >= h:
+                    add = h - 1
+                sub = y0 - 1 - r
+                if sub < 0:
+                    sub = 0
+                s += tmp[add * w + x] - tmp[sub * w + x]
+                out[y0 * w + x] = s * inv
+        return out
+
+    def _apply_luma_denoise(self, buf: bytes) -> bytes:
+        """**luma 保边降噪**（自引导 guided filter）—— 只动亮度、保色度。
+
+        口径（非 config 键）：
+            `Y  = 0.299R + 0.587G + 0.114B`；`mY = box_r(Y)`；`var = box_r(Y²) − mY²`
+            `a = var/(var+eps)`（边缘 `var≫eps` ⇒ `a→1` **保边**；平坦 `var≪eps` ⇒ `a→0` **平滑**）
+            `Y' = box_r(a)·Y + box_r((1−a)·mY)`（guided filter 完整式，含 a/b 图的空间平均）
+            细节补偿（B 方案）：`Y'' = Y' + λ·(Y − Y')`（λ = 0 全量降噪；λ→1 逐位趋近原图）
+            三通道同加 `(Y'' − Y)` ⇒ **Y → Y''、色度差不变**（`0.299+0.587+0.114=1`）
+        **`r ≤ 0` 或 `eps ≤ 0` 或 `λ ≥ 1` ⇒ 提前返回原对象（逐位恒等）**；`eps` 单位 = `[0,1]²` 的方差。
+        依据 = 2026-10-09 诊断（暗区 luma 高频 σ 为色度的 4.5~9 倍）⇒ 补 luma 一路。
+        纯标准库；worker 线程内、**每触发一次**，不在帧路径上（复杂度 O(w·h)）。
+        """
+        r = self.luma_denoise_r
+        eps = self.luma_denoise_eps
+        lam = self.luma_denoise_lambda
+        if r <= 0 or eps <= 0.0 or lam >= 1.0 or not buf:
+            return buf
+        a = array.array("f")
+        a.frombytes(buf)
+        w, h = self.hq_w, self.hq_content_h
+        n = w * h
+        if n == 0 or len(a) != 3 * n:
+            return buf
+        rp, gp, bp = a[:n], a[n:2 * n], a[2 * n:3 * n]
+        Y = array.array("f", bytes(4 * n))
+        Y2 = array.array("f", bytes(4 * n))
+        for i in range(n):
+            y = 0.299 * rp[i] + 0.587 * gp[i] + 0.114 * bp[i]
+            Y[i] = y
+            Y2[i] = y * y
+        mY = self._box_blur(Y, w, h, r)
+        mY2 = self._box_blur(Y2, w, h, r)
+        A = array.array("f", bytes(4 * n))
+        Bb = array.array("f", bytes(4 * n))
+        for i in range(n):
+            v = mY2[i] - mY[i] * mY[i]
+            if v < 0.0:
+                v = 0.0
+            ai = v / (v + eps)
+            A[i] = ai
+            Bb[i] = mY[i] * (1.0 - ai)
+        mA = self._box_blur(A, w, h, r)
+        mB = self._box_blur(Bb, w, h, r)
+        orr = array.array("f", bytes(4 * n))
+        og = array.array("f", bytes(4 * n))
+        ob = array.array("f", bytes(4 * n))
+        clipped = 0
+        for i in range(n):
+            d = (1.0 - lam) * (mA[i] * Y[i] + mB[i] - Y[i])
+            v = rp[i] + d
+            if v < 0.0:
+                v = 0.0
+                clipped += 1
+            elif v > 1.0:
+                v = 1.0
+                clipped += 1
+            orr[i] = v
+            v = gp[i] + d
+            if v < 0.0:
+                v = 0.0
+                clipped += 1
+            elif v > 1.0:
+                v = 1.0
+                clipped += 1
+            og[i] = v
+            v = bp[i] + d
+            if v < 0.0:
+                v = 0.0
+                clipped += 1
+            elif v > 1.0:
+                v = 1.0
+                clipped += 1
+            ob[i] = v
+        self._last_ldn_clip_pct = 100.0 * clipped / (3.0 * n)
+        return orr.tobytes() + og.tobytes() + ob.tobytes()
+
     # ── worker ─────────────────────────────────────────────────────────
     def _worker(self) -> None:
         while True:
@@ -482,8 +619,9 @@ class KeyframeInfer:
                         # 链路末两级（均非契约步）：**先只滤高频色度**（保亮度）→ **再色度增益**。
                         "buffer": self._apply_output_chroma(
                             self._apply_chroma_denoise(
-                                crop_nchw_f32_pad(out, self.hq_w, self.hq_h,
-                                                  self.hq_pad_top, self.hq_content_h))),
+                                self._apply_luma_denoise(
+                                    crop_nchw_f32_pad(out, self.hq_w, self.hq_h,
+                                                      self.hq_pad_top, self.hq_content_h)))),
                         "seq_src": int(seq),
                         "model_id": self._model_id,
                         "active_shape": SHAPE_ENUM.get(f"{self.hq_w}x{self.hq_h}", 0),
