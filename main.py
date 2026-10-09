@@ -111,7 +111,7 @@ class Demo:
                  no_est: bool = False, est_first: int = 0,
                  no_apply: bool = False, no_osd: bool = False,
                  apply_preserve_ratio: bool = True, hq_curve_in: bool = True,
-                 hq_mfa_frames: int = 6, hq_chroma_gain: float = 2.0,
+                 hq_mfa_frames: int = 6, hq_chroma_gain: float = 1.5,
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
                  step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
@@ -156,9 +156,10 @@ class Demo:
         self.hq_mfa_frames = max(0, int(hq_mfa_frames))
         # **[A/B 开关] 链路末显式色度增强（§15 O161；非 config 键）**：在 HQ 模型输出之后、
         # `to_rgb888`/OSD 之前，做「保持亮度的线性色度增益 `Y+k·(C−Y)`」。
-        # **2026-10-08 按 GT（人工加光参考）标定后定为默认 `2.0`** —— 命中 GT 亮区 S
-        # （0.3508 vs 0.3467，差 +1.2%；且全档零削顶）。**反向 opt-out = `--hq-chroma-gain 1.0`**
-        # （= 逐位恒等、回到未启用状态）。接线见 `keyframe_infer._apply_output_chroma`。
+        # **2026-10-09 试验档 `1.5`**（用户要求试用；**GT 标定目标档为 `2.0`** —— 亮区 S 实测
+        # 0.3508 vs GT 0.3467；`1.5` 对应亮区 S ≈ 0.2819，比 GT 目标低约 19% ⇒ 属保守档）。
+        # **反向 opt-out = `--hq-chroma-gain 1.0`**（= 逐位恒等、回到未启用状态）。
+        # 接线见 `keyframe_infer._apply_output_chroma`。
         self.hq_chroma_gain = float(hq_chroma_gain)
         self._mfa_acc = None         # 16bit 累加器（**惰性分配**：只有开启该开关才占内存）
         # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
@@ -1340,10 +1341,10 @@ def main() -> int:
     p.add_argument("--hq-mfa-frames", type=int, default=6,
                    help="[A/B 开关] HQ 输入侧 N 帧时域平均（§15 O158；**2026-10-08 定稿后默认 6**；"
                         "0/1 = 关闭；>1 每触发取 N 帧取时拷走、逐帧 RGA 后 16bit 累加取均；非 config 键）")
-    p.add_argument("--hq-chroma-gain", type=float, default=2.0,
-                   help="[A/B 开关] 链路末色度增强增益 k（§15 O161；**2026-10-08 按 GT 标定后默认 2.0**；"
-                        "口径 = 保持亮度的线性色度增益 Y+k*(C-Y)，作用于 HQ 模型输出之后、OSD 之前；"
-                        "`1.0` = 逐位恒等（回退）；非 config 键）")
+    p.add_argument("--hq-chroma-gain", type=float, default=1.5,
+                   help="[A/B 开关] 链路末色度增强增益 k（§15 O161；**2026-10-09 试验档 1.5**"
+                        "（GT 标定目标档 = 2.0）；口径 = 保持亮度的线性色度增益 Y+k*(C-Y)，"
+                        "作用于 HQ 模型输出之后、OSD 之前；`1.0` = 逐位恒等（回退）；非 config 键）")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
