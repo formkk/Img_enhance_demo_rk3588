@@ -125,7 +125,8 @@ class Demo:
                  no_est: bool = False, est_first: int = 0,
                  no_apply: bool = False, no_osd: bool = False,
                  apply_preserve_ratio: bool = True, hq_curve_in: bool = True,
-                 hq_mfa_frames: int = 6, hq_chroma_gain: float = 1.5,
+                 hq_mfa_frames: int = 8, hq_chroma_gain: float = 1.5,
+                 hq_chroma_denoise: int = 2,
                  hq_tm_b: float = 0.8, hq_tm_target: float = 106.0, hq_tm_first: bool = False,
                  mipi_wb_preset: str = "strong",
                  osd_status_only: bool = False, osd_no_stats: bool = False,
@@ -165,7 +166,8 @@ class Demo:
         # 接线见 `keyframe_infer._apply_input_curve`。
         self.hq_curve_in = bool(hq_curve_in)
         # **[A/B 开关] HQ 输入侧「N 帧时域平均」**（= §15 O158 的「自制 3DNR」；**非 config 键**；
-        # **2026-10-08 目测通过后定为默认 N=6**，反向 opt-out = `--hq-mfa-frames 0/1`）：
+        # **2026-10-09 用户指示加大到 N=8**（原 N=6 由 2026-10-08 目测定稿；降噪 ∝1/√N 更强、
+        # 代价 = 运动残影与等待时间随之增加，须重新目视复核），反向 opt-out = `--hq-mfa-frames 0/1`）：
         # >1 时，TH3 触发受理后取 N 帧（含触发帧）、**逐帧 RGA 缩放到 HQ 目标几何后累加**
         # （取时拷走、**不持 lease** ⇒ 不动 V4L2 池），平均结果作 HQ 输入。
         # 实现位置 = O158 ④ 的「RGA 缩到 HQ 目标之后」；核 = native `mfa`。
@@ -177,6 +179,12 @@ class Demo:
         # **反向 opt-out = `--hq-chroma-gain 1.0`**（= 逐位恒等、回到未启用状态）。
         # 接线见 `keyframe_infer._apply_output_chroma`。
         self.hq_chroma_gain = float(hq_chroma_gain)
+        # **[A/B 开关] 只滤高频色度（网后空间降噪；非 config 键）** —— 在 HQ 模型输出之后、
+        # 色度增益**之前**，对**色度**做半径 R 的分离式盒式低通（保亮度、保色比语义；口径见
+        # `keyframe_infer._apply_chroma_denoise`）。`R = 0` ⇒ **逐位恒等**。
+        # **2026-10-09 目测定稿 = `R = 2`**（用户目视「噪点明显改善」并验收定稿）；
+        # **反向 opt-out = `--hq-chroma-denoise 0`**（= 逐位恒等）。
+        self.hq_chroma_denoise = max(0, int(hq_chroma_denoise))
         # **[A/B 开关] 曲线后的黑位锚定色调映射（§15 O162；非 config 键）** —— 位置在
         # **曲线之后、进模型之前**（`keyframe_infer._tonemap_content`）。`tm_b` = 黑位锚定比例
         # （`b = tm_b × 曲线后 p1`）、`tm_target` = 目标 Y 均值。
@@ -393,6 +401,7 @@ class Demo:
         self.kf = kf_mod.KeyframeInfer(cfg, self.log, self.est.geom,
                                        curve_src=(self.est.latest if self.hq_curve_in else None),
                                        chroma_gain=self.hq_chroma_gain,
+                                       chroma_denoise_r=self.hq_chroma_denoise,
                                        tm_b=self.hq_tm_b, tm_target=self.hq_tm_target,
                                        tm_first=self.hq_tm_first)
         rc = self.kf.init()
@@ -1372,13 +1381,17 @@ def main() -> int:
                    default=True,
                    help="[A/B 开关] 关闭 HQ 输入侧 ZDE++ 曲线提亮（**2026-10-08 定稿后默认开**；"
                         "本开关仅供 A/B 与回退；非 config 键）")
-    p.add_argument("--hq-mfa-frames", type=int, default=6,
-                   help="[A/B 开关] HQ 输入侧 N 帧时域平均（§15 O158；**2026-10-08 定稿后默认 6**；"
-                        "0/1 = 关闭；>1 每触发取 N 帧取时拷走、逐帧 RGA 后 16bit 累加取均；非 config 键）")
+    p.add_argument("--hq-mfa-frames", type=int, default=8,
+                   help="[A/B 开关] HQ 输入侧 N 帧时域平均（§15 O158；**2026-10-09 用户指示加大到默认 8**"
+                        "（原默认 6）；0/1 = 关闭；>1 每触发取 N 帧取时拷走、逐帧 RGA 后 16bit 累加取均；非 config 键）")
     p.add_argument("--hq-chroma-gain", type=float, default=1.5,
                    help="[A/B 开关] 链路末色度增强增益 k（§15 O161；**2026-10-09 试验档 1.5**"
                         "（GT 标定目标档 = 2.0）；口径 = 保持亮度的线性色度增益 Y+k*(C-Y)，"
                         "作用于 HQ 模型输出之后、OSD 之前；`1.0` = 逐位恒等（回退）；非 config 键）")
+    p.add_argument("--hq-chroma-denoise", type=int, default=2,
+                   help="[A/B 开关] 只滤高频色度（网后空间降噪；§15 新增 O 项）—— 在 HQ 模型输出之后、"
+                        "色度增益之前，对**色度**做半径 R 的分离式盒式低通（保亮度 / 保色比语义，直击彩斑）；"
+                        "**2026-10-09 目测定稿 = 默认 2**；`0` = 关闭（逐位恒等，回退）；非 config 键）")
     p.add_argument("--hq-input-tm", default="0.8,106",
                    help="[A/B 开关] 曲线后（进模型前）黑位锚定色调映射，格式 \"B,TARGET\""
                         "（§15 O162；**2026-10-09 定稿默认 0.8,106**；B = 黑位锚定比例×曲线后 p1、"
@@ -1442,6 +1455,7 @@ def main() -> int:
              hq_curve_in=args.hq_curve_in,
              hq_mfa_frames=args.hq_mfa_frames,
              hq_chroma_gain=args.hq_chroma_gain,
+             hq_chroma_denoise=args.hq_chroma_denoise,
              hq_tm_b=_tm_b, hq_tm_target=_tm_tgt, hq_tm_first=args.hq_tm_first,
              mipi_wb_preset=args.mipi_wb_preset,
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,

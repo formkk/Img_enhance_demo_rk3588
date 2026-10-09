@@ -93,7 +93,8 @@ class KeyframeInfer:
 
     def __init__(self, cfg: Any, logger: starlog.Logger, geom: Dict[str, int],
                  model_dir: str = "models/hq", curve_src: Any = None,
-                 chroma_gain: float = 1.0, tm_b: float = 0.0, tm_target: float = 0.0,
+                 chroma_gain: float = 1.0, chroma_denoise_r: int = 0,
+                 tm_b: float = 0.0, tm_target: float = 0.0,
                  tm_first: bool = False):
         self.cfg = cfg
         self.log = logger
@@ -118,6 +119,13 @@ class KeyframeInfer:
         # 具体取值**待 GT 标定**（§15 O161，见主基准 §14 追加 9）。
         self.chroma_gain = float(chroma_gain)
         self._last_clip_pct = 0.0
+        # **[A/B 钩子]（非 config 键）「只滤高频色度」的网后空间降噪** —— 在 HQ 模型输出
+        # （NCHW f32 [0,1]）**之后**、色度增益**之前**，对**色度**做半径 `r` 的分离式盒式低通
+        # （保亮度、保色比语义；口径见 `_apply_chroma_denoise`）。`r ≤ 0` = **逐位恒等**。
+        # **2026-10-09 目测定稿 = `r = 2`**（由 `main.py` 的 `Demo` 默认注入；反向 opt-out =
+        # `--hq-chroma-denoise 0`）。见主基准 §14 追加 15 / §15 O164。
+        self.chroma_denoise_r = max(0, int(chroma_denoise_r))
+        self._last_cdn_clip_pct = 0.0
         self.hq_w = int(geom["hq_w"])
         self.hq_h = int(geom["hq_h"])
         # **（v3.86 追加 35）** §3.1 pad 口径（唯一来源 = `curve_estim.resolve_geometry()`）：
@@ -197,6 +205,8 @@ class KeyframeInfer:
                 "curve_in": self.curve_src is not None,
                 "chroma_gain": self.chroma_gain,
                 "chroma_clip_pct": self._last_clip_pct,
+                "chroma_denoise_r": self.chroma_denoise_r,
+                "chroma_dn_clip_pct": self._last_cdn_clip_pct,
             }
 
     # ── **[A/B 钩子]** HQ 输入侧曲线应用（非契约步；默认不启用）────────────
@@ -328,6 +338,115 @@ class KeyframeInfer:
         self._last_clip_pct = 100.0 * clipped / (3.0 * m)
         return orr.tobytes() + og.tobytes() + ob.tobytes()
 
+    # ── **[A/B 钩子]** 只滤高频色度（网后空间降噪；`r<=0` 时逐位恒等）────────────────
+    def _apply_chroma_denoise(self, buf: bytes) -> bytes:
+        """**只滤高频色度**：保亮度、仅对色度做空间低通（分离式盒式模糊，边缘复制）。
+
+        口径（非 config 键）：
+            `Y  = 0.299R + 0.587G + 0.114B`（与链路 CSC 同族）
+            `Cb = B − Y`、`Cr = R − Y`  →  **半径 `r` 的盒式低通**  →
+            `R' = Y + Cr'`、`B' = Y + Cb'`、`G' = Y − (0.299·Cr' + 0.114·Cb') / 0.587`
+        ⇒ **亮度逐像素不变**（保色比语义不受损），只削掉色度的**高频**（彩色噪点 / 彩斑）；
+        与后续色度增益（线性）**可交换**，放在其**上游** ⇒ 增益作用在已平滑的色度上。
+
+        `r ≤ 0` ⇒ **提前返回原对象 ⇒ 逐位恒等**（交付行为不变）。布局不变（3 通道面各
+        `hq_content_h×hq_w` 个 float32）⇒ 下游 `to_rgb888` 无感。`_last_cdn_clip_pct` = 重建削顶率。
+
+        **纯标准库**（交付环境无 numpy，承 §14 追加 10）；在 worker 线程内、每触发一次，不在帧路径上。
+        复杂度 O(w·h)（running-sum 盒式、与 `r` 无关）。
+        """
+        r = self.chroma_denoise_r
+        if r <= 0 or not buf:
+            return buf
+        a = array.array("f")
+        a.frombytes(buf)
+        w, h = self.hq_w, self.hq_content_h
+        n = w * h
+        if n == 0 or len(a) != 3 * n:
+            return buf
+        rp, gp, bp = a[:n], a[n:2 * n], a[2 * n:3 * n]
+        yv = array.array("f", bytes(4 * n))
+        cb = array.array("f", bytes(4 * n))
+        cr = array.array("f", bytes(4 * n))
+        for i in range(n):
+            rr = rp[i]
+            gg = gp[i]
+            bb = bp[i]
+            y = 0.299 * rr + 0.587 * gg + 0.114 * bb
+            yv[i] = y
+            cb[i] = bb - y
+            cr[i] = rr - y
+        inv = 1.0 / (2 * r + 1)
+        for ch in (cb, cr):
+            tmp = array.array("f", bytes(4 * n))
+            for y0 in range(h):                      # 水平：逐行 running sum
+                base = y0 * w
+                s = ch[base] * r                     # 左侧越界 ⇒ 复制第 0 列
+                for t in range(0, r + 1):
+                    xx = t if t < w else w - 1
+                    s += ch[base + xx]
+                tmp[base] = s * inv
+                for x in range(1, w):
+                    add = x + r
+                    if add >= w:
+                        add = w - 1
+                    sub = x - 1 - r
+                    if sub < 0:
+                        sub = 0
+                    s += ch[base + add] - ch[base + sub]
+                    tmp[base + x] = s * inv
+            for x in range(w):                       # 垂直：逐列 running sum（写回 ch）
+                s = tmp[x] * r                       # 上侧越界 ⇒ 复制第 0 行
+                for t in range(0, r + 1):
+                    yy = t if t < h else h - 1
+                    s += tmp[yy * w + x]
+                ch[x] = s * inv
+                for y0 in range(1, h):
+                    add = y0 + r
+                    if add >= h:
+                        add = h - 1
+                    sub = y0 - 1 - r
+                    if sub < 0:
+                        sub = 0
+                    s += tmp[add * w + x] - tmp[sub * w + x]
+                    ch[y0 * w + x] = s * inv
+        kr = 0.299 / 0.587
+        kb = 0.114 / 0.587
+        orr = array.array("f", bytes(4 * n))
+        og = array.array("f", bytes(4 * n))
+        ob = array.array("f", bytes(4 * n))
+        clipped = 0
+        for i in range(n):
+            y = yv[i]
+            b_c = cb[i]
+            r_c = cr[i]
+            r2 = y + r_c
+            g2 = y - kr * r_c - kb * b_c
+            b2 = y + b_c
+            if r2 < 0.0:
+                r2 = 0.0
+                clipped += 1
+            elif r2 > 1.0:
+                r2 = 1.0
+                clipped += 1
+            if g2 < 0.0:
+                g2 = 0.0
+                clipped += 1
+            elif g2 > 1.0:
+                g2 = 1.0
+                clipped += 1
+            if b2 < 0.0:
+                b2 = 0.0
+                clipped += 1
+            elif b2 > 1.0:
+                b2 = 1.0
+                clipped += 1
+            orr[i] = r2
+            og[i] = g2
+            ob[i] = b2
+        self._last_cdn_clip_pct = 100.0 * clipped / (3.0 * n)
+        return orr.tobytes() + og.tobytes() + ob.tobytes()
+
     # ── worker ─────────────────────────────────────────────────────────
     def _worker(self) -> None:
         while True:
@@ -360,9 +479,11 @@ class KeyframeInfer:
                     done_ns = time.monotonic_ns()
                     self._slot = {
                         # HqResult.buffer（模型 raw output 的**内容幅**：NCHW f32 [0,1]，已裁 pad 行）
+                        # 链路末两级（均非契约步）：**先只滤高频色度**（保亮度）→ **再色度增益**。
                         "buffer": self._apply_output_chroma(
-                            crop_nchw_f32_pad(out, self.hq_w, self.hq_h,
-                                              self.hq_pad_top, self.hq_content_h)),
+                            self._apply_chroma_denoise(
+                                crop_nchw_f32_pad(out, self.hq_w, self.hq_h,
+                                                  self.hq_pad_top, self.hq_content_h))),
                         "seq_src": int(seq),
                         "model_id": self._model_id,
                         "active_shape": SHAPE_ENUM.get(f"{self.hq_w}x{self.hq_h}", 0),
