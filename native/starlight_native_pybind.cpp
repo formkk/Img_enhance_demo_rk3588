@@ -24,6 +24,7 @@
 #include "hq_core.h"
 #include "mfa_core.h"
 #include "v4l2_core.h"
+#include "wb_core.h"
 
 namespace py = pybind11;
 
@@ -494,6 +495,27 @@ PYBIND11_MODULE(_starlight_native, m) {
                               py::bytes(reinterpret_cast<const char*>(ho), sizeof(ho)),
                               py::bytes(reinterpret_cast<const char*>(he), sizeof(he)));
     }, py::arg("raw"), py::arg("enh"), py::arg("w"), py::arg("h"), py::arg("decimate") = 4);
+
+    /* ── wb（MIPI 面板白平衡校正的逐像素内核；**非契约入口**）───────────────
+     * 只服务 `display_mipi.py` 的 **DSI 槽画布**校蓝（**默认关 = 恒等**）：Python 侧用
+     * `build_lut` 得到整数表（768 B，线性域增益 ⇒ sRGB 编解码一次性构建），再在**内容写入
+     * 完毕**时用 `apply` 就地变换。**只作用于 MIPI**（HDMI 槽的画布不经此路）。
+     * **不新增日志事件 / 返回码 / config 键**；口径见 `native/wb_core.h`。 */
+    auto wb = m.def_submodule("wb", "MIPI 面板白平衡校正的逐像素内核（非契约入口）");
+    wb.def("build_lut", [](double gain_r, double gain_g, double gain_b) {
+        const double g[3] = {gain_r, gain_g, gain_b};
+        uint8_t lut[768];
+        wb_build_lut(g, lut);
+        return py::bytes(reinterpret_cast<const char*>(lut), sizeof(lut));
+    }, py::arg("gain_r"), py::arg("gain_g"), py::arg("gain_b"));
+    wb.def("apply", [](Buffer& buf, py::bytes lut, size_t npix) {
+        const std::string s = lut;
+        if (s.size() != 768) throw py::value_error("LUT 必须为 768 字节");
+        if (buf.readonly()) throw py::value_error("缓冲只读");
+        py::gil_scoped_release rel;
+        wb_apply_lut(static_cast<uint8_t*>(buf.ptr()), npix,
+                     reinterpret_cast<const uint8_t*>(s.data()));
+    }, py::arg("buf"), py::arg("lut"), py::arg("npix"));
 
     /* ── mfa（HQ 输入侧「N 帧时域平均」；**§15 O158，非契约入口**）──────────
      * 只服务 `main.py --hq-mfa-frames`（**默认关**）的试验性 A/B：调用方逐帧把 HQ 目标

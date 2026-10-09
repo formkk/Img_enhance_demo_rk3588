@@ -111,6 +111,10 @@ class DisplayMipi:
         self.lost_edges = 0
         self.recover_edges = 0
         self.osd: Optional[osd_mod.OsdRenderer] = None
+        # **MIPI 面板白平衡校正**（`--mipi-wb-preset`；**默认 None = 关闭 = 逐位不变**）：
+        # 只作用于 **DSI 槽画布**（HDMI 槽不受影响）；内核 = `_n.wb`（纯整数查表）。
+        # **非契约入口**；语义 = 线性域 per-channel 增益（见 `native/wb_core.h`）。
+        self._wb_lut: Optional[bytes] = None
         # §6.5 延迟两段分解：最近一次 flip 的（提交时刻 / vblank 时刻 / 取回的 seq / 本帧 t_capture_ns）
         # 各段 = submit − t_capture（采集→提交）与 flip − submit（提交→vblank），全部 CLOCK_MONOTONIC。
         # 命名带 `_lat_` 前缀，避免与公开方法 `last_flip_ns()` 同名遮蔽。
@@ -189,6 +193,27 @@ class DisplayMipi:
             self.lost_edges += 1
         return rc
 
+    def set_panel_wb(self, gains) -> int:
+        """设置 **MIPI 面板白平衡校正**（线性域 per-channel 增益；**非契约入口**）。
+
+        `gains` = `(r, g, b)` 或 `None`；**全为 1.0 或 None ⇒ 关闭**（不建表 ⇒ 逐位不变）。
+        只影响 **DSI 槽**画布；HDMI 槽不经此路。
+        """
+        if not gains:
+            self._wb_lut = None
+            return 0
+        gr, gg, gb = (float(v) for v in gains)
+        if gr == 1.0 and gg == 1.0 and gb == 1.0:
+            self._wb_lut = None
+            return 0
+        self._wb_lut = _n.wb.build_lut(gr, gg, gb)
+        return 0
+
+    def _wb_apply(self, canvas) -> None:
+        """**内容写入完毕**后调用（常规视图每帧一次、全屏 HQ 视图每次贴图一次 ⇒ 不叠加）。"""
+        if self._wb_lut is not None:
+            _n.wb.apply(canvas, self._wb_lut, self.canvas_w * self.canvas_h)
+
     # ── §5 契约入口 ────────────────────────────────────────────────────
     def compose_flip(self, enh_win, raw_win, state: Optional[Dict[str, Any]] = None) -> int:
         """把两窗合成到画布并翻页。`enh_win`/`raw_win` 为 RGA 持有的 512×288 RGB888 缓冲。
@@ -224,6 +249,7 @@ class DisplayMipi:
             # O81：**光标每帧画进画布**（画在最上层；镜像下两屏都出现，属预期行为）
             self.osd.draw_cursor(canvas, st.get("cursor_pos"))
 
+        self._wb_apply(canvas)                     # MIPI 面板白平衡（默认关）
         rc = self._flip(idx, seq)
         if rc == 1:
             self._skipped += 1
@@ -264,6 +290,7 @@ class DisplayMipi:
                 d = ((py + y) * self.canvas_w + px) * 3
                 img[d:d + row] = src[s:s + row]
             canvas.write(bytes(img))
+            self._wb_apply(canvas)                 # MIPI 面板白平衡（默认关；**每次贴图仅一次**）
             self._fs_seq = int(hq_seq)
         rc = self._flip(idx, int(seq))
         if rc == 1:

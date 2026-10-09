@@ -94,6 +94,7 @@ add_library(_starlight_native MODULE
   native/drm_core.c
   native/osd_core.c
   native/mfa_core.c
+  native/wb_core.c
   native/starlight_native_pybind.cpp)
 
 # 设备头（厂商/系统路径；与 docs/build.md §2 依赖一致）

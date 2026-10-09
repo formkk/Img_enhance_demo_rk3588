@@ -81,6 +81,20 @@ LAT_REFRESH_S = 1.0
 # 目标名是**机制值、非 config 键**（同 §10.6-A 的 `ExecStartPre` 口径）。
 DESKTOP_TARGET = "graphical.target"
 
+# **（显示校正）** MIPI 面板白平衡预设 → **线性域** per-channel 增益（**机制值、非 config 键**）。
+# 为什么需要：MIPI 屏目视明显偏蓝，而链路侧无对应端口旋钮（DSI 只有 `link-status`、无 `Colorspace`）
+# ⇒ 差异在**面板白点本身** ⇒ 在**显示端**做校正（**不碰 ISP 的 AWB**）。
+# 口径：只压**蓝通道**（R/G 恒 1.0）；`off` / 全 1.0 ⇒ **不建表**（逐位不变）；
+# 只作用于 **DSI 槽**画布（HDMI 槽不经此路，见 `display_mipi.set_panel_wb`）。
+# 表由 `native/wb_core.c` 在**线性域**构建（sRGB EOTF 解码 → 乘增益 → 重编码 ⇒ 768 字节整数 LUT）。
+# **（2026-10-09 目测定稿）** 上板三档供目视，用户判定 **strong（×0.82）** ⇒ 已落为 CLI 默认。
+MIPI_WB_PRESETS = {
+    "off": None,
+    "weak": (1.0, 1.0, 0.94),
+    "medium": (1.0, 1.0, 0.88),
+    "strong": (1.0, 1.0, 0.82),
+}
+
 
 def _restore_desktop() -> None:
     """退回桌面（§10.6-C / 裁定 O114）：`systemctl isolate graphical.target`。
@@ -113,6 +127,7 @@ class Demo:
                  apply_preserve_ratio: bool = True, hq_curve_in: bool = True,
                  hq_mfa_frames: int = 6, hq_chroma_gain: float = 1.5,
                  hq_tm_b: float = 0.8, hq_tm_target: float = 106.0, hq_tm_first: bool = False,
+                 mipi_wb_preset: str = "strong",
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
                  step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
@@ -173,6 +188,8 @@ class Demo:
         self.hq_tm_target = float(hq_tm_target)
         # **[A/B 实验]（非 config 键）** TM 顺序：`False`（默认）= 曲线 → TM（定稿）；`True` = TM → 曲线（情形 C）。
         self.hq_tm_first = bool(hq_tm_first)
+        # **[显示校正]（非 config 键）** MIPI 面板白平衡预设 → 线性域 per-channel 增益；**默认 strong（2026-10-09 目测定稿）**，`off` = 关闭（逐位不变）。
+        self.mipi_wb_preset = str(mipi_wb_preset)
         self._mfa_acc = None         # 16bit 累加器（**惰性分配**：只有开启该开关才占内存）
         # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
         # `osd_no_stats` = 连统计也不做。**非 config 键**，只用于 ①-2 的 OSD 增量归因实验。
@@ -323,6 +340,9 @@ class Demo:
         if self.disp.master_retries > 0:
             self.log.event("main", "boot_check_item", item="TH4", result="degraded",
                            code=starlog.code_name(display_mod.E_DRM))
+        # **[显示校正]（非 config 键）** MIPI 面板白平衡：预设 → 线性域增益 → 建 LUT。
+        # 只作用于 **DSI 槽**画布；`off` / 全 1.0 ⇒ 不建表（逐位不变）。
+        self.disp.set_panel_wb(MIPI_WB_PRESETS.get(self.mipi_wb_preset))
         self.buttons = ui_mod.ButtonHit(cfg)
 
         # ② TH2：曲线估计（RGA + NPU）
@@ -1365,6 +1385,9 @@ def main() -> int:
                         "TARGET = 目标 Y 均值；**空串 = 关闭 ⇒ 逐位恒等**；非 config 键）")
     p.add_argument("--hq-tm-first", action="store_true",
                    help="[A/B 实验] 把黑位锚定色调映射置于曲线**之前**（情形 C；默认 = 曲线之后；非 config 键）")
+    p.add_argument("--mipi-wb-preset", choices=["off", "weak", "medium", "strong"], default="strong",
+                   help="[显示校正] MIPI 面板白平衡（压蓝）预设；**默认 strong（2026-10-09 目测定稿）**。"
+                        "off=恒等（不校正）。只作用于 MIPI 画布，不影响 HDMI；**非 config 键**")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
@@ -1420,6 +1443,7 @@ def main() -> int:
              hq_mfa_frames=args.hq_mfa_frames,
              hq_chroma_gain=args.hq_chroma_gain,
              hq_tm_b=_tm_b, hq_tm_target=_tm_tgt, hq_tm_first=args.hq_tm_first,
+             mipi_wb_preset=args.mipi_wb_preset,
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,
              step_exp_times=args.step_exp_times, step_exp_interval_s=args.step_exp_interval_s,
              step_exp_low=args.step_exp_low, step_exp_high=args.step_exp_high,
