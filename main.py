@@ -112,7 +112,7 @@ class Demo:
                  no_apply: bool = False, no_osd: bool = False,
                  apply_preserve_ratio: bool = True, hq_curve_in: bool = True,
                  hq_mfa_frames: int = 6, hq_chroma_gain: float = 1.5,
-                 hq_tm_b: float = 0.8, hq_tm_target: float = 106.0,
+                 hq_tm_b: float = 0.8, hq_tm_target: float = 106.0, hq_tm_first: bool = False,
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
                  step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
@@ -171,6 +171,8 @@ class Demo:
         # **opt-out = `--hq-input-tm ""`**（空 = 关闭 ⇒ `0/0` ⇒ 逐位恒等、回到改动前行为）。
         self.hq_tm_b = float(hq_tm_b)
         self.hq_tm_target = float(hq_tm_target)
+        # **[A/B 实验]（非 config 键）** TM 顺序：`False`（默认）= 曲线 → TM（定稿）；`True` = TM → 曲线（情形 C）。
+        self.hq_tm_first = bool(hq_tm_first)
         self._mfa_acc = None         # 16bit 累加器（**惰性分配**：只有开启该开关才占内存）
         # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
         # `osd_no_stats` = 连统计也不做。**非 config 键**，只用于 ①-2 的 OSD 增量归因实验。
@@ -371,7 +373,8 @@ class Demo:
         self.kf = kf_mod.KeyframeInfer(cfg, self.log, self.est.geom,
                                        curve_src=(self.est.latest if self.hq_curve_in else None),
                                        chroma_gain=self.hq_chroma_gain,
-                                       tm_b=self.hq_tm_b, tm_target=self.hq_tm_target)
+                                       tm_b=self.hq_tm_b, tm_target=self.hq_tm_target,
+                                       tm_first=self.hq_tm_first)
         rc = self.kf.init()
         if rc != 0:
             self.log.event("main", "boot_check_item", item="TH3", result="fail",
@@ -1360,6 +1363,8 @@ def main() -> int:
                    help="[A/B 开关] 曲线后（进模型前）黑位锚定色调映射，格式 \"B,TARGET\""
                         "（§15 O162；**2026-10-09 定稿默认 0.8,106**；B = 黑位锚定比例×曲线后 p1、"
                         "TARGET = 目标 Y 均值；**空串 = 关闭 ⇒ 逐位恒等**；非 config 键）")
+    p.add_argument("--hq-tm-first", action="store_true",
+                   help="[A/B 实验] 把黑位锚定色调映射置于曲线**之前**（情形 C；默认 = 曲线之后；非 config 键）")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
@@ -1414,7 +1419,7 @@ def main() -> int:
              hq_curve_in=args.hq_curve_in,
              hq_mfa_frames=args.hq_mfa_frames,
              hq_chroma_gain=args.hq_chroma_gain,
-             hq_tm_b=_tm_b, hq_tm_target=_tm_tgt,
+             hq_tm_b=_tm_b, hq_tm_target=_tm_tgt, hq_tm_first=args.hq_tm_first,
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,
              step_exp_times=args.step_exp_times, step_exp_interval_s=args.step_exp_interval_s,
              step_exp_low=args.step_exp_low, step_exp_high=args.step_exp_high,

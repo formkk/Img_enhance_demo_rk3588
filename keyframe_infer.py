@@ -93,7 +93,8 @@ class KeyframeInfer:
 
     def __init__(self, cfg: Any, logger: starlog.Logger, geom: Dict[str, int],
                  model_dir: str = "models/hq", curve_src: Any = None,
-                 chroma_gain: float = 1.0, tm_b: float = 0.0, tm_target: float = 0.0):
+                 chroma_gain: float = 1.0, tm_b: float = 0.0, tm_target: float = 0.0,
+                 tm_first: bool = False):
         self.cfg = cfg
         self.log = logger
         self.geom = geom
@@ -108,6 +109,9 @@ class KeyframeInfer:
         # **`tm_b = 0` = 关闭 ⇒ 逐位恒等**（默认；交付行为不变）。
         self.tm_b = float(tm_b)
         self.tm_target = float(tm_target)
+        # **[A/B 实验]（非 config 键）** 色调映射的**顺序**：`False`（默认）= 曲线 → TM（生产定稿）；
+        # `True` = **TM → 曲线**（"情形 C"实验：验证曲线是否会把 TM 挣来的对比度再抹平）。
+        self.tm_first = bool(tm_first)
         # **[A/B 钩子]（非 config 键）链路末显式色度增强** —— 在 HQ 模型输出（NCHW f32 [0,1]）
         # **之后**、`to_rgb888`/OSD 合成**之前**，对结果幅做**保持亮度的线性色度增益**（口径见
         # `_apply_output_chroma`）。`1.0` = **逐位恒等 ⇒ 交付链路行为不变**；
@@ -204,19 +208,27 @@ class KeyframeInfer:
         无有效曲线场（首拍尚未发布）或应用失败时**原样返回**（不改变既有行为）。
         """
         snap = self.curve_src()
-        if snap is None or snap.field is None:
-            return hq_rgb
         row = self.hq_w * 3
         a = self.hq_pad_top * row
         b = a + self.hq_content_h * row
-        full = bytearray(hq_rgb.to_bytes())
-        dst = bytearray(self.hq_w * self.hq_content_h * 3)
-        if ra.apply_window(full[a:b], snap.field, dst, self.hq_w, self.hq_content_h) != 0:
-            return hq_rgb
-        full[a:b] = dst
-        if self.tm_b > 0.0 and self.tm_target > 0.0:
+        full = None
+        do_tm = self.tm_b > 0.0 and self.tm_target > 0.0
+        if self.tm_first and do_tm:              # 情形 C：TM 置于曲线之前
+            full = bytearray(hq_rgb.to_bytes())
             self._tonemap_content(full, a, b, self.hq_w, self.hq_content_h)
-        return full
+        if snap is not None and snap.field is not None:
+            src = full if full is not None else bytearray(hq_rgb.to_bytes())
+            dst = bytearray(self.hq_w * self.hq_content_h * 3)
+            if ra.apply_window(src[a:b], snap.field, dst, self.hq_w, self.hq_content_h) == 0:
+                src[a:b] = dst
+                full = src
+        # **色调映射与曲线解耦**（2026-10-09）：曲线可关（`--no-hq-curve-in`），此时 TM 直接作用于
+        # **原始输入**（= 情形 B）；`--hq-tm-first` 时 TM 改为置于曲线**之前**（= 情形 C）。
+        if do_tm and not self.tm_first:
+            if full is None:
+                full = bytearray(hq_rgb.to_bytes())
+            self._tonemap_content(full, a, b, self.hq_w, self.hq_content_h)
+        return full if full is not None else hq_rgb
 
     def _tonemap_content(self, buf: bytearray, off: int, end: int, w: int, h: int) -> None:
         """**黑位锚定色调映射**（曲线之后、进模型之前；就地改 `buf[off:end]`）。
