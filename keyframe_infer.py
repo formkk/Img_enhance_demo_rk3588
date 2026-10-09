@@ -46,12 +46,11 @@ RGA 是**单例**（`curve_estim.init()` 里唯一一次 `rga.configure`）⇒ H
 
 from __future__ import annotations
 
+import array
 import os
 import threading
 import time
 from typing import Any, Dict, Optional
-
-import numpy as np
 
 import _starlight_native as _n
 
@@ -226,11 +225,51 @@ class KeyframeInfer:
         k = self.chroma_gain
         if k == 1.0 or not buf:
             return buf
-        a = np.frombuffer(buf, dtype="<f4").reshape(3, -1)
-        y = np.float32(0.299) * a[0] + np.float32(0.587) * a[1] + np.float32(0.114) * a[2]
-        raw = a + np.float32(k - 1.0) * (a - y)
-        self._last_clip_pct = float(((raw < 0.0) | (raw > 1.0)).mean()) * 100.0
-        return np.clip(raw, 0.0, 1.0).astype("<f4", copy=False).tobytes()
+        # **只依赖标准库**：交付运行环境（systemd 以 root 运行 `/usr/bin/python3`）**没有 numpy**
+        # （2026-10-09 实测：root 与 cat 均 `ModuleNotFoundError`）⇒ 不得引入 numpy 依赖。
+        # 本步在 worker 线程内、**每触发一次**（不在帧路径上），纯 Python 开销可接受。
+        a = array.array("f")
+        a.frombytes(buf)
+        m = len(a) // 3
+        if m == 0:
+            return buf
+        r_plane, g_plane, b_plane = a[:m], a[m:2 * m], a[2 * m:]
+        orr = array.array("f", bytes(4 * m))
+        og = array.array("f", bytes(4 * m))
+        ob = array.array("f", bytes(4 * m))
+        km = k - 1.0
+        clipped = 0
+        for i in range(m):
+            r = r_plane[i]
+            g = g_plane[i]
+            b = b_plane[i]
+            y = 0.299 * r + 0.587 * g + 0.114 * b
+            r2 = r + km * (r - y)
+            g2 = g + km * (g - y)
+            b2 = b + km * (b - y)
+            if r2 < 0.0:
+                r2 = 0.0
+                clipped += 1
+            elif r2 > 1.0:
+                r2 = 1.0
+                clipped += 1
+            if g2 < 0.0:
+                g2 = 0.0
+                clipped += 1
+            elif g2 > 1.0:
+                g2 = 1.0
+                clipped += 1
+            if b2 < 0.0:
+                b2 = 0.0
+                clipped += 1
+            elif b2 > 1.0:
+                b2 = 1.0
+                clipped += 1
+            orr[i] = r2
+            og[i] = g2
+            ob[i] = b2
+        self._last_clip_pct = 100.0 * clipped / (3.0 * m)
+        return orr.tobytes() + og.tobytes() + ob.tobytes()
 
     # ── worker ─────────────────────────────────────────────────────────
     def _worker(self) -> None:
