@@ -112,6 +112,7 @@ class Demo:
                  no_apply: bool = False, no_osd: bool = False,
                  apply_preserve_ratio: bool = True, hq_curve_in: bool = True,
                  hq_mfa_frames: int = 6, hq_chroma_gain: float = 1.5,
+                 hq_tm_b: float = 0.8, hq_tm_target: float = 106.0,
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
                  step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
@@ -161,6 +162,15 @@ class Demo:
         # **反向 opt-out = `--hq-chroma-gain 1.0`**（= 逐位恒等、回到未启用状态）。
         # 接线见 `keyframe_infer._apply_output_chroma`。
         self.hq_chroma_gain = float(hq_chroma_gain)
+        # **[A/B 开关] 曲线后的黑位锚定色调映射（§15 O162；非 config 键）** —— 位置在
+        # **曲线之后、进模型之前**（`keyframe_infer._tonemap_content`）。`tm_b` = 黑位锚定比例
+        # （`b = tm_b × 曲线后 p1`）、`tm_target` = 目标 Y 均值。
+        # **2026-10-09 定稿：输入侧 `b = 0.8×p1` / 目标 `106`**（用户目测裁定：输入侧明显优于
+        # 输出侧——输出侧在链路末硬拉增益会把**色度噪声**一起放大且无人清理，白物被染暗红；
+        # 输入侧经模型重渲染 ⇒ 伪影被洗掉。实测：归一化对比度 33% → **59%**、p1 98.4 → **60.8**）。
+        # **opt-out = `--hq-input-tm ""`**（空 = 关闭 ⇒ `0/0` ⇒ 逐位恒等、回到改动前行为）。
+        self.hq_tm_b = float(hq_tm_b)
+        self.hq_tm_target = float(hq_tm_target)
         self._mfa_acc = None         # 16bit 累加器（**惰性分配**：只有开启该开关才占内存）
         # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：`osd_status_only` = 只画状态行（去两图）；
         # `osd_no_stats` = 连统计也不做。**非 config 键**，只用于 ①-2 的 OSD 增量归因实验。
@@ -360,7 +370,8 @@ class Demo:
         # 失败（如模型缺失）**不阻塞主链路**——触发时 `request` 会返 E_STATE。
         self.kf = kf_mod.KeyframeInfer(cfg, self.log, self.est.geom,
                                        curve_src=(self.est.latest if self.hq_curve_in else None),
-                                       chroma_gain=self.hq_chroma_gain)
+                                       chroma_gain=self.hq_chroma_gain,
+                                       tm_b=self.hq_tm_b, tm_target=self.hq_tm_target)
         rc = self.kf.init()
         if rc != 0:
             self.log.event("main", "boot_check_item", item="TH3", result="fail",
@@ -1345,6 +1356,10 @@ def main() -> int:
                    help="[A/B 开关] 链路末色度增强增益 k（§15 O161；**2026-10-09 试验档 1.5**"
                         "（GT 标定目标档 = 2.0）；口径 = 保持亮度的线性色度增益 Y+k*(C-Y)，"
                         "作用于 HQ 模型输出之后、OSD 之前；`1.0` = 逐位恒等（回退）；非 config 键）")
+    p.add_argument("--hq-input-tm", default="0.8,106",
+                   help="[A/B 开关] 曲线后（进模型前）黑位锚定色调映射，格式 \"B,TARGET\""
+                        "（§15 O162；**2026-10-09 定稿默认 0.8,106**；B = 黑位锚定比例×曲线后 p1、"
+                        "TARGET = 目标 Y 均值；**空串 = 关闭 ⇒ 逐位恒等**；非 config 键）")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
@@ -1377,6 +1392,12 @@ def main() -> int:
     # `--frames` 缺省仍为 0（直到信号），仅 `--report-json` 路径取 `metrics.window_frames` 作窗长。
     pol = metrics_policy(cfg)
     frames = args.frames or (pol["window_frames"] if args.report_json else 0)
+    # **[A/B 开关] `--hq-input-tm "B,TARGET"` → 两个浮点**（空串 = 关闭 ⇒ 0/0 ⇒ 逐位恒等）。
+    _tm_b, _tm_tgt = 0.0, 0.0
+    if args.hq_input_tm:
+        _tm_p = str(args.hq_input_tm).split(",")
+        if len(_tm_p) == 2:
+            _tm_b, _tm_tgt = float(_tm_p[0]), float(_tm_p[1])
     d = Demo(cfg, logger, frames=frames, est_every=args.est_every,
              hdmi_every=args.hdmi_every, trigger_at=args.trigger_at,
              trigger_times=args.trigger_times, trigger_interval_s=args.trigger_interval_s,
@@ -1393,6 +1414,7 @@ def main() -> int:
              hq_curve_in=args.hq_curve_in,
              hq_mfa_frames=args.hq_mfa_frames,
              hq_chroma_gain=args.hq_chroma_gain,
+             hq_tm_b=_tm_b, hq_tm_target=_tm_tgt,
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,
              step_exp_times=args.step_exp_times, step_exp_interval_s=args.step_exp_interval_s,
              step_exp_low=args.step_exp_low, step_exp_high=args.step_exp_high,

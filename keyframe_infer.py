@@ -93,7 +93,7 @@ class KeyframeInfer:
 
     def __init__(self, cfg: Any, logger: starlog.Logger, geom: Dict[str, int],
                  model_dir: str = "models/hq", curve_src: Any = None,
-                 chroma_gain: float = 1.0):
+                 chroma_gain: float = 1.0, tm_b: float = 0.0, tm_target: float = 0.0):
         self.cfg = cfg
         self.log = logger
         self.geom = geom
@@ -102,6 +102,12 @@ class KeyframeInfer:
         # `None` = 关闭（**默认，交付链路行为不变**）。曲线应用语义由 `realtime_apply` 的
         # `preserve_ratio` 决定（生产保比）。接线见 `main.py --hq-curve-in`。
         self.curve_src = curve_src
+        # **[A/B 钩子]（非 config 键）** 曲线之后、进模型之前的**黑位锚定色调映射**（§15 O162 候选）：
+        # `out = rgb + (Y' − Y)`，`Y' = (Y − b)·s`（保色度，只动亮度对比），带高光软压缩（>=0.8 半程）。
+        # `b = tm_b × p1`（曲线后黑位）、`s` 由 `tm_target`（目标 Y 均值）反解。
+        # **`tm_b = 0` = 关闭 ⇒ 逐位恒等**（默认；交付行为不变）。
+        self.tm_b = float(tm_b)
+        self.tm_target = float(tm_target)
         # **[A/B 钩子]（非 config 键）链路末显式色度增强** —— 在 HQ 模型输出（NCHW f32 [0,1]）
         # **之后**、`to_rgb888`/OSD 合成**之前**，对结果幅做**保持亮度的线性色度增益**（口径见
         # `_apply_output_chroma`）。`1.0` = **逐位恒等 ⇒ 交付链路行为不变**；
@@ -208,7 +214,46 @@ class KeyframeInfer:
         if ra.apply_window(full[a:b], snap.field, dst, self.hq_w, self.hq_content_h) != 0:
             return hq_rgb
         full[a:b] = dst
+        if self.tm_b > 0.0 and self.tm_target > 0.0:
+            self._tonemap_content(full, a, b, self.hq_w, self.hq_content_h)
         return full
+
+    def _tonemap_content(self, buf: bytearray, off: int, end: int, w: int, h: int) -> None:
+        """**黑位锚定色调映射**（曲线之后、进模型之前；就地改 `buf[off:end]`）。
+
+        `Y' = (Y − b)·s`，三通道同加 `(Y' − Y)` ⇒ **保色度、只动亮度对比**；
+        高光软压缩：`Y' > 0.8×255` 的部分按半程压缩（防打爆 B 通道）。
+        `b = tm_b × p1`（1/16 子采样取分位）、`s = tm_target / (mean − b)`。
+        **纯标准库**（交付环境无 numpy）；在 worker 线程内、每触发一次，不在帧路径上。
+        """
+        n = w * h
+        Y = [0.0] * n
+        j = off
+        for i in range(n):
+            Y[i] = 0.299 * buf[j] + 0.587 * buf[j + 1] + 0.114 * buf[j + 2]
+            j += 3
+        samp = sorted(Y[::16])
+        b = samp[int(len(samp) * 0.01)] * self.tm_b
+        mean = sum(Y) / n
+        s = self.tm_target / (mean - b) if mean > b else 1.0
+        k0 = 204.0
+        j = off
+        for i in range(n):
+            yp = (Y[i] - b) * s
+            if yp > k0:
+                yp = k0 + (yp - k0) * 0.5
+            if yp < 0.0:
+                yp = 0.0
+            elif yp > 255.0:
+                yp = 255.0
+            d = yp - Y[i]
+            v = buf[j] + d
+            buf[j] = 0 if v < 0.0 else (255 if v > 255.0 else int(v + 0.5))
+            v = buf[j + 1] + d
+            buf[j + 1] = 0 if v < 0.0 else (255 if v > 255.0 else int(v + 0.5))
+            v = buf[j + 2] + d
+            buf[j + 2] = 0 if v < 0.0 else (255 if v > 255.0 else int(v + 0.5))
+            j += 3
 
     # ── **[A/B 钩子]** 链路末显式色度增强（非契约步；`k=1.0` 时逐位恒等）──────────
     def _apply_output_chroma(self, buf: bytes) -> bytes:
