@@ -83,3 +83,16 @@ refs/
 #   **任务档与脚本必须入库**（`hq_optimize/README.md`、`hq_optimize/code/` 不在此列）；
 #   若日后需要其中某一份素材入库，请用 `git add -f <path>` 单独加入并在此登记。
 hq_optimize/captures/
+
+# DTM 开发资源包（下一开发任务的资源；**整个上游包不入库**；2026-10-10 用户裁定 = 方案 A）
+#   DTM/DTM-V-1.5.zip   63.5 MB（2026-10-10 经公网 FRP 从数据机 SSH 别名 `147_data` 拉取；md5 f29ed4de…）
+#   DTM/DTM-V-1.5/      展开树 ~81 MB / 373 文件（DCM 参考软件；含 .pyc、build/*.so、.idea、样例日志、dtmV_output）
+#   理由 = 上游第三方参考软件包（非本工程资产、体积大、可重取）；展开树含预编译 .so 与解释器缓存，不宜入库。
+#   **只忽略"上游包本身"** ⇒ 本工程后续自建的文件放在 `DTM/` 顶层仍正常入库（避免被误当孤儿文件）。
+#   若日后需要其中某个文件入库，请用 `git add -f <path>` 单独加入并在此登记。
+DTM/*.zip
+DTM/DTM-V-1.5/
+DTM/out_s0/
+DTM/out_s1/
+DTM/out_s2/
+DTM/out_s3/
