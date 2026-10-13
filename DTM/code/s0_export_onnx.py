@@ -8,7 +8,7 @@
     export PATH=$HOME/anaconda3/envs/dtm/bin:$PATH
     python3 DTM/code/s0_export_onnx.py
 
-产物: DTM/out_s0/<name>.onnx + s0_report.json + s0_summary.txt
+产物: DTM/out_s0_1344/<name>.onnx + s0_report.json + s0_summary.txt
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ import torch.nn as nn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "DTM-V-1.5"))
-OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0"))
+OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0_1344"))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)  # DTM 内部用相对路径(packages/...)
 
@@ -40,7 +40,7 @@ from models.rec.rec import build_rec_model  # noqa: E402
 
 DEV = torch.device("cpu")          # 板上无 CUDA; 导出在 CPU 语义下做
 OPSET = 12
-PAD_H, PAD_W = 576, 960            # 960x544 源图 pad 到 960x576(草案 8.3)
+PAD_H, PAD_W = 768, 1344           # 1333x750 源图 pad 到 1344x768(匹配检测器 res2=(1,128,192,336))
 Q_FACTOR = 0.265                   # rate_control_index_table[3](tools/main.py:226-231)
 
 

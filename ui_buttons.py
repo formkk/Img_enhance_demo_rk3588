@@ -25,6 +25,10 @@ import curve_estim as curve_mod
 
 # §3.4 两键名（与 `ui.button_layout.keys[].name` 逐字一致；**v3.86 裁定 O101 取消 `save`**）
 KEY_TRIGGER_HQ = "trigger_hq"
+# **[DCM 演示路]（O166；v3.87 追加 33）** 第三视图态触发键：按它 ⇒ 跑 HQ 拿增强帧
+# （DCM 的输入就是 HQ 输出）⇒ 进 DCM 编解码 + 特征域检测 ⇒ 全屏显示「重建图 + 检测框」。
+# **不贴 HQ 图**（§8.23 裁定：只展示单臂 B）。
+KEY_DCM_DEMO = "dcm_demo"
 KEY_RESET_EXIT = "reset_exit"
 
 # 按键语义（§10.6-C；**v3.86 裁定 O98 后只剩长按**，`press` 字段值域仍按 `docs/logging.md` §4 = short|long）

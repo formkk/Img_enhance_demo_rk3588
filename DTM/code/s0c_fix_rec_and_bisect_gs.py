@@ -6,7 +6,7 @@ rec 的根因: models/rec/common.py split_0to255 用 torch.where(input>255, 255,
             数学等价 = clamp(0, 255).
 g_s 的 11.5: 未知 => 逐子模块导出对拍定位.
 
-产物: DTM/out_s0/10b_rec_clamp.onnx + DTM/out_s0/s0c_report.json
+产物: DTM/out_s0_1344/10b_rec_clamp.onnx + DTM/out_s0_1344/s0c_report.json
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import torch.nn as nn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "DTM-V-1.5"))
-OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0"))
+OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0_1344"))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
@@ -36,7 +36,7 @@ from models.rec.rec import build_rec_model  # noqa: E402
 
 DEV = torch.device("cpu")
 OPSET = 12
-PAD_H, PAD_W = 576, 960
+PAD_H, PAD_W = 768, 1344
 Q_FACTOR = 0.265
 OUTDIR = OUT
 

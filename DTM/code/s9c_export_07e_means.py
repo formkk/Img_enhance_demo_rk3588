@@ -6,7 +6,7 @@
 导致 `round(y-mu)` 符号错、码流翻倍、重建崩。
 => 编码端只需要 mu, 单独导一个**单输出**网即可绕开该退化。
 
-产物: DTM/out_s9/07e_context_means_static.{onnx,rknn} + s9e_report.json
+产物: DTM/out_s0_1344/07e_context_means_static.{onnx,rknn} + s9e_report.json
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ sys.path.insert(0, HERE)
 import s0_export_onnx as s0            # noqa: E402
 import s0d_context_static as s0d       # noqa: E402
 
-OUT = os.path.abspath(os.path.join(HERE, "..", "out_s9"))
+OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0_1344"))
 TARGET = "rk3588"
 
 
@@ -51,10 +51,10 @@ def main():
     H, W = s0.PAD_H // 16, s0.PAD_W // 16
     q_map = torch.full((1, 1, H, W), s0.Q_FACTOR)
     src = np.asarray(Image.open(os.path.join(s0.ROOT, "logs/samples/000000481386.jpg"))
-                     .convert("RGB").resize((960, 544)))
+                     .convert("RGB").resize((1333, 750)))
     a = src[:, :, ::-1].astype(np.float32).transpose(2, 0, 1) / 255.0
     x = torch.nn.functional.pad(torch.from_numpy(a).unsqueeze(0),
-                                (0, 0, 0, s0.PAD_H - 544), mode="constant", value=0)
+                                (0, s0.PAD_W - 1333, 0, s0.PAD_H - 750), mode="constant", value=0)
     with torch.no_grad():
         y = fc.g_a_sft(fc.g_a(fe(x)), q_map)
         z = fc.hyper_encoder(y, h=s0.PAD_H, w=s0.PAD_W)

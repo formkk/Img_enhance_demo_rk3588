@@ -73,6 +73,11 @@
 | display_mipi | `freeze_enter` / `freeze_exit` | `seq=` |
 | display_mipi | `fullscreen_enter` / `fullscreen_exit` | `seq=` · `reason=click / timeout`（**v3.85 裁定 O79 新增**：全屏 HQ 视图进出；`display_hdmi/fade_start` / `fade_done` 两事件**随 O82 取消**） |
 | display_mipi | `reset_key` | `press=short / long` · `seq=`（短按软复位 → 触发 `rsm_transition`；长按 → `service_exit`，主文档 §10.6-C）。**（v3.86 裁定 O114）** 长按之后由 `main()` 执行 `systemctl isolate graphical.target` **恢复桌面**——该动作**不新增事件、不新增字段**（成功静默、失败仅 stdout 提示，见主文档 §10.6-C） |
+| display_mipi | `dcm_pending_enter` | `seq=` · `reason=dcm_key`（**v3.87 追加 33 / O166「DCM 演示路」新增**：DCM 键路径的 HQ 完成入口——**不贴 HQ 图**，视图转 `dcm_pending`，屏幕保持冻结「处理中」） |
+| display_mipi | `fullscreen_dcm_enter` | `seq=` · `reason=dcm_ready`（**v3.87 追加 33 新增**：DCM 独立进程产物就绪，贴「DCM 重建图 + 检测框」并切 `fullscreen_dcm` 全屏；`seq=` 为伪 seq，基址 `DCM_DEMO_SEQ_BASE`） |
+| main | `dcm_demo_submit` | `seq=` · `q=` · `score=`（**v3.87 追加 33 新增**：DCM 独立进程已起；`q` = 档位索引、`score` = 检测置信度阈值） |
+| main | `dcm_demo_done` | `seq=` · `result=ok / fail` · `reason=`（**v3.87 追加 33 新增**：独立进程退出并已判定产物是否就绪；`reason=` 失败原因或 `rc=`） |
+| main | `dcm_demo_degraded` | `seq=` · `reason=assets_missing`（**v3.87 追加 33 新增**：DCM 资产缺失 ⇒ 该路降级，DCM 键路径退化为解冻回常规视图） |
 | 任意 | `degrade_action` | `trigger=` · `action=`（动作名同主文档 §10.5 矩阵"降级动作"列） |
 
 **（v3.86 追加 72）O24 前 2 类（CSI/V4L2 掉流、传感器 I2C/DMA 错误）的登记结论 = 本表与 §5「零新增」**：该两类的停机路径**复用既有事件与码**——`main/degrade_action`（`trigger=v4l2_stream_lost` / `sensor_i2c_dma`、`action=fault_exit`）+ `main/rsm_transition`（`RUN_DEMO → FAULT_EXIT`，`reason=` 同上）+ `main/boot_check_item`（`item=TH1`、`result=fail`、`code=E_V4L2`，**沿用 `TH3_request` 的既有点位写法**）+ `main/service_exit`（`exit_code=1`）。**不新增 `event`、不新增字段、不新增码**（留档要求见主基准 §10.5 与 `docs/measurements.md` §4）。

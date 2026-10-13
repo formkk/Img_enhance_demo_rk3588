@@ -277,11 +277,11 @@ trigger:
 
 # ── UI（定稿时点 M2）───────────────────────────────────────────────
 ui:
-  button_layout:                         # 【M2 定稿】§3.4：按钮区 1024×96（Y 504-599），2 键单行各 512 px
-                                         #   （v3.86 裁定 O101：取消 save 键、两键各 512）
+  button_layout:                         # §3.4：按钮区 1024×90（Y 504-599），**3 键单行**（v3.87 追加 33：新增 dcm_demo）
+                                         #   （v3.86 裁定 O101：取消 save 键；原 2 键各 512 ⇒ 追加 33 改 3 键）
     rows: 1
     height_px: 90                          # **v3.86 裁定 O111：93 → 90**（累计吸收图示下移的 6 px；O109 先 96 → 93）
-    keys: [{name: trigger_hq, x: 0, w: 512}, {name: reset_exit, x: 512, w: 512}]
+    keys: [{name: trigger_hq, x: 0, w: 342}, {name: dcm_demo, x: 342, w: 342}, {name: reset_exit, x: 684, w: 340}]
   hit_area_min_px: 67                    # 【M2 定稿】v3.33 变更（原 160）；≈10 mm @170 PPI
   reset_hold_ms: 3000                    # 【M2 定稿】v3.14 裁定 O6：长按 ≥3 s 退出进程
   osd_metrics_px: 222                    # 【M2 定稿】v3.33：OSD 指标区总高；**v3.86 裁定 O111：219 → 222**

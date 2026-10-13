@@ -5,7 +5,7 @@
 解码端走 `Context.decompress(resi, psi)`: 与 forward 同算式算 mu, 但把「输入」当残差,
 y_hat = resi + mu (不再走 quantize)。二者第二 slice 的 slice_rec 不同 => 必须单独导一个网。
 
-产物: DTM/out_s9/07d_context_decompress_static.{onnx,rknn} + s9b_report.json
+产物: DTM/out_s0_1344/07d_context_decompress_static.{onnx,rknn} + s9b_report.json
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ sys.path.insert(0, HERE)
 import s0_export_onnx as s0            # noqa: E402
 import s0d_context_static as s0d       # noqa: E402
 
-OUT = os.path.abspath(os.path.join(HERE, "..", "out_s9"))
+OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0_1344"))
 TARGET = "rk3588"
 
 
@@ -70,10 +70,10 @@ def main():
 
     # 用真实链路产生的 (resi, psi) 做验证, 保证输入在域内
     src = np.asarray(Image.open(os.path.join(s0.ROOT, "logs/samples/000000481386.jpg"))
-                     .convert("RGB").resize((960, 544)))
+                     .convert("RGB").resize((1333, 750)))
     a = src[:, :, ::-1].astype(np.float32).transpose(2, 0, 1) / 255.0
     x = torch.nn.functional.pad(torch.from_numpy(a).unsqueeze(0),
-                                (0, 0, 0, s0.PAD_H - 544), mode="constant", value=0)
+                                (0, s0.PAD_W - 1333, 0, s0.PAD_H - 750), mode="constant", value=0)
     with torch.no_grad():
         y = fc.g_a_sft(fc.g_a(fe(x)), q_map)
         z = fc.hyper_encoder(y, h=s0.PAD_H, w=s0.PAD_W)

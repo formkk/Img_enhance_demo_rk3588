@@ -6,12 +6,12 @@
     => 导出成 Shape/Gather/Unsqueeze/Concat 一大片动态形状算子, 且 ORT 加载即报 Type Error;
   - Context.forward 的 F.pad(..., w%2, h%2) 与 mask2(全1) 掩码写 0, 对本尺寸均为空操作.
 
-静态化口径(固定 B=1,C=128,H=36,W=60):
+静态化口径(固定 B=1,C=128,H=48,W=84):
   * 所有 reshape/split 尺寸用 Python int 常量(取自已知的 B,C,H,W), 不用 numel()/shape();
   * 去掉空操作: pad(0) 与全 1 掩码;
   * quantize 等价为 round(clamp(x, int32min, int32max))(STE 的 detach 在推理/导出下等价于 round).
 
-产物: DTM/out_s0/07b_context_mcm_static.onnx + s0d_report.json
+产物: DTM/out_s0_1344/07b_context_mcm_static.onnx + s0d_report.json
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ import torch.nn as nn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "DTM-V-1.5"))
-OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0"))
+OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0_1344"))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
@@ -40,7 +40,7 @@ from models.MIK_MCM_codecs import (  # noqa: E402
 
 DEV = torch.device("cpu")
 OPSET = 12
-PAD_H, PAD_W = 576, 960          # y: 36x60, psi: 36x60
+PAD_H, PAD_W = 768, 1344          # y: 48x84, psi: 48x84
 Q_FACTOR = 0.265
 INT32_MIN, INT32_MAX = -2147483648, 2147483647
 
@@ -135,7 +135,7 @@ def main():
         m.requires_grad_(False)
     fc.context.quantize_func = partial(fc.quantize)
 
-    H, W = PAD_H // 16, PAD_W // 16      # 36, 60
+    H, W = PAD_H // 16, PAD_W // 16      # 48, 84
     q_map = torch.full((1, 1, H, W), Q_FACTOR)
     with torch.no_grad():
         y = fc.g_a_sft(fc.g_a(fe(torch.rand(1, 3, PAD_H, PAD_W))), q_map)

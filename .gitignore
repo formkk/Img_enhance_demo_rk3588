@@ -92,4 +92,14 @@ hq_optimize/captures/
 #   若日后需要其中某个文件入库，请用 `git add -f <path>` 单独加入并在此登记。
 DTM/*.zip
 DTM/DTM-V-1.5/
-DTM/out_s*/
+# 试验产物与资产（可重生成 / 大二进制；2026-10-11 起含 D 系列 d0~d3）
+#   DTM/out_*/    各轮试验中间产物（out_s0~s9 = DCM 网；out_d1 = 检测器输入/参考/板端回传）
+#   DTM/assets/   **整个目录**（2026-10-13 收窄为整目录忽略）：原仅挡 *.onnx / *.rknn，
+#                 但子目录 dcm1344/(37M rknn) / fdet/(136M pth+npy) / indomain/(637M png)
+#                 / x101/(660M onnx+rknn) 未被挡 ⇒ 合计 1.5 GB 会误入库。
+#                 全部为由 d0~d8 / s0~s10 脚本重生成的资产，**从未被 git 跟踪**。
+DTM/out_*/
+DTM/assets/
+
+# 本地备份（主基准改动的 .bak_261008_* 快照，非工程资产；2026-10-13 登记）
+*.bak_261008_*

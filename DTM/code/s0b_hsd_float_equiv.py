@@ -11,7 +11,7 @@ float 等价(ONNX/RKNN 友好, 无位运算):
 口径: 该等价用于"板端移植版"; 只要求 编码端与解码端一致 + 数值接近 RM,
       不要求与 RM 逐位一致(草案 R5).
 
-产物: DTM/out_s0/06b_hyper_scale_decoder_float.onnx + s0b_report.json
+产物: DTM/out_s0_1344/06b_hyper_scale_decoder_float.onnx + s0b_report.json
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ import torch.nn.functional as F
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "DTM-V-1.5"))
-OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0"))
+OUT = os.path.abspath(os.path.join(HERE, "..", "out_s0_1344"))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
@@ -41,7 +41,7 @@ from models.MIK_MCM_codecs import (  # noqa: E402
 
 DEV = torch.device("cpu")
 OPSET = 12
-PAD_H, PAD_W = 576, 960
+PAD_H, PAD_W = 768, 1344
 Q_FACTOR = 0.265
 
 

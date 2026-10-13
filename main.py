@@ -95,6 +95,32 @@ MIPI_WB_PRESETS = {
     "strong": (1.0, 1.0, 0.82),
 }
 
+# ── **（O166 / DCM 演示路）第三视图态「DCM 演示路」**（§3.5 由两态扩为三态）──────────
+# 形态（用户 2026-10-10 裁定，追加 23）：**只展示单臂 B** —— HQ 增强结果进 DCM 编解码，
+# 展示「DCM 解码重建画面 + 特征域检测框」，两屏同一画面（不新增显示分工）。
+# 实现选择（2026-10-13）：**独立进程**（`dcm_demo.py`）而非内嵌线程 ——
+#   ① 内存隔离：DCM 11 网 + 检测 3 网同时驻留约 3 GB，与 HQ 模型叠加有 OOM 风险；
+#   ② 崩溃隔离：子进程失败/卡死不影响主链（主程序只轮询退出码与产物文件）。
+# 档位与阈值（用户 2026-10-13 裁定「要检测精度、不要压缩；可漏检不可误检」）：
+#   q31 = `rate_control_index_table` 上限（`q_map_factor` 0.870）；score 0.30。
+# **非 config 键**（演示试验态，未立项）；资产缺失 ⇒ 该路降级为不启用（不阻塞主链）。
+DCM_DEMO_SCRIPT = "/home/cat/dcm_x101/demo/dcm_demo.py"
+DCM_DEMO_ASSETS = (
+    "/home/cat/dcm_x101/dcm1344",                    # DCM 11 网 RKNN
+    "/home/cat/dcm_x101/dcm1344/mcm",                 # MCM numpy + 权重
+    "/home/cat/dcm_x101/e2e",                         # RPN / RoIAlign numpy
+    "/home/cat/dcm_flow/dcm",                         # rANS + 熵表（只读）
+    "/home/cat/dcm_x101/x101_backbone_fpn.rknn",      # 检测 backbone+FPN
+    "/home/cat/dcm_x101/rpn_head.rknn",               # 检测 RPN 头
+    "/home/cat/dcm_x101/boxhead.rknn",                # 检测 box_head+predictor
+)
+DCM_DEMO_Q = 31                  # 档位索引（0~31；31 = 上限）
+DCM_DEMO_SCORE = 0.30            # 检测置信度阈值（可漏检不可误检）
+DCM_DEMO_PROC_TIMEOUT_S = 90     # 子进程硬超时（秒；超时即杀，防卡死主链）
+DCM_DEMO_SEQ_BASE = 10 ** 9      # 伪 seq 基址：避开真实 V4L2 seq 空间，
+#   同时避开 `compose_fullscreen` 的「同一 hq_seq 只贴图一次」去重（HQ 图刚用过 hq_seq）
+DCM_DEMO_RAW = "rec_box_960x540.raw"   # 子进程产物：960×540 RGB888 裸字节（供显示）
+
 
 def _restore_desktop() -> None:
     """退回桌面（§10.6-C / 裁定 O114）：`systemctl isolate graphical.target`。
@@ -133,7 +159,8 @@ class Demo:
                  mipi_wb_preset: str = "strong",
                  osd_status_only: bool = False, osd_no_stats: bool = False,
                  step_exp_times: int = 0, step_exp_interval_s: float = 3.0,
-                 step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = ""):
+                 step_exp_low: int = 0, step_exp_high: int = 0, step_exp_subdev: str = "",
+                 dcm_demo_enable: bool = True, dcm_trigger_at: int = 0):
         self.cfg = cfg
         self.log = logger
         self.max_frames = frames
@@ -282,9 +309,25 @@ class Demo:
         # ── 指针 / 视图态 / HQ 结果与冻结（§3.5、O79、O81、O90）──────────
         self.ptr = None
         self.cursor = None
-        self.view = "normal"                 # normal | fullscreen_hq（§3.5 两态）
+        self.view = "normal"                 # normal | fullscreen_hq | fullscreen_dcm（§3.5 三态）
         self.frozen = False
         self.fs_enter_ns = 0
+        # **[DCM 演示路]（O166；非 config 键）** 第三视图态状态机：
+        #   HQ 完成 → `_dcm_submit()` 起独立进程（HQ 图**照常先上屏**）
+        #   → `_dcm_poll()` 每轮轮询；产物就绪则切 `fullscreen_dcm`（REC 重建图 + 检测框）
+        #   → 超时/点击 → `_exit_fullscreen()` 回 normal（两视图共用退出路径）
+        self.dcm_enabled = bool(dcm_demo_enable)
+        self.dcm_mode = False                    # 本次触发是否走 DCM 路（由 DCM 键置位）
+        self.dcm_proc: Optional[Any] = None      # 独立进程句柄（None = 无在跑任务）
+        self.dcm_outdir = ""                     # 本次触发的产物目录
+        self.dcm_seq = 0                         # 本次触发的伪 seq（避开真实 seq 与去重）
+        self.dcm_t0_ns = 0                       # 提交时刻（计时 / 超时判据）
+        self.dcm_fails = 0                       # 连续失败计数（诊断用）
+        self._dcm_buf = None                     # HDMI 路径用的常驻 Buffer（惰性分配）
+        # **[验证钩子]** `--dcm-trigger-at N`：无触屏环境下按 DCM 键路径触发一次
+        # （等价于点击 DCM 按钮：置 `dcm_mode` + `submit_trigger`）。**非 config 键**。
+        self.dcm_trigger_at = max(0, int(dcm_trigger_at))
+        self._dcm_triggered = False
         self.freeze_ns = 0                   # 累计冻结窗（fps 用活动窗口径，O90）
         self._frozen_since = 0
         self.hq_seq = 0
@@ -441,6 +484,12 @@ class Demo:
         # ⑧ HQ 结果上屏的**常驻缓冲**（全屏视图内容；一次性分配，O79/§3.5）
         g = self.est.geom
         self.hq_rgb = _n.alloc(int(g["hq_w"]) * int(g["hq_content_h"]) * 3)
+        # ⑨ **[DCM 演示路]** 资产自检（只读探测：脚本 + 11 网 + 3 网 + MCM + rANS）。
+        # 缺失 ⇒ 该路降级为「不启用」——**不阻塞主链**（同 TH3 失败口径，规则 30 §2）。
+        if self.dcm_enabled and not self._dcm_assets_ok():
+            self.dcm_enabled = False
+            self.log.event("main", "boot_check_item", item="DCM_demo",
+                           result="degraded", code=starlog.code_name(display_mod.E_STATE))
         return 0
 
     # ── 主循环（TH2b + 编排；TH2a 与 TH4 在此串行推进，M2 单进程内可接受）──
@@ -741,7 +790,11 @@ class Demo:
                 # 抬起只结束按压窗（**短按无动作**，裁定 O98）；是否长按已由 `_pump_keys()` 判定
                 self._reset_press_ns = 0
                 continue
-            if self.view == "fullscreen_hq":
+            # **[DCM 演示路]** 三个"非常规"视图一律接受点击退出：
+            #   `fullscreen_hq` / `fullscreen_dcm` = 全屏展示；`dcm_pending` = DCM 处理中
+            #   （约 19 s）⇒ 允许用户中断等待。**必须含 `dcm_pending`**：否则该视图下的
+            #   点击会落到下方按钮分支 ⇒ 误触 DCM/TRIGGER 键而**触发第二次 HQ**。
+            if self.view in ("fullscreen_hq", "fullscreen_dcm", "dcm_pending"):
                 self._exit_fullscreen(reason="click")      # §3.5：内容区任意处点击即退出
                 break                                      # 本批剩余点击丢弃（防立即再触发）
             key = self.buttons.hit(c["x"], c["y"]) if self.buttons is not None else None
@@ -751,6 +804,14 @@ class Demo:
                     key = ui_mod.KEY_TRIGGER_HQ
             if key == ui_mod.KEY_TRIGGER_HQ:
                 self.cap.submit_trigger(capture_mod.SRC_TOUCH)   # **单源**（O84）
+            elif key == ui_mod.KEY_DCM_DEMO:
+                # **[DCM 演示路]（O166；v3.87 追加 33）** 第三视图态触发键。
+                # HQ 仍要跑——**DCM 的输入就是 HQ 输出**（960×540 增强帧）⇒ 走同一
+                # `submit_trigger` 链路（保证 TH1 FSM 一致），仅置 `dcm_mode` 标记，
+                # 由 `_enter_fullscreen()` 据以走 DCM 分支（不贴 HQ 图）。
+                # HQ_BUSY 期间触发被丢弃（O18 既定口径，不排队）。
+                self.dcm_mode = True
+                self.cap.submit_trigger(capture_mod.SRC_TOUCH)
             elif key == ui_mod.KEY_RESET_EXIT:
                 # 只记按下时刻；**长按 ≥ `ui.reset_hold_ms` 由 `_pump_keys()` 判**（裁定 O98）
                 self._reset_press_ns = time.monotonic_ns()
@@ -779,6 +840,16 @@ class Demo:
 
     def _pump_injection(self) -> None:
         """**[验证钩子]** 触发注入（生产触发源 = 指针）。**时间驱动**——O90 冻结期帧号不推进。"""
+        # **[DCM 演示路 验证钩子]** `--dcm-trigger-at N`：到第 N 帧按 DCM 键路径触发一次
+        # （置 `dcm_mode` ⇒ `_enter_fullscreen()` 走 `_dcm_enter()` 分支，不贴 HQ 图）。
+        if (self.dcm_trigger_at and not self._dcm_triggered
+                and self.counters["frames"] >= self.dcm_trigger_at
+                and self.view == "normal"):
+            self._dcm_triggered = True
+            self.dcm_mode = True
+            self.cap.submit_trigger(capture_mod.SRC_TOUCH)
+            print(f"[dcm-trigger] 已在活动帧 {self.counters['frames']} 按 DCM 键路径触发"
+                  f"（q={DCM_DEMO_Q} score={DCM_DEMO_SCORE}）")
         if self.trig_left <= 0 or self.view != "normal":
             return
         now = time.monotonic()
@@ -808,15 +879,27 @@ class Demo:
             self.counters["hq_done"] += 1
             if res is not None:
                 self._enter_fullscreen(res)
-        if self.view == "fullscreen_hq":
+        if self.view in ("fullscreen_hq", "fullscreen_dcm", "dcm_pending"):
             ms = int(self.cfg.require_final("ui.fullscreen_timeout_ms"))
             if time.monotonic_ns() - self.fs_enter_ns >= ms * 1_000_000:
                 self._exit_fullscreen(reason="timeout")     # 30 s 兜底（§3.5）
+            # **[DCM 演示路]** 轮询独立进程；产物就绪则贴 REC+框并切 `fullscreen_dcm`
+            # （切视图会重置 `fs_enter_ns` ⇒ DCM 视图独享一份超时预算）。
+            # `fullscreen_hq` = HQ 键路径（先显示 HQ 图，就绪后切换）；
+            # `dcm_pending`   = DCM 键路径（不贴 HQ 图，屏幕保持冻结「处理中」）。
+            if self.view in ("fullscreen_hq", "dcm_pending"):
+                self._dcm_poll()
             return True
         return self.frozen
 
     def _enter_fullscreen(self, res: Dict[str, Any]) -> None:
-        """该次 HQ 完成即进全屏（§3.5：两屏同时；`reason=click` = 由那次点击触发的 HQ）。"""
+        """该次 HQ 完成即进全屏（§3.5：两屏同时；`reason=click` = 由那次点击触发的 HQ）。
+
+        **[DCM 演示路]（O166）** `dcm_mode` 为真时走 DCM 分支：HQ 已完成（增强帧已取得）
+        但**不贴 HQ 图**（§8.23 裁定「只展示单臂 B」）⇒ 转 `_dcm_enter()`。
+        """
+        # **[DCM 演示路]** `to_rgb888` 两条路径都必须先做——**DCM 的输入就是 HQ 输出**
+        # （`self.hq_rgb` 是常驻缓冲，不填充就等于喂纯色给 DCM）⇒ 提到分支之前。
         g = self.est.geom
         pad_top = int(g["hq_pad_top"])
         w, h = int(res["shape"][0]), int(res["shape"][1])
@@ -826,6 +909,9 @@ class Demo:
             self._freeze_exit()                    # 进不了全屏即解除冻结（不卡死链）
             return
         self.hq_seq = int(res.get("seq_src", 0))
+        if self.dcm_mode:
+            self._dcm_enter(res)
+            return
         rc = self.disp.compose_fullscreen(self.hq_rgb, self.hq_seq, self.hq_seq)
         if rc != 0:
             self._freeze_exit()
@@ -860,12 +946,209 @@ class Demo:
             display_mod._write_png_rgb888(
                 _os.path.join(self.dump_canvas_dir, f"hq_final_{self.hq_seq}.png"),
                 self.hq_rgb.to_bytes(), w, h)
+        # **[DCM 演示路]** HQ 键路径：HQ 图已上屏 ⇒ 观众先看到增强结果，
+        # 同时异步起 DCM 独立进程，产物就绪后再切视图（`_dcm_poll()`）。
+        # **DCM 键路径不走这里**（它在 `_dcm_enter()` 里起进程，且不贴 HQ 图）。
+        if self.dcm_enabled and not self.dcm_mode:
+            self._dcm_submit(w, h)
+
+    # ── **[DCM 演示路]（O166）第三视图态：独立进程编排** ────────────────────────────
+    # 设计口径（2026-10-13）：
+    #   · **独立进程**而非内嵌线程 ⇒ 内存隔离（DCM 11 网 + 检测 3 网约 3 GB，避免与
+    #     HQ 模型叠加 OOM）+ 崩溃隔离（子进程失败不影响主链）；
+    #   · HQ 图**先上屏**（原行为不变）⇒ 观众先看增强结果，DCM 产物就绪后再切视图；
+    #   · 主循环只做「起进程 + 轮询退出码/产物」两件轻活，**不持锁、不等待**。
+    # 产物契约（`dcm_demo.py`）：`<outdir>/rec_box_960x540.raw` = 960×540 RGB888 裸字节
+    # （REC 重建图 + 检测框，已缩到 HQ 同尺寸 ⇒ 直接复用 `compose_fullscreen`/`show_hq`）。
+
+    def _dcm_enter(self, res: Dict[str, Any]) -> None:
+        """**[DCM 演示路]（O166；v3.87 追加 33）** DCM 键路径的 HQ 完成入口。
+
+        与 HQ 键路径的区别：**不贴 HQ 图**（§8.23 裁定「只展示单臂 B」——演示内容是
+        「DCM 解码重建画面 + 特征域检测框」，不是增强结果本身）。HQ 推理已跑完
+        （增强帧已取得，`self.hq_rgb` 就绪）⇒ 起 DCM 独立进程，视图转 `dcm_pending`，
+        **屏幕保持冻结「处理中」**（`_freeze_enter` 时已贴）；产物就绪后由
+        `_dcm_poll()` 贴 REC+框并切 `fullscreen_dcm`。
+
+        降级：DCM 资产缺失 ⇒ **解除冻结回常规视图**并记日志（不黑屏、不卡死；
+        观众重点一次即可回到原 HQ 键路径）。
+        """
+        w, h = int(res["shape"][0]), int(res["shape"][1])
+        if not self.dcm_enabled:
+            self.dcm_mode = False
+            self.log.event("main", "dcm_demo_degraded", seq=self.hq_seq,
+                           reason="assets_missing")
+            # **必须 `_freeze_exit()` 而非 `_exit_fullscreen()`**：此刻 `view` 仍是
+            # "normal"（尚未转 `dcm_pending`），`_exit_fullscreen()` 的视图检查会直接
+            # 返回 ⇒ **冻结不解除、卡死在「处理中」**（2026-10-13 实测复现并修复）。
+            self._freeze_exit()
+            return
+        self.view = "dcm_pending"
+        self.fs_enter_ns = time.monotonic_ns()
+        self.counters["dcm_pending_enter"] = self.counters.get("dcm_pending_enter", 0) + 1
+        self.log.event("display_mipi", "dcm_pending_enter", seq=self.hq_seq,
+                       reason="dcm_key", rsm=self.cap.rsm, fsm=self.cap.fsm)
+        if self._cur_trig is not None:
+            self._cur_trig["t_dcm_pending_ns"] = self.fs_enter_ns
+            self._cur_trig["hq_done_ns"] = int(res.get("done_ns", 0))
+        self._dcm_submit(w, h)
+
+    def _dcm_assets_ok(self) -> bool:
+        """资产自检（**只读探测**）：脚本 + 11 网 + 3 网 + MCM + rANS 是否齐备。"""
+        import os as _os
+        if not _os.path.isfile(DCM_DEMO_SCRIPT):
+            return False
+        for a in DCM_DEMO_ASSETS:
+            if not _os.path.exists(a):
+                return False
+        return True
+
+    def _dcm_submit(self, w: int, h: int) -> None:
+        """把本次 HQ 输出交给 DCM 独立进程（**异步，立即返回**）。
+
+        `w×h` = HQ 内容尺寸（960×540）。落盘用 PNG（`dcm_demo.py` 自解码，零额外依赖）。
+        """
+        import os as _os
+        import subprocess as _sp
+        # 上一次任务若仍在跑（不该发生：视图未退出不会二次触发）⇒ 先杀，防资源堆积
+        if self.dcm_proc is not None and self.dcm_proc.poll() is None:
+            self._dcm_kill()
+        outdir = f"/tmp/dcm_demo_{self.hq_seq}"
+        try:
+            _os.makedirs(outdir, exist_ok=True)
+            display_mod._write_png_rgb888(_os.path.join(outdir, "in.png"),
+                                          self.hq_rgb.to_bytes(), w, h)
+        except OSError as e:
+            self.dcm_fails += 1
+            self.log.event("main", "dcm_demo_submit", result="fail", seq=self.hq_seq,
+                           reason=f"write_input:{type(e).__name__}")
+            return
+        env = dict(_os.environ)
+        env["PYTHONPATH"] = "/home/cat/rknn_ab/site/232"
+        try:
+            self.dcm_proc = _sp.Popen(
+                ["/usr/bin/python3", DCM_DEMO_SCRIPT,
+                 "--input", _os.path.join(outdir, "in.png"),
+                 "--outdir", outdir,
+                 "--q", str(DCM_DEMO_Q), "--score", str(DCM_DEMO_SCORE),
+                 "--timeout", str(DCM_DEMO_PROC_TIMEOUT_S)],
+                stdout=_sp.DEVNULL, stderr=_sp.PIPE, env=env, cwd="/tmp")
+        except OSError as e:
+            self.dcm_proc = None
+            self.dcm_fails += 1
+            self.log.event("main", "dcm_demo_submit", result="fail", seq=self.hq_seq,
+                           reason=f"spawn:{type(e).__name__}")
+            return
+        self.dcm_outdir = outdir
+        self.dcm_seq = DCM_DEMO_SEQ_BASE + int(self.hq_seq)
+        self.dcm_t0_ns = time.monotonic_ns()
+        self.counters["dcm_started"] = self.counters.get("dcm_started", 0) + 1
+        self.log.event("main", "dcm_demo_submit", result="ok", seq=self.hq_seq,
+                       q=DCM_DEMO_Q, score=DCM_DEMO_SCORE)
+
+    def _dcm_poll(self) -> None:
+        """轮询 DCM 独立进程；产物就绪则切 `fullscreen_dcm` 视图（REC 重建图 + 检测框）。
+
+        失败/超时 ⇒ **停留在 HQ 图**（不卡死、不黑屏），仅记计数与日志。
+        """
+        import os as _os
+        if self.dcm_proc is None:
+            return
+        rc = self.dcm_proc.poll()
+        if rc is None:
+            # 仍在跑：主循环侧再兜一层超时（子进程自身也有 alarm，双保险）
+            if (time.monotonic_ns() - self.dcm_t0_ns) / 1e9 > DCM_DEMO_PROC_TIMEOUT_S + 10:
+                self._dcm_kill()
+                self.dcm_fails += 1
+                self.log.event("main", "dcm_demo_done", result="fail", seq=self.hq_seq,
+                               reason="outer_timeout")
+            return
+        # 进程已退出 ⇒ 读产物（**先取 stderr 再判**，防管道缓冲堆积）
+        try:
+            err = (self.dcm_proc.stderr.read() or b"").decode("utf-8", "replace")[:400]
+        except (OSError, ValueError):
+            err = ""
+        self.dcm_proc = None
+        raw_path = _os.path.join(self.dcm_outdir, DCM_DEMO_RAW)
+        if rc != 0 or not _os.path.isfile(raw_path):
+            self.dcm_fails += 1
+            self.log.event("main", "dcm_demo_done", result="fail", seq=self.hq_seq,
+                           reason=f"rc={rc}", detail=err.strip()[-200:])
+            return
+        try:
+            with open(raw_path, "rb") as f:
+                src = f.read()
+        except OSError as e:
+            self.dcm_fails += 1
+            self.log.event("main", "dcm_demo_done", result="fail", seq=self.hq_seq,
+                           reason=f"read:{type(e).__name__}")
+            return
+        # 尺寸校验：960×540 RGB888（与 HQ 内容同尺寸 ⇒ 复用全屏粘贴路径）
+        if len(src) < 960 * 540 * 3:
+            self.dcm_fails += 1
+            self.log.event("main", "dcm_demo_done", result="fail", seq=self.hq_seq,
+                           reason=f"short_raw:{len(src)}")
+            return
+        # 贴图：MIPI 用伪 seq（避开 `_fs_seq` 去重——HQ 图刚用过 hq_seq）；HDMI 每次翻页
+        rc_mipi = self.disp.compose_fullscreen(src, self.dcm_seq, self.dcm_seq)
+        if rc_mipi != 0:
+            self.dcm_fails += 1
+            self.log.event("main", "dcm_demo_done", result="fail", seq=self.hq_seq,
+                           reason=f"compose:{starlog.code_name(rc_mipi)}")
+            return
+        if self.hdmi is not None:
+            # `show_hq` → `_scale_and_flip` → `rga.scale_rgb888` **只接受 Buffer 或 dmabuf fd**
+            # （pybind11 不接受 bytes）⇒ 包成常驻 Buffer 再喂（`Buffer.write()` 写入裸字节）。
+            if self._dcm_buf is None:
+                self._dcm_buf = _n.alloc(len(src))
+            if int(self._dcm_buf.nbytes) < len(src):
+                self._dcm_buf = _n.alloc(len(src))
+            self._dcm_buf.write(src)
+            self.hdmi.show_hq(self._dcm_buf, self.dcm_seq)
+        self.view = "fullscreen_dcm"
+        self.fs_enter_ns = time.monotonic_ns()      # DCM 视图独享一份超时预算
+        self.counters["dcm_done"] = self.counters.get("dcm_done", 0) + 1
+        self.counters["fullscreen_dcm_enter"] = \
+            self.counters.get("fullscreen_dcm_enter", 0) + 1
+        self.log.event("display_mipi", "fullscreen_dcm_enter", seq=self.dcm_seq,
+                       reason="dcm_ready", rsm=self.cap.rsm, fsm=self.cap.fsm)
+        if self._cur_trig is not None:
+            self._cur_trig["t_dcm_ns"] = self.fs_enter_ns
+            self._cur_trig["dcm_mipi_flip_ns"] = self.disp.last_flip_ns()
+            self._cur_trig["dcm_mipi_seq"] = self.disp.last_flip_seq()
+            self._cur_trig["dcm_elapsed_s"] = round(
+                (self.fs_enter_ns - self.dcm_t0_ns) / 1e9, 3)
+        self._dump_canvas("dcm")
+
+    def _dcm_kill(self) -> None:
+        """终止 DCM 独立进程（**有界**：terminate → 5 s → kill）。"""
+        import subprocess as _sp
+        proc, self.dcm_proc = self.dcm_proc, None
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except _sp.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+        except OSError:
+            pass
 
     def _exit_fullscreen(self, reason: str) -> None:
-        """退出全屏（`click` / `timeout`）→ 回常规视图并**解除冻结**（§3.5、O90）。"""
-        if self.view != "fullscreen_hq":
+        """退出全屏（`click` / `timeout`）→ 回常规视图并**解除冻结**（§3.5、O90）。
+
+        **[DCM 演示路]** 两个全屏视图（`fullscreen_hq` / `fullscreen_dcm`）共用本退出路径。
+        """
+        if self.view not in ("fullscreen_hq", "fullscreen_dcm", "dcm_pending"):
             return
+        # **[DCM 演示路]** 退出即终止独立进程（**有界**）：它可能正占约 3 GB 内存与 NPU，
+        # 且退出后产物无人消费 ⇒ 必须杀，否则每次中断都泄漏一份（`_dcm_kill` 内部已判空）。
+        if self.dcm_proc is not None:
+            self._dcm_kill()
         self.view = "normal"
+        self.dcm_mode = False               # 复位：下次触发默认走 HQ 键路径
         self.counters["fullscreen_exit"] += 1
         if self._cur_trig is not None:
             self._cur_trig["exit_reason"] = reason
@@ -1294,6 +1577,9 @@ class Demo:
     # ── 退出序 ─────────────────────────────────────────────────────────
     def shutdown(self) -> None:
         self.stop.set()
+        # **[DCM 演示路]** 先终止独立进程（有界）：它可能正占约 3 GB 内存与 NPU
+        if self.dcm_proc is not None:
+            self._dcm_kill()
         # TH5 无 DRM 资源（第①批不碰 DRM），先停步进
         if self.hdmi:
             self.hdmi.shutdown()
@@ -1434,6 +1720,13 @@ def main() -> int:
     p.add_argument("--mipi-wb-preset", choices=["off", "weak", "medium", "strong"], default="strong",
                    help="[显示校正] MIPI 面板白平衡（压蓝）预设；**默认 strong（2026-10-09 目测定稿）**。"
                         "off=恒等（不校正）。只作用于 MIPI 画布，不影响 HDMI；**非 config 键**")
+    # **[DCM 演示路]（O166；非 config 键）** 第三视图态开关：HQ 输出进 DCM 编解码 →
+    # 特征域检测 → 检测框叠在 DCM 重建图上（§3.5 三态）。**默认开**；资产缺失时自动降级。
+    p.add_argument("--no-dcm-demo", action="store_false", dest="dcm_demo_enable",
+                   help="[DCM 演示路] 关闭第三视图态（HQ 完成后只显示 HQ 图，不进 DCM）")
+    p.add_argument("--dcm-trigger-at", type=int, default=0,
+                   help="[DCM 演示路 验证钩子] 到第 N 帧按 DCM 键路径触发一次（无触屏环境用；"
+                        "0 = 关。等价于点击新增的 DCM 按钮）")
     p.add_argument("--no-osd", action="store_true",
                    help="[验证钩子] OSD 不初始化（状态行 / 曲线图 / 直方图 / 按钮区全不做）")
     # **[验证用钩子] OSD 瘦身两级（v3.86 追加 97）**：把 OSD 的 ①-2 增量（P95 ≈ +30 ms）
@@ -1504,7 +1797,9 @@ def main() -> int:
              osd_status_only=args.osd_status_only, osd_no_stats=args.osd_no_stats,
              step_exp_times=args.step_exp_times, step_exp_interval_s=args.step_exp_interval_s,
              step_exp_low=args.step_exp_low, step_exp_high=args.step_exp_high,
-             step_exp_subdev=args.step_exp_subdev)
+             step_exp_subdev=args.step_exp_subdev,
+             dcm_demo_enable=args.dcm_demo_enable,
+             dcm_trigger_at=args.dcm_trigger_at)
 
     def on_sig(signum, _frame):
         logger.event("main", "service_exit", exit_code=0, uptime_s=0)

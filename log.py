@@ -77,6 +77,14 @@ EVENT_TABLE: Dict[Tuple[str, str], Tuple[str, ...]] = {
     ("display_mipi", "fullscreen_enter"): ("seq", "reason"),
     ("display_mipi", "fullscreen_exit"): ("seq", "reason"),
     ("display_mipi", "reset_key"): ("press", "seq"),
+    # **（v3.87 追加 33 / O166「DCM 演示路」）** 第三视图态事件（§4 同步登记）：
+    # DCM 键路径的 HQ 完成入口（不贴 HQ 图，转 `dcm_pending`）与产物就绪切全屏。
+    ("display_mipi", "dcm_pending_enter"): ("seq", "reason"),
+    ("display_mipi", "fullscreen_dcm_enter"): ("seq", "reason"),
+    # DCM 独立进程的提交 / 完成 / 降级（主程序只轮询退出码与产物文件）
+    ("main", "dcm_demo_submit"): ("seq", "q", "score"),
+    ("main", "dcm_demo_done"): ("seq", "result", "reason"),
+    ("main", "dcm_demo_degraded"): ("seq", "reason"),
     ("*", "degrade_action"): ("trigger", "action"),
 }
 
