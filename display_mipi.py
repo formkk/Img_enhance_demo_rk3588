@@ -209,10 +209,23 @@ class DisplayMipi:
         self._wb_lut = _n.wb.build_lut(gr, gg, gb)
         return 0
 
-    def _wb_apply(self, canvas) -> None:
-        """**内容写入完毕**后调用（常规视图每帧一次、全屏 HQ 视图每次贴图一次 ⇒ 不叠加）。"""
+    def _wb_apply(self, buf, npix: int) -> None:
+        """把面板白平衡 LUT 应用到 `buf` 的**前 `npix` 个像素**（`_wb_lut` 为 None ⇒ 直接返回）。
+
+        **（v3.87 裁定 O163 补记 / 2026-10-13）应用点分两种**：
+        · **常规视图（每帧）** —— 在 `compose_flip` 里对**两个 RGA 源窗**（`win` / `enh`，
+          各 512×288）应用，再由 `canvas_compose_to` **硬件**缩放进画布；
+        · **全屏 HQ 视图（每次贴图仅一次）** —— 对**画布**应用（HQ 图 1:1 直贴画布，
+          不经源窗；贴图只在 `hq_seq` 变化时发生 ⇒ 每周期一次、不在帧路径上）。
+
+        **为什么常规视图必须用源窗**：画布分配自 `system-uncached-dma32`（DMA 一致性所需，
+        见 `drm_core.c` 画布堆选择注释）⇒ CPU 逐字节查表 ~45 ns/像素，全画布 614,400 px
+        实测 **94.5 ms/帧**（板上微基准，2026-10-13）；源窗分配自 `system-dma32`（**带缓存**），
+        两窗合计实测 **0.62 ms/帧** ⇒ **153 倍**。LUT 为逐通道点运算 ⇒ 先校正后缩放与先缩放后校正
+        在图像区等效（差异 ≤1 LSB、不可见）；**OSD / 光标画在画布上 ⇒ 不再受校正**（已知视觉变化）。
+        """
         if self._wb_lut is not None:
-            _n.wb.apply(canvas, self._wb_lut, self.canvas_w * self.canvas_h)
+            _n.wb.apply(buf, self._wb_lut, npix)
 
     # ── §5 契约入口 ────────────────────────────────────────────────────
     def compose_flip(self, enh_win, raw_win, state: Optional[Dict[str, Any]] = None) -> int:
@@ -237,6 +250,14 @@ class DisplayMipi:
         if enh_win is not None and enh_win is not enh:
             enh.write(enh_win)
 
+        # **（v3.87 裁定 O163 补记 / 2026-10-13）** 面板白平衡 LUT 在**源窗**上应用
+        # （带缓存 `system-dma32`，两窗 0.62 ms）而非画布（uncached，94.5 ms）——
+        # 画布堆属性与微基准见 `_wb_apply` docstring。OSD 随后画在画布上 ⇒ 不受校正。
+        g = self._geom()
+        wnpix = int(g["win_w"]) * int(g["win_h"])
+        self._wb_apply(win, wnpix)
+        self._wb_apply(enh, wnpix)
+
         idx = self.cur
         canvas = _n.drm.canvas(idx, {"canvas_w": self.canvas_w, "canvas_h": self.canvas_h})
         rc = _n.rga.canvas_compose_to(canvas, self.canvas_w, self.canvas_h)
@@ -249,7 +270,6 @@ class DisplayMipi:
             # O81：**光标每帧画进画布**（画在最上层；镜像下两屏都出现，属预期行为）
             self.osd.draw_cursor(canvas, st.get("cursor_pos"))
 
-        self._wb_apply(canvas)                     # MIPI 面板白平衡（默认关）
         rc = self._flip(idx, seq)
         if rc == 1:
             self._skipped += 1
@@ -290,7 +310,9 @@ class DisplayMipi:
                 d = ((py + y) * self.canvas_w + px) * 3
                 img[d:d + row] = src[s:s + row]
             canvas.write(bytes(img))
-            self._wb_apply(canvas)                 # MIPI 面板白平衡（默认关；**每次贴图仅一次**）
+            # **（v3.87 裁定 O163 补记）** 全屏 HQ 直贴画布 ⇒ 白平衡仍在**画布**上应用
+            # （每周期仅一次、冻结期内，不在帧路径上；常规视图已改源窗，见 `_wb_apply`）。
+            self._wb_apply(canvas, self.canvas_w * self.canvas_h)
             self._fs_seq = int(hq_seq)
         rc = self._flip(idx, int(seq))
         if rc == 1:
