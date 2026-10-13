@@ -1164,6 +1164,63 @@ mock 指针输入直接调 `Demo._pump_pointer()` / `_exit_fullscreen()`（**真
 
 ---
 
+### 8.27 DCM 演示路演示增强：检测框标签 + 冻结期三阶段进度带（2026-10-13）
+
+> **性质** = **用户演示效果要求两项 + 板上实测（停服务跑 `--dcm-trigger-at` + 画布快照轮询）**。**非验收依据**（规则 `10-evidence.md` §1）。**未改 IQ**；§13 全表不动、不放宽 §11.2、**不新增 / 不关闭 O 项**（登记 = 主基准 §15 **O166 补记）。回写 = 主基准 §14 追加 37。
+
+#### (一) 动因（用户原话，2026-10-13）
+
+「1. 检测框加上标签。2. 检测等待时间有点长，为了演示效果，点击检测按钮后，原来的实时路画面冻结，用高对比字色在冻结画面叠加显示在进行的工作及进度，例如用 retinexformer 网络增强的过程，然后是检测网络的工作过程」
+
+DCM 键路径端到端约 30 s（HQ 约 10 s + 独立进程约 20 s，其中 14 网 rknn 加载约 12 s）⇒ 冻结期**只显示旧状态行**，观众无法得知在进行的工作 ⇒ 两项增强均指向**可读性**。
+
+#### (二) 实现
+
+**(a) 检测框标签**（板端 `dcm_demo.py`，部署件 `/home/cat/dcm_x101/demo/`，**不在库内**）：
+
+| 件 | 内容 |
+|---|---|
+| 类名表 | COCO 80 类（与检测器训练域一致） |
+| 字体 | **PSF1/PSF2 自包含解析**（MSB-first 行位序；板端 PSF 无 CJK，类名为 ASCII 故可直接渲染） |
+| 绘制 | numpy 文本位图 → 叠框同通道；**按类别着色**（person/bottle 红、cup 绿、sports ball 蓝等高对比色） |
+| 布局 | 标签默认在框**上方**；**顶空间不足自动下移**（防首行框标签出界） |
+| 接线 | 两处叠框循环（REC 屏 / 原图对照屏）加 `box_label` |
+
+**(b) 冻结期进度带**（库内 5 文件 + 板端子进程进度文件）：
+
+| 层 | 文件 | 改动 |
+|---|---|---|
+| 资源 | `tools/gen_osd_zh_bitmap.py` | LABELS **+5 条**（`stg_enh`/`stg_codec`/`stg_detect`/`elapsed`/`sec`，各 28 px 墨迹） |
+| 资源 | `assets/osd_zh_labels.bin` | **重生成**（2370 → 5734 B，6 → 11 记录） |
+| OSD | `osd.py` | ZH_LABELS **+5 键** + 公开 `blit_zh()` 助手 |
+| 显示 | `display_mipi.py` | `mark_busy` 新签名 `(seq, text, stage_zh, stage_en, elapsed_s, resnap)`；`_freeze_snap` 冻结底图快照（快照式重画 ⇒ 旧文字不残留）；`_draw_freeze_overlay()` 黑底 + 琥珀边线（`OVL_EDGE = 0xE0B040`）+ 中文位图阶段行 + PSF 数字「已用时」行（scale=2） |
+| 主流程 | `main.py` | `_ovl_stage`/`_ovl_last_ns`/`_ovl_seq`；`_freeze_overlay_tick()`（1 s / 阶段切换节流）；`_dcm_stage_display()`（读 `progress.json` 映射阶段）；`_dcm_submit()` 删 stale progress.json（防跨服务重启同 seq 旧进度误读）；`_freeze_enter` DCM 路径进阶段 1（`resnap=True`）；HDMI 每次重画后同步 mirror |
+| 子进程 | 板端 `dcm_demo.py` | 6 个 `_prog` 调用点（`start`/`load_dcm`/`encode`/`decode`/`load_det`/`detect`）**原子替换**写 `<outdir>/progress.json` |
+
+**三阶段划分**：① RetinexFormer 网络增强（TH3，主进程内）② DCM 特征编解码（子进程，含 9 网加载）③ 特征域目标检测（子进程，含 3 网加载）；阶段 ②③ 的模型加载**归入后续阶段、不单列**。
+
+#### (三) 板上实测（2026-10-13 17:17，`--dcm-trigger-at 30` + 1.5 s 轮询 29 帧）
+
+| 阶段 | 快照 | 画面 |
+|---|---|---|
+| 常规预览 | i=1~2 | 实时路 + REC + 按钮 |
+| **① RetinexFormer 网络增强中** | i=3~11 | 冻结底图 + 进度带；已用时 4.0 s（i=5） |
+| **② DCM 特征编解码中** | i=12~14 | 阶段名切换；已用时约 13 s |
+| **③ 特征域目标检测中** | i=16~23 | 已用时 16.6 s（i=17）/ 23.x s（i=21） |
+| 结果屏 | i=23~30 | DCM 重建图全屏 + **8 框全带标签**（person 0.42 / cup 0.81 / sports ball 0.98 / bottle 1.00 / cup 0.98 / sports ball 0.97 / bottle 0.93 等） |
+
+**缺陷发现与修复（本轮内闭环）**：「已用时」行**小数位被「秒」位图覆盖**（显示「已用时 3.秒」）—— 根因 = 数字段 `osd.text()` 按 **scale=2** 画但宽度按 **scale=1** 计（漏 ×2）⇒ 后续「秒」位图左移重叠；修复 = `num_w = len(num)*fw*2` + 数字行 y 偏移 `y2+2` + 英文回退同步；**复测通过**（「已用时 4.0 秒」小数位完整，4× 放大核验）。
+
+**一次复测失败记录（如实）**：修复后首次复测（ovl3）**启动失败 rc=-3**（TH4 需 DRM master）—— 上一轮测试进程未被杀死、仍持锁 ⇒ 干净杀进程后复测通过；**当时查看的 `zoom_fixed.png` 实为常规态画面**（非冻结进度带）⇒ 该次观察无效，以 ovl4 轮询为准。
+
+
+依据：板上 `/tmp/ovl4_01.png`~`/tmp/ovl4_30.png`（29 帧轮询全量，`/tmp/ovl_test4.log`）、`/home/cat/dcm_x101/demo/dcm_demo.py`（`progress.json` 写出方）；本机 `DTM/out_v1/board_dcm_ovl/`（`stage1_enhancing.png` / `stage2_codec.png` / `stage3_detect.png` / `result_boxes.png` / `elapsed_4x_zoom.png`，**链路输出原样归档、零后处理**）。
+#### (四) 边界
+
+= §13 不动；**未立项**；**服务已恢复**（`starlight-demo` active / boot_ok / 2026-10-14 01:25:17 CST 进入 `RUN_DEMO`）；板上 `/home/cat/starlight/` 已部署新版 4 文件（`main.py`/`display_mipi.py`/`osd.py`/`assets/osd_zh_labels.bin`，各带 `.bak_261013_ovl` 备份）；`dcm_demo.py` 已部署（**无有效备份**，误建的 `.bak` 已删，**原版内容在案** = §8.25 记录的行为描述）；实时路 / HQ 路零改动；**未改 IQ**；进度带与框标签**均为演示级增强、非验收依据**；中文位图资源缺失时进度带**回退英文 PSF 文本**（不阻塞）。
+
+---
+
 ## 9. 结论
 
 **本草案定义方案、风险与实测结论；仍不构成启动。** 启动前置条件：

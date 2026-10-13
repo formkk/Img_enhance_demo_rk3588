@@ -53,6 +53,17 @@ LABELS: Tuple[Tuple[str, str, int], ...] = (
     # 给出）：PSF 控制台字体无 CJK 字形，故与图名/状态行标签同法预渲染。墨迹高 28 px 与按钮区
     # ASCII 字格（`ui.osd_font_px[0]=36` ⇒ 字格 36 px、墨迹 ≈28 px）等高对齐。
     ("btn_exit", "(长按3秒)", 28),
+    # **（v3.87 追加 37 / DCM 演示路进度带）** 冻结期「居中进度带」的阶段名与「已用时/秒」中文段
+    # （数字由板端 PSF 渲染，见 display_mipi.mark_busy 的 stage_zh 形参）：
+    #   stg_enh    = 阶段 1（TH3 RetinexFormer 推理中）
+    #   stg_codec  = 阶段 2（DCM 独立进程：特征编解码，含 9 网加载）
+    #   stg_detect = 阶段 3（DCM 独立进程：特征域目标检测，含 3 网加载）
+    #   elapsed/sec = 第二行「已用时 X.X 秒」的中文段（X.X 为 ASCII）
+    ("stg_enh", "RetinexFormer 网络增强中", 28),
+    ("stg_codec", "DCM 特征编解码中", 28),
+    ("stg_detect", "特征域目标检测中", 28),
+    ("elapsed", "已用时", 28),
+    ("sec", "秒", 28),
 )
 
 # 开发机 CJK 字体候选（取第一个可加载的；**仅开发机依赖**）

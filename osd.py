@@ -83,7 +83,11 @@ C_CURSOR_CORE = 0x101010     # 十字中心点（与浅色十字形成对比）
 ZH_LABELS = {"curve": "色调映射曲线", "hist": "亮度直方图",
              # **（v3.86 裁定 O108 / O109）** 状态行中文标签（同一份预渲染资源；板端 PSF 无 CJK 字形）
              # 全角冒号「：」烘进位图（PSF 只有半角 `:`）；「均值提升」按裁定**不带冒号**。
-             "lat": "端延时：", "rate": "帧率：", "lm": "均值提升"}   # 键名与资源记录名逐字一致
+             "lat": "端延时：", "rate": "帧率：", "lm": "均值提升",   # 键名与资源记录名逐字一致
+             # **（v3.87 追加 37 / DCM 演示路进度带）** 冻结期居中进度带的三行阶段名 + 第二行
+             # 「已用时 X.X 秒」的中文段（X.X 由 PSF 渲染）；资源缺失 ⇒ 进度带回退英文 PSF 文本。
+             "stg_enh": "RetinexFormer 网络增强中", "stg_codec": "DCM 特征编解码中",
+             "stg_detect": "特征域目标检测中", "elapsed": "已用时", "sec": "秒"}
 ZH_BITMAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "osd_zh_labels.bin")
 ZH_CAPTION_PAD = 6      # 说明位图左缩进（与图示区内边距 `pad` 同值）
 ZH_CAPTION_GAP = 6      # 说明位图与图元之间的**最小间距**（px）
@@ -321,6 +325,19 @@ class OsdRenderer:
                               self.font.w, self.font.h, rgb)
             cx += self.font.w * sc
         return cx
+
+    def blit_zh(self, canvas, x: int, y: int, name: str, rgb: int = C_TEXT) -> int:
+        """把预渲染中文位图记录 `name` blit 到 `(x, y)`（scale=1）并返回**位图宽**（缺失返回 0）。
+
+        **（v3.87 追加 37）** 公开版供 `display_mipi.mark_busy` 的冻结期进度带使用
+        （原 `_zh_status` 为状态行私有、颜色与垂直居中口径写死）；资源缺失不画、不报错。
+        """
+        rec = self.zh.get(name)
+        if not rec:
+            return 0
+        w, h, bits = rec
+        _n.osd.blit_glyph(canvas, self.cw, self.ch, x, y, 1, bits, w, h, rgb)
+        return w
 
     # ── 主渲染 ─────────────────────────────────────────────────────────
     def render_into(self, canvas, state: Dict[str, Any]) -> None:

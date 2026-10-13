@@ -56,6 +56,11 @@ DRM_MASTER_RETRY_MS = 500
 # （自愈成功仍返回 `0` / `1`，失败仍返回负值）。
 DRM_DISP_RECOVER_N = 2
 
+# **（v3.87 追加 37 / DCM 演示路进度带）** 冻结期居中进度带的**边线色**（RGB888）：
+# 取 OSD 既有琥珀色（`osd.C_CAPTION` 同值 0xE0B040——OSD 色板中未使用的暖色系，
+# 与数据标记和状态行文字均可区分）；本模块不 import osd 的常量（避免环依赖），故照值复刻。
+OVL_EDGE = 0xE0B040
+
 
 def _write_png_rgb888(path: str, rgb: bytes, w: int, h: int) -> int:
     """RGB888 紧凑缓冲 → PNG（8bit RGB，filter 0，**不做任何色调处理**）。
@@ -124,6 +129,10 @@ class DisplayMipi:
         self._lat_t_capture_ns = 0
         self._last_idx = 0            # 最近一次已提交翻页的画布缓冲索引（供 TH5 镜像读源）
         self._fs_seq = 0              # 全屏态已绘制的 seq（内容静态：同一 seq 不重复贴图）
+        # **（v3.87 追加 37 / DCM 演示路进度带）** 冻结期**起点快照**（整幅画布字节，
+        # 无提示文字）：进度带每阶段/每秒重画时先写回它 ⇒ 旧文字不残留、画面不漂移。
+        # `mark_busy(resnap=True)`（冻结进入）时刷新；整个冻结期有效。
+        self._freeze_snap: Optional[bytes] = None
 
     def init(self, with_osd: bool = True, osd_status_only: bool = False,
              osd_no_stats: bool = False) -> int:
@@ -329,28 +338,105 @@ class DisplayMipi:
         """最近一次提交翻页的画布缓冲索引（TH5 镜像据此读源，避免读到未提交的那一页）。"""
         return self._last_idx
 
-    def mark_busy(self, seq: int, text: str = "HQ PROCESSING ...") -> int:
+    def mark_busy(self, seq: int, text: str = "HQ PROCESSING ...",
+                  stage_zh: Optional[str] = None, stage_en: str = "",
+                  elapsed_s: Optional[float] = None, resnap: bool = False) -> int:
         """触发受理瞬间的"处理中"提示（§3.5 / §6.2：**触发→OSD ≤50 ms**）。
 
         做法 = 复制**上一帧已翻页的画布**到另一缓冲、叠一行提示、翻页一次 ⇒ 冻结期内画面静止，
         提示常驻。返回 0 = 已翻页；负值 = 错误（HDMI/MIPI 主链路不受影响）。
+
+        **（v3.87 追加 37 / DCM 演示路进度带）** `stage_zh` 非空 ⇒ 在画面**居中**叠一条
+        **高对比进度带**（黑底 + 琥珀边线）：第一行 = 阶段名（中文位图记录 `stage_zh`，
+        资源缺失回退英文 `stage_en`），第二行 = 「已用时 X.X 秒」（`elapsed_s` 非空时）。
+        进度带由调用方（`main._freeze_overlay_tick`）按**阶段切换或 1 s 节流**重画 ⇒ 必须以
+        **冻结起点快照**为底图（否则旧文字残留、画面漂移）：`resnap=True`（冻结进入时）把
+        当前画布存为 `_freeze_snap`，之后每次重画先写回快照再画新文字。
+        `stage_zh` 为空 ⇒ **旧行为不变**（只画状态行，供 HQ 键路径使用）。
         """
         if not self._inited:
             return E_STATE
         g = self.geom
         cfg = {"canvas_w": self.canvas_w, "canvas_h": self.canvas_h}
-        prev = _n.drm.canvas(self._last_idx, cfg)
-        nxt_idx = self._last_idx ^ 1
-        nxt = _n.drm.canvas(nxt_idx, cfg)
-        nxt.write(prev.to_bytes())            # 整幅复制（1024×600×3 ≈1.8 MB memcpy）
-        if self.osd is not None:
-            self.osd.text(nxt, 8, int(g["status_row_y"]) + 2, text, 0xFFD050)
+        if stage_zh is None:
+            # 旧行为：整幅复制上一帧（含其既有内容）+ 状态行提示
+            prev = _n.drm.canvas(self._last_idx, cfg)
+            nxt_idx = self._last_idx ^ 1
+            nxt = _n.drm.canvas(nxt_idx, cfg)
+            nxt.write(prev.to_bytes())        # 整幅复制（1024×600×3 ≈1.8 MB memcpy）
+            if self.osd is not None:
+                self.osd.text(nxt, 8, int(g["status_row_y"]) + 2, text, 0xFFD050)
+        else:
+            if resnap or self._freeze_snap is None:
+                prev = _n.drm.canvas(self._last_idx, cfg)
+                self._freeze_snap = prev.to_bytes()   # 冻结底图（无提示文字）
+            nxt_idx = self._last_idx ^ 1
+            nxt = _n.drm.canvas(nxt_idx, cfg)
+            nxt.write(self._freeze_snap)              # 干净底图 ⇒ 旧文字不残留
+            if self.osd is not None:
+                self.osd.text(nxt, 8, int(g["status_row_y"]) + 2, text, 0xFFD050)
+                self._draw_freeze_overlay(nxt, stage_zh, stage_en, elapsed_s)
         rc = self._flip(nxt_idx, int(seq))
         if rc == 0:
             self._last_idx = nxt_idx
             self.cur = self._last_idx ^ 1
             self._flips += 1
         return rc
+
+    def _draw_freeze_overlay(self, canvas, stage_zh: str, stage_en: str,
+                             elapsed_s: Optional[float]) -> None:
+        """冻结期**居中高对比进度带**（v3.87 追加 37）：黑底 + 琥珀边线；
+
+        第一行 = 阶段名（中文位图优先；缺失回退英文 PSF ×2）；第二行 = 「已用时 X.X 秒」
+        （中文段 + PSF 数字；位图全缺失时回退全英文）。资源缺失一律**不画对应行**，
+        不得因装饰阻塞冻结提示（规则 `30-board-safety.md` §5 同口径）。
+        """
+        cw, ch = self.canvas_w, self.canvas_h
+        band_h = min(128, ch)
+        band_y = (ch - band_h) // 2
+        _n.osd.fill_rect(canvas, cw, ch, 0, band_y, cw, band_h, 0x000000)
+        _n.osd.fill_rect(canvas, cw, ch, 0, band_y, cw, 2, OVL_EDGE)
+        _n.osd.fill_rect(canvas, cw, ch, 0, band_y + band_h - 2, cw, 2, OVL_EDGE)
+        zh = self.osd.zh or {}
+        # ── 第一行：阶段名（居中）──
+        y1 = band_y + 18
+        rec = zh.get(stage_zh)
+        if rec is not None:
+            w, h, bits = rec
+            _n.osd.blit_glyph(canvas, cw, ch, max(0, (cw - w) // 2), y1, 1,
+                              bits, w, h, 0xFFD050)
+        elif stage_en and self.osd.font is not None:
+            tw = len(stage_en) * self.osd.font.w * 2
+            self.osd.text(canvas, max(0, (cw - tw) // 2), y1, stage_en, 0xFFD050, scale=2)
+        # ── 第二行：已用时 X.X 秒（中文段 + PSF 数字，整体居中）──
+        if elapsed_s is None:
+            return
+        y2 = band_y + 70
+        e_rec, s_rec = zh.get("elapsed"), zh.get("sec")
+        fw = self.osd.font.w if self.osd.font is not None else 0
+        if e_rec is None and s_rec is None:
+            # 位图全缺失 ⇒ 全英文回退（有字体才画；`text` 默认 scale=2 ⇒ 宽 = 字数×fw×2）
+            if fw:
+                en = "ELAPSED %.1f S" % float(elapsed_s)
+                tw = len(en) * fw * 2
+                self.osd.text(canvas, max(0, (cw - tw) // 2), y2 + 2, en, 0xFFFFFF)
+            return
+        # 数字段用 `text` 默认 scale=2（墨迹 ≈26 px，与中文位图 28 px 近等高）⇒ 宽 = 字数×fw×2。
+        # ⚠️ 曾按 scale=1 计宽（漏 ×2）⇒ 后续「秒」位图重叠覆盖小数位（2026-10-13 实测发现）。
+        num = " %.1f " % float(elapsed_s)
+        num_w = len(num) * fw * 2
+        total = (e_rec[0] if e_rec else 0) + num_w + (s_rec[0] if s_rec else 0)
+        x = max(0, (cw - total) // 2)
+        if e_rec is not None:
+            w, h, bits = e_rec
+            _n.osd.blit_glyph(canvas, cw, ch, x, y2, 1, bits, w, h, 0xFFFFFF)
+            x += w
+        if fw:
+            self.osd.text(canvas, x, y2 + 2, num, 0xFFFFFF)
+            x += num_w
+        if s_rec is not None:
+            w, h, bits = s_rec
+            _n.osd.blit_glyph(canvas, cw, ch, x, y2, 1, bits, w, h, 0xFFFFFF)
 
     def dump_png(self, path: str, slot: int = 0, idx: Optional[int] = None) -> int:
         """把**链路原样**的合成画布导出为 PNG（**零色调后处理**；`slot` 0 = MIPI、1 = HDMI）。

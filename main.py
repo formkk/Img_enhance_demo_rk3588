@@ -328,6 +328,12 @@ class Demo:
         # （等价于点击 DCM 按钮：置 `dcm_mode` + `submit_trigger`）。**非 config 键**。
         self.dcm_trigger_at = max(0, int(dcm_trigger_at))
         self._dcm_triggered = False
+        # **[DCM 演示路]（v3.87 追加 37）** 冻结期**进度带**状态：当前阶段（zh 位图记录名）/
+        # 上次重画时刻（1 s 节流）/ 冻结 seq（进度带翻页用——`mark_busy` 不写 `_lat_*`
+        # ⇒ 不影响 §6.5 按 seq 回填配对）。
+        self._ovl_stage = ""
+        self._ovl_last_ns = 0
+        self._ovl_seq = 0
         self.freeze_ns = 0                   # 累计冻结窗（fps 用活动窗口径，O90）
         self._frozen_since = 0
         self.hq_seq = 0
@@ -889,7 +895,14 @@ class Demo:
             # `dcm_pending`   = DCM 键路径（不贴 HQ 图，屏幕保持冻结「处理中」）。
             if self.view in ("fullscreen_hq", "dcm_pending"):
                 self._dcm_poll()
+            # **[DCM 演示路]（v3.87 追加 37）** `dcm_pending` 期刷新进度带
+            # （阶段 2/3 由子进程 `progress.json` 驱动 + 已用时，1 s 节流）。
+            if self.view == "dcm_pending":
+                self._freeze_overlay_tick()
             return True
+        # **[DCM 演示路]（v3.87 追加 37）** HQ 推理期（冻结中、尚未进视图）刷新阶段 1 进度带。
+        if self.frozen and self.dcm_mode and self.view == "normal":
+            self._freeze_overlay_tick()
         return self.frozen
 
     def _enter_fullscreen(self, res: Dict[str, Any]) -> None:
@@ -1016,6 +1029,10 @@ class Demo:
         outdir = f"/tmp/dcm_demo_{self.hq_seq}"
         try:
             _os.makedirs(outdir, exist_ok=True)
+            # 防**跨服务重启的同 seq** 旧进度误读（相机 seq 重启后从零重新计数）⇒ 先删再产。
+            _prog_old = _os.path.join(outdir, "progress.json")
+            if _os.path.exists(_prog_old):
+                _os.remove(_prog_old)
             display_mod._write_png_rgb888(_os.path.join(outdir, "in.png"),
                                           self.hq_rgb.to_bytes(), w, h)
         except OSError as e:
@@ -1120,6 +1137,56 @@ class Demo:
                 (self.fs_enter_ns - self.dcm_t0_ns) / 1e9, 3)
         self._dump_canvas("dcm")
 
+    # ── **[DCM 演示路]（v3.87 追加 37）冻结期进度带** ────────────────────────────
+    # 动因：DCM 键路径端到端 ~30 s（HQ ~10 s + 独立进程 ~20 s，其中 14 网 rknn 加载 ~12 s），
+    # 用户 2026-10-13 要求「点击检测按钮后实时路画面冻结，用高对比字色在冻结画面上叠加显示
+    # 在进行的工作及进度」⇒ 三阶段：① RetinexFormer 网络增强（TH3，主进程内）
+    # ② DCM 特征编解码（子进程，含 9 网加载）③ 特征域目标检测（子进程，含 3 网加载）。
+    # 阶段 ②③ 的细分由子进程写 `<outdir>/progress.json`（{"stage": ...}）驱动；
+    # 重画节流 = 阶段切换或 1 s（第二行「已用时」随秒刷新）。HDMI 每次重画后同步镜像
+    # （§3.5 两屏同画面；否则 HDMI 停留在冻结前旧帧）。
+
+    def _dcm_stage_display(self):
+        """读子进程 `progress.json` ⇒ `(zh 记录名, 英文回退)`；读失败保持当前阶段。
+
+        子进程阶段 → 显示阶段：`start`/`load_dcm`/`encode`/`decode` ⇒ `stg_codec`；
+        `load_det`/`detect` ⇒ `stg_detect`（模型加载归入其后续阶段，不单列）。
+        """
+        import json as _json
+        import os as _os
+        cur = self._ovl_stage or "stg_codec"
+        if not self.dcm_outdir:
+            return cur, "DCM CODEC"
+        try:
+            with open(_os.path.join(self.dcm_outdir, "progress.json"), "r") as f:
+                stg = str(_json.load(f).get("stage", ""))
+        except (OSError, ValueError):
+            return cur, "DCM CODEC"
+        if stg in ("load_det", "detect"):
+            return "stg_detect", "OBJECT DETECTION"
+        return "stg_codec", "DCM CODEC"
+
+    def _freeze_overlay_tick(self) -> None:
+        """冻结期进度带刷新（1 s / 阶段切换节流）；非 DCM 键路径直接返回。"""
+        if self.disp is None or not self.frozen or not self.dcm_mode:
+            return
+        if self.view == "dcm_pending":
+            zh, en = self._dcm_stage_display()
+        elif self.view == "normal":
+            zh, en = "stg_enh", "RETINEXFORMER ENHANCING"   # 阶段 1：TH3 推理中
+        else:
+            return
+        now = time.monotonic_ns()
+        if zh == self._ovl_stage and now - self._ovl_last_ns < 1_000_000_000:
+            return
+        self._ovl_stage = zh
+        self._ovl_last_ns = now
+        elapsed = (now - self._frozen_since) / 1e9 if self._frozen_since else 0.0
+        rc = self.disp.mark_busy(self._ovl_seq, text="PROCESSING ...",
+                                 stage_zh=zh, stage_en=en, elapsed_s=elapsed)
+        if rc == 0 and self.hdmi is not None:
+            self.hdmi.mirror(self._ovl_seq, self.disp.last_flip_idx())
+
     def _dcm_kill(self) -> None:
         """终止 DCM 独立进程（**有界**：terminate → 5 s → kill）。"""
         import subprocess as _sp
@@ -1166,12 +1233,31 @@ class Demo:
         self.log.event("display_mipi", "freeze_enter", seq=int(seq))
         if self._cur_trig is not None:
             self._cur_trig["t_freeze_enter_ns"] = self._frozen_since
-        if self.disp is not None and self.disp.mark_busy(int(seq)) == 0:
+        # **[DCM 演示路]（v3.87 追加 37）** DCM 键路径：冻结即进**阶段 1 进度带**
+        # （RetinexFormer 网络增强中 + 已用时 0.0 s，`resnap=True` 存冻结底图）；
+        # HQ 键路径保持旧行为（只画状态行「HQ PROCESSING ...」）。
+        busy_ok = False
+        if self.disp is not None:
+            if self.dcm_mode:
+                self._ovl_stage = "stg_enh"
+                self._ovl_last_ns = time.monotonic_ns()
+                self._ovl_seq = int(seq)
+                busy_ok = self.disp.mark_busy(
+                    int(seq), text="RETINEXFORMER ENHANCING ...",
+                    stage_zh="stg_enh", stage_en="RETINEXFORMER ENHANCING",
+                    elapsed_s=0.0, resnap=True) == 0
+            else:
+                busy_ok = self.disp.mark_busy(int(seq)) == 0
+        if busy_ok:
             self.counters["freeze_flips"] += 1      # 冻结窗内的翻页数（替代作废的 hq_flips_delta）
             if self._cur_trig is not None:
                 # 触发 → OSD 提示上屏（§13：≤50 ms）——取该次 flip 的 **vblank** 时刻与回调 seq
                 self._cur_trig["osd_flip_ns"] = self.disp.last_flip_ns()
                 self._cur_trig["osd_flip_seq"] = self.disp.last_flip_seq()
+            # **[DCM 演示路]（v3.87 追加 37）** 冻结帧同步到 HDMI（§3.5 两屏同画面）——
+            # 否则整个冻结期（~30 s）HDMI 停留在进入冻结前的旧帧。HQ 键路径不同步（行为不变）。
+            if self.dcm_mode and self.hdmi is not None:
+                self.hdmi.mirror(int(seq), self.disp.last_flip_idx())
 
     def _mfa_submit(self, seq_src: int, f: Dict[str, Any]) -> int:
         """**[A/B 开关]（非契约入口）** §15 O158 的「N 帧时域平均」上板实现。
