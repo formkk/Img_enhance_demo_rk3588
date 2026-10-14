@@ -101,8 +101,9 @@ MIPI_WB_PRESETS = {
 # 实现选择（2026-10-13）：**独立进程**（`dcm_demo.py`）而非内嵌线程 ——
 #   ① 内存隔离：DCM 11 网 + 检测 3 网同时驻留约 3 GB，与 HQ 模型叠加有 OOM 风险；
 #   ② 崩溃隔离：子进程失败/卡死不影响主链（主程序只轮询退出码与产物文件）。
-# 档位与阈值（用户 2026-10-13 裁定「要检测精度、不要压缩；可漏检不可误检」）：
-#   q31 = `rate_control_index_table` 上限（`q_map_factor` 0.870）；score 0.30。
+# 档位与阈值（用户 2026-10-13 裁定「要检测精度、不要压缩；可漏检不可误检」；
+# **2026-10-14 再裁定**：误检偏高 ⇒ ① **屏蔽 bed 类**、② **阈值 0.30 → 0.50**）：
+#   q31 = `rate_control_index_table` 上限（`q_map_factor` 0.870）；score 0.50；drop bed(59)。
 # **非 config 键**（演示试验态，未立项）；资产缺失 ⇒ 该路降级为不启用（不阻塞主链）。
 DCM_DEMO_SCRIPT = "/home/cat/dcm_x101/demo/dcm_demo.py"
 DCM_DEMO_ASSETS = (
@@ -115,7 +116,14 @@ DCM_DEMO_ASSETS = (
     "/home/cat/dcm_x101/boxhead.rknn",                # 检测 box_head+predictor
 )
 DCM_DEMO_Q = 31                  # 档位索引（0~31；31 = 上限）
-DCM_DEMO_SCORE = 0.30            # 检测置信度阈值（可漏检不可误检）
+DCM_DEMO_SCORE = 0.50            # 检测置信度阈值（可漏检不可误检；**2026-10-14：0.30 → 0.50**）
+# **（2026-10-14 用户裁定）类屏蔽**：COCO 类索引元组，交给 `dcm_demo.py --drop-classes`，在
+# `board_detect.fast_rcnn_decode` 里**把该类的分数清零** ⇒ 该类**永不通过阈值**。
+# 动因 = 暗箱场景误检出**不可能存在的类**（板上实测：bed 0.72 / couch 0.94 / potted plant 0.46）。
+# 取值 **59 = bed、57 = couch**（potted plant 0.46 已被 0.50 阈值自然滤除，故未列入）。
+# ⚠️ 这仍是**黑名单**（打地鼠式）—— 同族「家具类」还有 chair(56) / bench(13) / dining table(60) /
+# toilet(61) 等，日后若冒出仍会误检；要一次压净应改用**白名单**（只保留演示关心的类）。
+DCM_DEMO_DROP_CLASSES = (59, 57)
 DCM_DEMO_PROC_TIMEOUT_S = 90     # 子进程硬超时（秒；超时即杀，防卡死主链）
 DCM_DEMO_SEQ_BASE = 10 ** 9      # 伪 seq 基址：避开真实 V4L2 seq 空间，
 #   同时避开 `compose_fullscreen` 的「同一 hq_seq 只贴图一次」去重（HQ 图刚用过 hq_seq）
@@ -313,9 +321,11 @@ class Demo:
         self.frozen = False
         self.fs_enter_ns = 0
         # **[DCM 演示路]（O166；非 config 键）** 第三视图态状态机：
-        #   HQ 完成 → `_dcm_submit()` 起独立进程（HQ 图**照常先上屏**）
-        #   → `_dcm_poll()` 每轮轮询；产物就绪则切 `fullscreen_dcm`（REC 重建图 + 检测框）
-        #   → 超时/点击 → `_exit_fullscreen()` 回 normal（两视图共用退出路径）
+        #   **仅 DCM 键路径**：DCM 键置 `dcm_mode` → HQ 完成 → `_dcm_enter()` 起独立进程
+        #   （**不贴 HQ 图**，保持冻结 + 进度带）→ `_dcm_poll()` 每轮轮询；产物就绪则切
+        #   `fullscreen_dcm`（REC 重建图 + 检测框）→ 超时/点击 → `_exit_fullscreen()` 回 normal。
+        #   **（2026-10-14 用户裁定）HQ 键路径不再自动接 DCM** ⇒ `fullscreen_hq` 下
+        #   `dcm_proc` 恒为 None、`_dcm_poll()` 立即返回（该分支保留为防御，不删）。
         self.dcm_enabled = bool(dcm_demo_enable)
         self.dcm_mode = False                    # 本次触发是否走 DCM 路（由 DCM 键置位）
         self.dcm_proc: Optional[Any] = None      # 独立进程句柄（None = 无在跑任务）
@@ -323,7 +333,6 @@ class Demo:
         self.dcm_seq = 0                         # 本次触发的伪 seq（避开真实 seq 与去重）
         self.dcm_t0_ns = 0                       # 提交时刻（计时 / 超时判据）
         self.dcm_fails = 0                       # 连续失败计数（诊断用）
-        self._dcm_buf = None                     # HDMI 路径用的常驻 Buffer（惰性分配）
         # **[验证钩子]** `--dcm-trigger-at N`：无触屏环境下按 DCM 键路径触发一次
         # （等价于点击 DCM 按钮：置 `dcm_mode` + `submit_trigger`）。**非 config 键**。
         self.dcm_trigger_at = max(0, int(dcm_trigger_at))
@@ -332,6 +341,7 @@ class Demo:
         # 上次重画时刻（1 s 节流）/ 冻结 seq（进度带翻页用——`mark_busy` 不写 `_lat_*`
         # ⇒ 不影响 §6.5 按 seq 回填配对）。
         self._ovl_stage = ""
+        self._ovl_stage_t0 = 0                   # **本阶段**起点（进度带「已用时」按阶段归零）
         self._ovl_last_ns = 0
         self._ovl_seq = 0
         self.freeze_ns = 0                   # 累计冻结窗（fps 用活动窗口径，O90）
@@ -616,6 +626,14 @@ class Demo:
                     self._freeze_exit()         # 冻结已提前 ⇒ 必须解冻，否则显示停在"处理中"
                 else:
                     self.counters["hq_started"] += 1
+                    # **（2026-10-14 用户裁定）** MFA 取帧结束 ⇒ 进度带切**阶段 2**
+                    # 「RetinexFormer 网络增强中」并**归零**（与 DCM 同口径：阶段切换即归零）。
+                    # ⚠️ MFA 跑在**主线程**内（`_mfa_submit`）⇒ 该段期间 `_freeze_overlay_tick`
+                    # 无法执行 ⇒ **阶段 1 的「已用时」会停在 0.0 s**（如实记录；不为此引入线程）。
+                    if self.hq_mfa_frames > 1:
+                        self._ovl_stage = "stg_enh"
+                        self._ovl_stage_t0 = time.monotonic_ns()
+                        self._ovl_last_ns = 0        # 强制下一次 tick 立刻重画
 
             # 释放 lease（TH1 引用计数归零后 QBUF 回池）
             self.cap.release(f["lease_id"])
@@ -891,8 +909,9 @@ class Demo:
                 self._exit_fullscreen(reason="timeout")     # 30 s 兜底（§3.5）
             # **[DCM 演示路]** 轮询独立进程；产物就绪则贴 REC+框并切 `fullscreen_dcm`
             # （切视图会重置 `fs_enter_ns` ⇒ DCM 视图独享一份超时预算）。
-            # `fullscreen_hq` = HQ 键路径（先显示 HQ 图，就绪后切换）；
-            # `dcm_pending`   = DCM 键路径（不贴 HQ 图，屏幕保持冻结「处理中」）。
+            # `dcm_pending` = **DCM 键路径**（不贴 HQ 图，屏幕保持冻结「处理中」）。
+            # `fullscreen_hq` = HQ 键路径 —— **（2026-10-14 用户裁定）该路径已不再起 DCM
+            # 子进程**，故此处对它是**空调用**（`_dcm_poll` 见 `dcm_proc is None` 即返回）。
             if self.view in ("fullscreen_hq", "dcm_pending"):
                 self._dcm_poll()
             # **[DCM 演示路]（v3.87 追加 37）** `dcm_pending` 期刷新进度带
@@ -900,8 +919,9 @@ class Demo:
             if self.view == "dcm_pending":
                 self._freeze_overlay_tick()
             return True
-        # **[DCM 演示路]（v3.87 追加 37）** HQ 推理期（冻结中、尚未进视图）刷新阶段 1 进度带。
-        if self.frozen and self.dcm_mode and self.view == "normal":
+        # **[DCM 演示路]（v3.87 追加 37）** 推理期（冻结中、尚未进视图）刷新进度带。
+        # **（2026-10-14 用户裁定）** HQ 键路径也刷新（原仅 DCM 路）⇒ 去掉 `dcm_mode` 限制。
+        if self.frozen and self.view == "normal":
             self._freeze_overlay_tick()
         return self.frozen
 
@@ -925,7 +945,8 @@ class Demo:
         if self.dcm_mode:
             self._dcm_enter(res)
             return
-        rc = self.disp.compose_fullscreen(self.hq_rgb, self.hq_seq, self.hq_seq)
+        rc = self.disp.compose_fullscreen(self.hq_rgb, self.hq_seq, self.hq_seq,
+                                          overlay=self._hq_overlay_info(res))
         if rc != 0:
             self._freeze_exit()
             return
@@ -944,7 +965,10 @@ class Demo:
                 "hq_done_ns": int(res.get("done_ns", 0)),
             })
         if self.hdmi is not None:
-            self.hdmi.show_hq(self.hq_rgb, self.hq_seq)     # 2.0× 整幅（§3.5 集合 D）
+            # **（v3.88 界面优化）** 全屏 HQ 的 HDMI 由「直接 2.0× 缩放 HQ 图」改为
+            # **镜像 MIPI 画布**（1.875×）⇒ 两屏**完全一致**（含黑边与中文叠层；§3.5）。
+            # 源 = 刚翻页的那一页 MIPI 画布（`compose_fullscreen` 已置 `_last_idx`）。
+            self.hdmi.mirror(self.hq_seq, self.disp.last_flip_idx())
             if self._cur_trig is not None:
                 self._cur_trig["fs_hdmi_flip_ns"] = self.hdmi.last_flip_ns()
         self._dump_canvas("fullscreen")
@@ -959,11 +983,116 @@ class Demo:
             display_mod._write_png_rgb888(
                 _os.path.join(self.dump_canvas_dir, f"hq_final_{self.hq_seq}.png"),
                 self.hq_rgb.to_bytes(), w, h)
-        # **[DCM 演示路]** HQ 键路径：HQ 图已上屏 ⇒ 观众先看到增强结果，
-        # 同时异步起 DCM 独立进程，产物就绪后再切视图（`_dcm_poll()`）。
-        # **DCM 键路径不走这里**（它在 `_dcm_enter()` 里起进程，且不贴 HQ 图）。
-        if self.dcm_enabled and not self.dcm_mode:
-            self._dcm_submit(w, h)
+        # **[DCM 演示路]** HQ 键路径**不再**自动接 DCM（**2026-10-14 用户裁定**）：
+        # 原实现会在 HQ 图贴出后异步起 DCM 独立进程，就绪后再把 HQ 图换成 DCM 画面
+        # （§14 追加 33 ⑤ 的「HQ 键：原行为不变，DCM 就绪后切换」）——副作用是
+        # （a）只想看增强图也会拉起约 3 GB / 占 NPU 的子进程，（b）增强图约 20 s 后被顶掉，
+        # （c）HQ 键路径无进度提示（`dcm_mode=False` ⇒ `_freeze_overlay_tick` 直接返回）。
+        # ⇒ **DCM 只由「DCM 特征检测」键触发**（`_dcm_enter()` 路径，**未改动**）。
+
+    HQ_QUAL_STEP = 8      # 饱和度的**抽样步长**（px；机制值，非 §10.4 的 config 键）
+    HQ_SAT_LUMA_MIN = 64  # 饱和度的**亮区门限**（`Y = 77R+150G+29B>>8 ≥ 64` 才计入；
+                          # **2026-10-14 用户裁定**：原口径为"仅排除纯黑"，但 `S=(max−min)/max`
+                          # 是**比值** ⇒ 近黑噪点（如 max=2/min=1）S 高达 50% ⇒ **原图侧被噪声抬高**；
+                          # 改亮区口径后与 §14 追加 10 的 GT 标定（亮区口径）**可比**）
+
+    def _hq_saturation(self, orig, enh, w: int, h: int):
+        """**无参考**抽样统计「**亮区**平均饱和度」（原图 / 增强各一份）。
+
+        口径（**非验收依据**，规则 `10-evidence.md` §1）：
+          · 抽样步长 = `HQ_QUAL_STEP`（8 px），在**内容区**内按 8 px 网格取点；
+          · **只计亮区**：`Y = (77R+150G+29B)>>8 ≥ HQ_SAT_LUMA_MIN`（64）—— 与 `osd.Stats`
+            的灰度权重同口径；`Y≥64 ⇒ max(C)≥64>0` ⇒ 分母非零；
+          · **两侧各自独立计数**（原图 / 增强分别统计各自的合格点数），
+            `S = (max−min)/max`，取均值 ×100（%）。
+          · **纯标准库**（交付环境无 numpy，承 §14 追加 10），每触发一次、不在帧路径上。
+        **（2026-10-14 更正）** 原实现把"不合格点"也计入分母 `n`（等于把纯黑当 S=0）⇒ 与注释
+        「纯黑点不计」**不符**，且会**压低**暗帧读数；本次一并对齐为"只计合格点"。
+
+        返回 `(sat_o, sat_e)`；缓冲区不可用**或任一侧无合格点** ⇒ 返回 `None`（调用方按缺项处理）。
+        """
+        try:
+            ob = orig.to_bytes() if hasattr(orig, "to_bytes") else bytes(orig)
+            eb = enh.to_bytes() if hasattr(enh, "to_bytes") else bytes(enh)
+        except Exception:
+            return None
+        if len(ob) < w * h * 3 or len(eb) < w * h * 3:
+            return None
+        st = int(self.HQ_QUAL_STEP)
+        lmin = int(self.HQ_SAT_LUMA_MIN)
+        so = se = 0.0
+        no = ne = 0
+        for y in range(st, h - st, st):
+            row = y * w
+            for x in range(st, w - st, st):
+                i = (row + x) * 3
+                r, g, b = ob[i], ob[i + 1], ob[i + 2]
+                if ((r * 77 + g * 150 + b * 29) >> 8) >= lmin:
+                    mx = r if r > g else g
+                    if b > mx:
+                        mx = b
+                    mn = r if r < g else g
+                    if b < mn:
+                        mn = b
+                    so += (mx - mn) * 100.0 / mx      # Y≥64 ⇒ mx≥64>0，分母非零
+                    no += 1
+                r, g, b = eb[i], eb[i + 1], eb[i + 2]
+                if ((r * 77 + g * 150 + b * 29) >> 8) >= lmin:
+                    mx = r if r > g else g
+                    if b > mx:
+                        mx = b
+                    mn = r if r < g else g
+                    if b < mn:
+                        mn = b
+                    se += (mx - mn) * 100.0 / mx
+                    ne += 1
+        if no == 0 or ne == 0:
+            return None
+        return round(so / no), round(se / ne)
+
+    def _hq_overlay_info(self, res: Dict[str, Any]) -> Dict[str, Any]:
+        """构建全屏 HQ 视图的**中文说明叠层数据**（v3.88 界面优化；供 `compose_fullscreen`）。
+
+        口径（与实时路**逐字同源**）：**原图 = 曲线/色调映射之前的采集帧**（TH3 随结果槽
+        返回的 `orig_rgb` 常驻缓冲），**增强 = 本次 HQ 输出**（`self.hq_rgb`）。三项均为
+        **无参考**量、**非验收依据**（规则 `10-evidence.md` §1）：
+          · 亮度均值 / 暗部占比 / 亮度直方图 —— 由 native `osd.stats` 的**同一份**亮度直方图
+            导出（抽样步长 `ui.osd_stats_decimate`、灰度权重 `77/150/29>>8`，与 `osd.Stats`
+            同口径）；暗部占比 = `Y<16` 的样本占比（%）。
+          · 饱和度 —— 见 `_hq_saturation`（同一 8 px 抽样网格，另走一遍缓冲区）；
+            **（2026-10-14 用户裁定）只统计亮区 `Y≥64`** ⇒ 与 §14 追加 10 的 GT 标定口径可比。
+        统计**每触发一次、不在帧路径上**；任一步失败 ⇒ 对应键留 `None`（叠层少画该行），
+        **不阻塞投屏**（规则 30 §5 同口径）。
+        """
+        info: Dict[str, Any] = {"kind": "hq", "hist_orig": None, "hist_enh": None}
+        for k in ("mean", "dark", "sat"):
+            info[k + "_orig"] = None
+            info[k + "_enh"] = None
+        g = self.est.geom
+        w, h = int(g["hq_w"]), int(g["hq_content_h"])
+        orig = res.get("orig_rgb")
+        if orig is None:
+            return info
+        try:
+            dec = int(self.cfg.get("ui.osd_stats_decimate") or 4)
+            mo, me, n, hb_o, hb_e = _n.osd.stats(orig, self.hq_rgb, w, h, dec)
+            if n:
+                ho = [int.from_bytes(hb_o[4 * i:4 * i + 4], "little") for i in range(256)]
+                he = [int.from_bytes(hb_e[4 * i:4 * i + 4], "little") for i in range(256)]
+                info["mean_orig"], info["mean_enh"] = float(mo), float(me)
+                info["hist_orig"], info["hist_enh"] = ho, he
+                # 暗部占比：Y<16 的样本占比（%）
+                info["dark_orig"] = round(sum(ho[:16]) * 100.0 / n)
+                info["dark_enh"] = round(sum(he[:16]) * 100.0 / n)
+        except Exception:
+            pass
+        try:
+            q = self._hq_saturation(orig, self.hq_rgb, w, h)
+            if q is not None:
+                info["sat_orig"], info["sat_enh"] = q
+        except Exception:
+            pass
+        return info
 
     # ── **[DCM 演示路]（O166）第三视图态：独立进程编排** ────────────────────────────
     # 设计口径（2026-10-13）：
@@ -1048,6 +1177,7 @@ class Demo:
                  "--input", _os.path.join(outdir, "in.png"),
                  "--outdir", outdir,
                  "--q", str(DCM_DEMO_Q), "--score", str(DCM_DEMO_SCORE),
+                 "--drop-classes", ",".join(str(c) for c in DCM_DEMO_DROP_CLASSES),
                  "--timeout", str(DCM_DEMO_PROC_TIMEOUT_S)],
                 stdout=_sp.DEVNULL, stderr=_sp.PIPE, env=env, cwd="/tmp")
         except OSError as e:
@@ -1061,7 +1191,8 @@ class Demo:
         self.dcm_t0_ns = time.monotonic_ns()
         self.counters["dcm_started"] = self.counters.get("dcm_started", 0) + 1
         self.log.event("main", "dcm_demo_submit", result="ok", seq=self.hq_seq,
-                       q=DCM_DEMO_Q, score=DCM_DEMO_SCORE)
+                       q=DCM_DEMO_Q, score=DCM_DEMO_SCORE,
+                       drop_classes=",".join(str(c) for c in DCM_DEMO_DROP_CLASSES) or "-")
 
     def _dcm_poll(self) -> None:
         """轮询 DCM 独立进程；产物就绪则切 `fullscreen_dcm` 视图（REC 重建图 + 检测框）。
@@ -1106,22 +1237,26 @@ class Demo:
             self.log.event("main", "dcm_demo_done", result="fail", seq=self.hq_seq,
                            reason=f"short_raw:{len(src)}")
             return
-        # 贴图：MIPI 用伪 seq（避开 `_fs_seq` 去重——HQ 图刚用过 hq_seq）；HDMI 每次翻页
-        rc_mipi = self.disp.compose_fullscreen(src, self.dcm_seq, self.dcm_seq)
+        # **（2026-10-14 用户裁定）** 组装「压缩·带宽」叠层（读子进程 `report.json`）；
+        # 缺文件 / 缺字段 ⇒ `None`（**不画叠层、仍照常贴图**，不阻塞投屏）。
+        ov = None
+        try:
+            import json as _json
+            with open(_os.path.join(self.dcm_outdir, "report.json"), "rb") as _f:
+                ov = self._dcm_overlay_info(_json.loads(_f.read().decode("utf-8")))
+        except (OSError, ValueError):
+            ov = None
+        # 贴图：MIPI 用伪 seq（避开 `_fs_seq` 去重——HQ 图刚用过 hq_seq）
+        rc_mipi = self.disp.compose_fullscreen(src, self.dcm_seq, self.dcm_seq, overlay=ov)
         if rc_mipi != 0:
             self.dcm_fails += 1
             self.log.event("main", "dcm_demo_done", result="fail", seq=self.hq_seq,
                            reason=f"compose:{starlog.code_name(rc_mipi)}")
             return
         if self.hdmi is not None:
-            # `show_hq` → `_scale_and_flip` → `rga.scale_rgb888` **只接受 Buffer 或 dmabuf fd**
-            # （pybind11 不接受 bytes）⇒ 包成常驻 Buffer 再喂（`Buffer.write()` 写入裸字节）。
-            if self._dcm_buf is None:
-                self._dcm_buf = _n.alloc(len(src))
-            if int(self._dcm_buf.nbytes) < len(src):
-                self._dcm_buf = _n.alloc(len(src))
-            self._dcm_buf.write(src)
-            self.hdmi.show_hq(self._dcm_buf, self.dcm_seq)
+            # **（2026-10-14 用户裁定）** 由 `show_hq`（HQ 图 2.0× 直缩）改为**镜像 MIPI 画布**
+            # （RGA 1.875×）⇒ 与 HQ 路一致、**两屏同画面**（含黑边与「压缩·带宽」叠层，§3.5）。
+            self.hdmi.mirror(self.dcm_seq, self.disp.last_flip_idx())
         self.view = "fullscreen_dcm"
         self.fs_enter_ns = time.monotonic_ns()      # DCM 视图独享一份超时预算
         self.counters["dcm_done"] = self.counters.get("dcm_done", 0) + 1
@@ -1136,6 +1271,38 @@ class Demo:
             self._cur_trig["dcm_elapsed_s"] = round(
                 (self.fs_enter_ns - self.dcm_t0_ns) / 1e9, 3)
         self._dump_canvas("dcm")
+
+    @staticmethod
+    def _dcm_overlay_info(rep: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """从 DCM 子进程的 `report.json` 组装**压缩·带宽叠层**数据（2026-10-14 用户裁定）。
+
+        **口径**（全部**非验收依据**，规则 `10-evidence.md` §1；字段名取自 `dcm_demo.py`）：
+          · `px_bytes` = **原图像素** = DCM 的输入画面（HQ 增强图 960×540 RGB888）
+            —— 直接取 report 的 `rec960_bytes`（= `w·h·3`）；
+          · `stream_bytes` = **DCM 码流** = `total_bytes` = **rANS 熵编码后**的 `y_bytes + z_bytes`
+            ⇒ 这才是**实际需要传输**的量；
+          · `ratio` = 原图像素 ÷ 码流；`saved_pct` = (1 − 码流 ÷ 原图像素) × 100。
+        **（2026-10-14 用户裁定）** 卡片**不再列「特征FP16」（FP16 推算值）与「检出(解码特征)」
+        （框数 / 最高分）两行** ⇒ 本函数**不再产出** `feat_bytes` / `ndet` / `score_max`
+        （**不留死代码**）；检测结果改由**图像上画出的框**呈现。⚠️ 屏上因此**不再有任何精度
+        免责字样** ⇒ 免责说明**只保留在文档**（§3.5 / §14 追加 43·44·46·47）：本演示**无 GT**、
+        屏上数字**不是精度指标**、**不做同屏 A/B**（§8.23）。
+
+        关键字段缺失 ⇒ 返回 `None`（调用方按「无叠层」处理，**不阻塞贴图**）。
+        返回字典含 `kind="dcm"` ⇒ `compose_fullscreen` 据此**分发**到 `_draw_dcm_overlay`
+        （`"hq"` 走 `_draw_hq_overlay`；首版曾写死 HQ 版式，2026-10-14 修复）。
+        """
+        tb = int(rep.get("total_bytes") or 0)
+        hq_b = int(rep.get("rec960_bytes") or 0)
+        if tb <= 0 or hq_b <= 0:
+            return None
+        return {
+            "kind": "dcm",
+            "px_bytes": hq_b,
+            "stream_bytes": tb,
+            "ratio": hq_b / float(tb),
+            "saved_pct": (1.0 - tb / float(hq_b)) * 100.0,
+        }
 
     # ── **[DCM 演示路]（v3.87 追加 37）冻结期进度带** ────────────────────────────
     # 动因：DCM 键路径端到端 ~30 s（HQ ~10 s + 独立进程 ~20 s，其中 14 网 rknn 加载 ~12 s），
@@ -1167,21 +1334,29 @@ class Demo:
         return "stg_codec", "DCM CODEC"
 
     def _freeze_overlay_tick(self) -> None:
-        """冻结期进度带刷新（1 s / 阶段切换节流）；非 DCM 键路径直接返回。"""
-        if self.disp is None or not self.frozen or not self.dcm_mode:
+        """冻结期进度带刷新（1 s / 阶段切换节流）；**HQ / DCM 两路共用**（2026-10-14 用户裁定）。"""
+        if self.disp is None or not self.frozen:
             return
         if self.view == "dcm_pending":
             zh, en = self._dcm_stage_display()
         elif self.view == "normal":
-            zh, en = "stg_enh", "RETINEXFORMER ENHANCING"   # 阶段 1：TH3 推理中
+            # 阶段名由 `_ovl_stage` 驱动（`_freeze_enter` 置）：DCM 路固定 `stg_enh`；
+            # HQ 路由 `stg_mfa` 切到 `stg_enh`（见主循环 MFA 结束处）。
+            zh = self._ovl_stage or "stg_enh"
+            en = "MFA AVERAGING" if zh == "stg_mfa" else "RETINEXFORMER ENHANCING"
         else:
             return
         now = time.monotonic_ns()
+        # **（2026-10-14 用户裁定）** 「已用时」= **本阶段**耗时 ⇒ **阶段切换即归零**
+        # （原为「自冻结起点起的累计」）。阶段名取自 `progress.json` / 视图态，
+        # 变了就把本阶段起点重置为 `now` ⇒ 本次立刻重画并显示 0.0 s。
+        if zh != self._ovl_stage:
+            self._ovl_stage_t0 = now
         if zh == self._ovl_stage and now - self._ovl_last_ns < 1_000_000_000:
             return
         self._ovl_stage = zh
         self._ovl_last_ns = now
-        elapsed = (now - self._frozen_since) / 1e9 if self._frozen_since else 0.0
+        elapsed = (now - self._ovl_stage_t0) / 1e9 if self._ovl_stage_t0 else 0.0
         rc = self.disp.mark_busy(self._ovl_seq, text="PROCESSING ...",
                                  stage_zh=zh, stage_en=en, elapsed_s=elapsed)
         if rc == 0 and self.hdmi is not None:
@@ -1233,21 +1408,25 @@ class Demo:
         self.log.event("display_mipi", "freeze_enter", seq=int(seq))
         if self._cur_trig is not None:
             self._cur_trig["t_freeze_enter_ns"] = self._frozen_since
-        # **[DCM 演示路]（v3.87 追加 37）** DCM 键路径：冻结即进**阶段 1 进度带**
-        # （RetinexFormer 网络增强中 + 已用时 0.0 s，`resnap=True` 存冻结底图）；
-        # HQ 键路径保持旧行为（只画状态行「HQ PROCESSING ...」）。
+        # **[DCM 演示路]（v3.87 追加 37）** 冻结即进**阶段 1 进度带**（`resnap=True` 存冻结底图）。
+        # **（2026-10-14 用户裁定）** **HQ 键路径也改用同风格进度带**（原为只画状态行
+        # 「HQ PROCESSING ...」）⇒ 两路共用一套 `mark_busy(stage_zh=…)` 机制。
+        # 首个阶段：**HQ 路 MFA 开启**（`hq_mfa_frames>1`）⇒「多帧时域平均中」；
+        # 否则（含 DCM 路与 MFA 关闭）⇒「RetinexFormer 网络增强中」。
         busy_ok = False
         if self.disp is not None:
-            if self.dcm_mode:
-                self._ovl_stage = "stg_enh"
-                self._ovl_last_ns = time.monotonic_ns()
-                self._ovl_seq = int(seq)
-                busy_ok = self.disp.mark_busy(
-                    int(seq), text="RETINEXFORMER ENHANCING ...",
-                    stage_zh="stg_enh", stage_en="RETINEXFORMER ENHANCING",
-                    elapsed_s=0.0, resnap=True) == 0
-            else:
-                busy_ok = self.disp.mark_busy(int(seq)) == 0
+            first = "stg_mfa" if (not self.dcm_mode and self.hq_mfa_frames > 1) else "stg_enh"
+            self._ovl_stage = first
+            self._ovl_stage_t0 = time.monotonic_ns()    # 阶段起点 ⇒ 「已用时」从 0 起
+            self._ovl_last_ns = self._ovl_stage_t0
+            self._ovl_seq = int(seq)
+            busy_ok = self.disp.mark_busy(
+                int(seq),
+                text=("HQ PROCESSING ..." if not self.dcm_mode
+                      else "RETINEXFORMER ENHANCING ..."),
+                stage_zh=first,
+                stage_en=("MFA AVERAGING" if first == "stg_mfa" else "RETINEXFORMER ENHANCING"),
+                elapsed_s=0.0, resnap=True) == 0
         if busy_ok:
             self.counters["freeze_flips"] += 1      # 冻结窗内的翻页数（替代作废的 hq_flips_delta）
             if self._cur_trig is not None:
@@ -1255,8 +1434,9 @@ class Demo:
                 self._cur_trig["osd_flip_ns"] = self.disp.last_flip_ns()
                 self._cur_trig["osd_flip_seq"] = self.disp.last_flip_seq()
             # **[DCM 演示路]（v3.87 追加 37）** 冻结帧同步到 HDMI（§3.5 两屏同画面）——
-            # 否则整个冻结期（~30 s）HDMI 停留在进入冻结前的旧帧。HQ 键路径不同步（行为不变）。
-            if self.dcm_mode and self.hdmi is not None:
+            # 否则整个冻结期（HQ ~10 s / DCM ~30 s）HDMI 停留在进入冻结前的旧帧。
+            # **（2026-10-14 用户裁定）** HQ 键路径**也同步**（原仅 DCM 路：属既有的两屏不一致）。
+            if self.hdmi is not None:
                 self.hdmi.mirror(int(seq), self.disp.last_flip_idx())
 
     def _mfa_submit(self, seq_src: int, f: Dict[str, Any]) -> int:

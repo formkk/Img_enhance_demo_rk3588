@@ -61,6 +61,33 @@ DRM_DISP_RECOVER_N = 2
 # 与数据标记和状态行文字均可区分）；本模块不 import osd 的常量（避免环依赖），故照值复刻。
 OVL_EDGE = 0xE0B040
 
+# **（v3.88 界面优化 / HQ 全屏叠层）** 全屏 HQ 结果图上的**中文说明叠层**的像素常量
+# （**机制值，非 §10.4 的 config 键**）；图像 rect 取自几何单源 `hq_paste`（960×540 居中）。
+# **（2026-10-14 用户裁定）** 卡片中文 28 → **24 px**；**底部「处理链」整行取消**
+# ⇒ `HQ_FOOT_H` 与底部绘制块一并删除；**「提升倍数」「灰度熵」「清晰度」删除**，卡片最终**三行**
+# 无参考指标（亮度均值 / 暗部占比 / 饱和度）⇒ 340×170 → **300×144**；**数值改用小一号 PSF**
+# （`osd.text_small`）使墨迹与 24 px 中文等高。
+HQ_OVL_PAD = 8         # 左上角标签 / 右下角指标卡与图像边缘的内缩（px）
+HQ_CARD_W = 300        # 右下角指标卡宽（px；= 最宽一行「暗部占比 62% -> 18%」+ 两侧内边距）
+HQ_CARD_H = 144        # 右下角指标卡高（px；= 三行文字 + 直方图 + 上下内边距）
+
+# **（2026-10-14 用户裁定）** DCM 全屏（第三视图态）「压缩·带宽」卡片的像素常量
+# （机制值，非 §10.4 的 config 键）；卡片 = **三行文字**、**无直方图**。
+DCM_CARD_W = 320       # 宽（px；= 最宽一行「压缩/节省 61x / 98.4%」+ 两侧内边距）
+DCM_CARD_H = 100       # 高（px；= 三行 × 28 + 上下内边距；**2026-10-14 依次去掉「特征FP16」
+#                       与「检出(解码特征)」两行** ⇒ 五行 156 → 四行 128 → **三行 100**）
+DCM_FOOT_FG = 0x50E050  # 图像底部居中一行（黑底**绿字**）的前景色（= OSD 调色板 `C_G` 同值）
+DCM_FOOT_H = 40        # 该行的黑底条高度（px；25 px 墨迹上下各留 7~8 px）
+
+
+def _fmt_kbmb(n: int) -> str:
+    """字节数 → 紧凑文本（**演示口径：1 KB = 1024 B、1 MB = 1024 KB**）。"""
+    if n >= 1 << 20:
+        return "%.2fMB" % (n / float(1 << 20))
+    if n >= 1 << 10:
+        return "%.1fKB" % (n / float(1 << 10))
+    return "%dB" % n
+
 
 def _write_png_rgb888(path: str, rgb: bytes, w: int, h: int) -> int:
     """RGB888 紧凑缓冲 → PNG（8bit RGB，filter 0，**不做任何色调处理**）。
@@ -296,11 +323,16 @@ class DisplayMipi:
         self._lat_t_capture_ns = t_capture_ns if self._lat_flip_seq == seq else 0
         return 0
 
-    def compose_fullscreen(self, hq_rgb, seq: int, hq_seq: int = 0) -> int:
+    def compose_fullscreen(self, hq_rgb, seq: int, hq_seq: int = 0,
+                           overlay: Optional[Dict[str, Any]] = None) -> int:
         """**全屏 HQ 视图**（§3.5）：MIPI 画布 = 黑底 + HQ **1:1 居中**（左右 32 / 上下 30 黑边）。
 
         HQ 内容在 O90 冻结期内**静止** ⇒ 同一 `hq_seq` **只贴图一次**（贴完保持不清屏）；
-        **OSD 与按钮区不画**（§3.5）。返回语义同 `compose_flip`（0 = 已翻页；1 = 本帧被丢弃）。
+        **OSD 指标区与按钮区不画**（§3.5）。返回语义同 `compose_flip`（0 = 已翻页；1 = 本帧被丢弃）。
+
+        **（v3.88 界面优化）** `overlay` 非空 ⇒ 贴图后画**中文说明叠层**（左上角标签 +
+        右下角指标卡 + 底部处理链一行，见 `_draw_hq_overlay`）。叠层画在 `_wb_apply`
+        **之后**——与常规视图 OSD 同口径（面板白平衡**不作用于文字**，见 `_wb_apply` docstring）。
         """
         if not self._inited:
             return E_STATE
@@ -322,6 +354,15 @@ class DisplayMipi:
             # **（v3.87 裁定 O163 补记）** 全屏 HQ 直贴画布 ⇒ 白平衡仍在**画布**上应用
             # （每周期仅一次、冻结期内，不在帧路径上；常规视图已改源窗，见 `_wb_apply`）。
             self._wb_apply(canvas, self.canvas_w * self.canvas_h)
+            # **（v3.88 界面优化）** 中文说明叠层：画在白平衡**之后**（同常规视图 OSD 口径）。
+            # **按 `overlay["kind"]` 分发**：`"hq"` ⇒ HQ 指标卡（`_draw_hq_overlay`）；
+            # `"dcm"` ⇒ DCM「压缩·带宽」卡（`_draw_dcm_overlay`，2026-10-14 用户裁定）。
+            # ⚠️ 首版此处**写死**调 `_draw_hq_overlay` ⇒ DCM 视图错显 HQ 卡片（2026-10-14 实测发现并修复）。
+            if overlay:
+                if overlay.get("kind") == "dcm":
+                    self._draw_dcm_overlay(canvas, overlay)
+                else:
+                    self._draw_hq_overlay(canvas, overlay)
             self._fs_seq = int(hq_seq)
         rc = self._flip(idx, int(seq))
         if rc == 1:
@@ -388,8 +429,10 @@ class DisplayMipi:
         """冻结期**居中高对比进度带**（v3.87 追加 37）：黑底 + 琥珀边线；
 
         第一行 = 阶段名（中文位图优先；缺失回退英文 PSF ×2）；第二行 = 「已用时 X.X 秒」
-        （中文段 + PSF 数字；位图全缺失时回退全英文）。资源缺失一律**不画对应行**，
-        不得因装饰阻塞冻结提示（规则 `30-board-safety.md` §5 同口径）。
+        （中文段位图 28 px + **小一号 PSF 数字**，见下；位图全缺失时回退全英文）。
+        **（2026-10-14 用户裁定）** 数字改用 `text_small`（墨迹 **24 → 20 px**）并按墨迹居中
+        对齐 28 px 中文。资源缺失一律**不画对应行**，不得因装饰阻塞冻结提示
+        （规则 `30-board-safety.md` §5 同口径）。
         """
         cw, ch = self.canvas_w, self.canvas_h
         band_h = min(128, ch)
@@ -413,30 +456,185 @@ class DisplayMipi:
             return
         y2 = band_y + 70
         e_rec, s_rec = zh.get("elapsed"), zh.get("sec")
-        fw = self.osd.font.w if self.osd.font is not None else 0
+        # **（2026-10-14 用户裁定）** 数字段改用**小一号 PSF**（`text_small`）⇒ 数字墨迹
+        # **24 → 20 px**（「缩 4 号」），并按**墨迹居中**对齐 28 px 的中文位图
+        # （`small_dy(28) = 0`）。宽度按**小字体步进**计（`f_num.w · sc_num`）——
+        # ⚠️ 曾按 scale=1 计宽（漏 ×2）⇒ 「秒」位图重叠覆盖小数位（2026-10-13 实测发现）。
+        f_num, sc_num = self.osd.small_metrics()
+        adv = (f_num.w * sc_num) if f_num is not None else 0
+        dy = self.osd.small_dy(28)
         if e_rec is None and s_rec is None:
-            # 位图全缺失 ⇒ 全英文回退（有字体才画；`text` 默认 scale=2 ⇒ 宽 = 字数×fw×2）
-            if fw:
+            # 位图全缺失 ⇒ 全英文回退（有字体才画；同样用小一号字体保持该行风格一致）
+            if adv:
                 en = "ELAPSED %.1f S" % float(elapsed_s)
-                tw = len(en) * fw * 2
-                self.osd.text(canvas, max(0, (cw - tw) // 2), y2 + 2, en, 0xFFFFFF)
+                tw = len(en) * adv
+                self.osd.text_small(canvas, max(0, (cw - tw) // 2), y2 + dy, en, 0xFFFFFF)
             return
-        # 数字段用 `text` 默认 scale=2（墨迹 ≈26 px，与中文位图 28 px 近等高）⇒ 宽 = 字数×fw×2。
-        # ⚠️ 曾按 scale=1 计宽（漏 ×2）⇒ 后续「秒」位图重叠覆盖小数位（2026-10-13 实测发现）。
         num = " %.1f " % float(elapsed_s)
-        num_w = len(num) * fw * 2
+        num_w = len(num) * adv
         total = (e_rec[0] if e_rec else 0) + num_w + (s_rec[0] if s_rec else 0)
         x = max(0, (cw - total) // 2)
         if e_rec is not None:
             w, h, bits = e_rec
             _n.osd.blit_glyph(canvas, cw, ch, x, y2, 1, bits, w, h, 0xFFFFFF)
             x += w
-        if fw:
-            self.osd.text(canvas, x, y2 + 2, num, 0xFFFFFF)
+        if adv:
+            self.osd.text_small(canvas, x, y2 + dy, num, 0xFFFFFF)
             x += num_w
         if s_rec is not None:
             w, h, bits = s_rec
             _n.osd.blit_glyph(canvas, cw, ch, x, y2, 1, bits, w, h, 0xFFFFFF)
+
+    # ── **（v3.88 界面优化）** 全屏 HQ 视图的中文说明叠层 ──────────────────────
+    def _draw_hq_overlay(self, canvas, info: Dict[str, Any]) -> None:
+        """全屏 HQ 结果图上的**中文说明叠层**（v3.88 界面优化；§3.5 新增）。
+
+        三块（坐标取自几何单源的 `hq_paste` = 960×540 居中矩形）：
+          ① **左上角标签**「Retinexformer 增强」（25 px 琥珀，与实时路两窗标签同规格）；
+          ② **右下角指标卡**（**实底**黑块 + 琥珀上下边线）：**三行无参考指标**
+             「原图 → 增强」—— 亮度均值 / 暗部占比（%）/ 饱和度（%）
+             （口径见 `main._hq_overlay_info`；数值用**小一号 PSF** 渲染，与 24 px 中文等高；
+             亮度直方图小图叠在下方，口径同 OSD 直方图）。
+        **（2026-10-14 用户裁定）** 卡片中文由 28 → **24 px**、**数值改用小一号 PSF**；
+        **不再显示「已用时」「提升倍数」「灰度熵」「清晰度」**；**底部「处理链」整行取消**
+        （原 `hq_chain` / `hq_l1` / `hq_l4` 位图记录一并作废）；卡片按行数 → `300×144`。
+
+        **为何指标卡是实底**：native OSD **无 alpha 混合**（只有 1 bpp blit / 实心矩形 / 线）⇒
+        叠在图像上的卡片必然是实底色块（遮住图像右下角，属本项的设计取舍）。
+
+        `info` 键（缺项即不画对应内容，**一律不阻塞投屏**，规则 `30-board-safety.md` §5）：
+        `mean_orig` / `mean_enh` / `dark_orig` / `dark_enh` / `sat_orig` / `sat_enh`
+        / `hist_orig` / `hist_enh`。
+        """
+        cw, ch = self.canvas_w, self.canvas_h
+        zh = (getattr(self.osd, "zh", None) or {}) if self.osd is not None else {}
+        pad = HQ_OVL_PAD
+        px, py, pw, ph = (int(v) for v in self.geom["hq_paste"])
+
+        def _bm(x: int, y: int, name: str, rgb: int, gap: int = 8) -> int:
+            """blit 一条中文位图记录；返回结束 x（缺资源则原样返回，不推进）。"""
+            rec = zh.get(name)
+            if rec is None:
+                return x
+            w, h, bits = rec
+            _n.osd.blit_glyph(canvas, cw, ch, x, y, 1, bits, w, h, rgb)
+            return x + w + gap
+
+        # ── ① 左上角标签（琥珀，与两窗标签同色同规格）──
+        _bm(px + pad, py + pad, "hq_title", osd_mod.C_CAPTION, gap=0)
+
+        # ── ② 右下角指标卡（实底 + 上下边线）──
+        cx = px + pw - pad - HQ_CARD_W
+        cy = py + ph - pad - HQ_CARD_H
+        _n.osd.fill_rect(canvas, cw, ch, cx, cy, HQ_CARD_W, HQ_CARD_H, 0x101010)
+        _n.osd.fill_rect(canvas, cw, ch, cx, cy, HQ_CARD_W, 2, OVL_EDGE)
+        _n.osd.fill_rect(canvas, cw, ch, cx, cy + HQ_CARD_H - 2, HQ_CARD_W, 2, OVL_EDGE)
+        ix, iy = cx + pad, cy + pad
+        # **三行**无参考指标（原图 → 增强）；缺项即不画该行（不阻塞投屏）。
+        # 数值用**小一号** PSF 渲染（`osd.text_small`）⇒ 墨迹与 24 px 中文等高（见 `osd.py`）。
+        rows = (
+            ("hq_mean", " %d -> %d", info.get("mean_orig"), info.get("mean_enh")),
+            ("hq_dark", " %d%% -> %d%%", info.get("dark_orig"), info.get("dark_enh")),
+            ("hq_sat", " %d%% -> %d%%", info.get("sat_orig"), info.get("sat_enh")),
+        )
+        for k, (name, fmt, vo, ve) in enumerate(rows):
+            y = iy + 28 * k
+            x = _bm(ix, y, name, osd_mod.C_TEXT, gap=6)
+            if vo is not None and ve is not None:
+                self.osd.text_small(canvas, x, y + self.osd.small_dy(24), fmt % (vo, ve),
+                                    osd_mod.C_HIST_ENH)
+        self._hist_small(canvas, cx + pad, cy + 96, HQ_CARD_W - 2 * pad, HQ_CARD_H - 104,
+                         info.get("hist_orig"), info.get("hist_enh"))
+
+    def _hist_small(self, canvas, x0: int, y0: int, w: int, h: int,
+                    hist_o, hist_e) -> None:
+        """指标卡内的**亮度直方图小图**（原图灰 / 增强绿叠加；口径同 `osd._histogram`）。
+
+        `hist_o` / `hist_e` 缺失（资源或统计不可用）⇒ 不画，**不阻塞投屏**。
+        """
+        if not hist_o or not hist_e or w <= 2 or h <= 2:
+            return
+        peak = max(1, max(hist_o), max(hist_e))
+        inner = w - 2
+        for b in range(256):
+            col = x0 + 1 + int(b / 256.0 * inner)
+            ho = int(hist_o[b] / peak * (h - 2))
+            he = int(hist_e[b] / peak * (h - 2))
+            if ho:
+                _n.osd.fill_rect(canvas, self.canvas_w, self.canvas_h, col, y0 + h - 1 - ho,
+                                 1, ho, osd_mod.C_HIST_ORIG)
+            if he:
+                _n.osd.fill_rect(canvas, self.canvas_w, self.canvas_h, col, y0 + h - 1 - he,
+                                 1, he, osd_mod.C_HIST_ENH)
+
+    # ── **（2026-10-14 用户裁定）** DCM 全屏（第三视图态）的「压缩·带宽」叠层 ──────────
+    def _draw_dcm_overlay(self, canvas, info: Dict[str, Any]) -> None:
+        """DCM 全屏的**压缩·带宽说明叠层**（2026-10-14 用户裁定；§3.5 第三视图态）。
+
+        两块（坐标取自几何单源的 `hq_paste` = 960×540 居中矩形；与 HQ 叠层同规格）：
+          ① **图像底部居中一行**（**黑底绿字**）「**DCM码流重建图**」（**2026-10-14 用户裁定：
+             取消原左上角标签**，改在图像底部注明"此画面由码流重建"）；
+          ② **右下角卡片**（**实底**黑块 + 琥珀上下边线）**三行**：原图像素 / DCM码流 /
+             压缩·节省。数值用**小一号 PSF**（`osd.text_small`）+ `small_dy(24)`，
+             与 24 px 中文**墨迹垂直居中**。
+
+        **口径**（详见 `main._dcm_overlay_info`）：`原图像素` = DCM 的输入画面（HQ 增强图
+        960×540 RGB888）；`DCM码流` = **rANS 熵编码后**的 `y_bytes+z_bytes`（= **实际传输量**）；
+        `压缩` = 原图像素÷码流、`节省` = 1 − 码流÷原图像素。
+        **（2026-10-14 用户裁定）** 卡片**依次去掉「特征FP16」行与「检出(解码特征)」行** ⇒
+        只留**实测 / 直接可读**的量：前者是 FP16 未压缩口径的**推算**（非实测产物），后者**屏上无说明、
+        易被误当成精度指标** ⇒ **检测结果改由"图像上画出的框"呈现**。
+        ⚠️ 由此屏上**不再有任何精度免责字样** ⇒ 免责说明**只保留在文档**（§3.5 / §14 追加 43·44·46·47）：
+        本演示**无 GT**、屏上数字**不是精度指标**、**不做同屏 A/B**（§8.23）——**讲解时须口头说明**。
+
+        `info` 键：`px_bytes` / `stream_bytes` / `ratio` / `saved_pct`；
+        缺项即不画对应内容，**不阻塞贴图**（规则 `30-board-safety.md` §5）。
+        """
+        cw, ch = self.canvas_w, self.canvas_h
+        zh = (getattr(self.osd, "zh", None) or {}) if self.osd is not None else {}
+        pad = HQ_OVL_PAD
+        px, py, pw, ph = (int(v) for v in self.geom["hq_paste"])
+
+        def _bm(x: int, y: int, name: str, rgb: int, gap: int = 8) -> int:
+            rec = zh.get(name)
+            if rec is None:
+                return x
+            w, h, bits = rec
+            _n.osd.blit_glyph(canvas, cw, ch, x, y, 1, bits, w, h, rgb)
+            return x + w + gap
+
+        # ── ① 图像底部**居中**一行：**黑底绿字**「DCM码流重建图」（2026-10-14 用户裁定）——
+        # 用以注明"屏上这张画面是由码流重建出来的"（**左上角标签已按用户要求去掉**）。
+        rec = zh.get("dc_foot")
+        if rec is not None:
+            w, h, bits = rec
+            bw = w + 2 * pad
+            bx, by = px + (pw - bw) // 2, py + ph - DCM_FOOT_H
+            _n.osd.fill_rect(canvas, cw, ch, bx, by, bw, DCM_FOOT_H, 0x000000)
+            _n.osd.blit_glyph(canvas, cw, ch, bx + pad, by + (DCM_FOOT_H - h) // 2, 1,
+                              bits, w, h, DCM_FOOT_FG)
+
+        # ── ② 右下角卡片（实底 + 上下边线）──
+        cx = px + pw - pad - DCM_CARD_W
+        cy = py + ph - pad - DCM_CARD_H
+        _n.osd.fill_rect(canvas, cw, ch, cx, cy, DCM_CARD_W, DCM_CARD_H, 0x101010)
+        _n.osd.fill_rect(canvas, cw, ch, cx, cy, DCM_CARD_W, 2, OVL_EDGE)
+        _n.osd.fill_rect(canvas, cw, ch, cx, cy + DCM_CARD_H - 2, DCM_CARD_W, 2, OVL_EDGE)
+        n_px = info.get("px_bytes")
+        n_st, ratio, saved = info.get("stream_bytes"), info.get("ratio"), info.get("saved_pct")
+        rows = (
+            ("dc_px", " %s" % _fmt_kbmb(n_px) if n_px else None),
+            ("dc_stream", " %s" % _fmt_kbmb(n_st) if n_st else None),
+            ("dc_ratio", " %.0fx / %.1f%%" % (ratio, saved)
+             if ratio is not None and saved is not None else None),
+        )
+        ix, iy = cx + pad, cy + pad
+        for k, (name, val) in enumerate(rows):
+            y = iy + 28 * k
+            x = _bm(ix, y, name, osd_mod.C_TEXT, gap=6)
+            if val is not None:
+                self.osd.text_small(canvas, x, y + self.osd.small_dy(24), val,
+                                    osd_mod.C_HIST_ENH)
 
     def dump_png(self, path: str, slot: int = 0, idx: Optional[int] = None) -> int:
         """把**链路原样**的合成画布导出为 PNG（**零色调后处理**；`slot` 0 = MIPI、1 = HDMI）。

@@ -157,6 +157,12 @@ class KeyframeInfer:
         self._last_run_ns = 0
         # 输入缓冲：NHWC float32 [0,255]（H×W×3×4 字节）——**只由 worker 触碰**
         self._in_f32 = bytearray(self.hq_w * self.hq_h * 3 * 4)
+        # **（v3.88 界面优化）** 「**曲线/色调映射之前**的采集帧」内容区常驻缓冲
+        # （`hq_w × hq_content_h` RGB888；`_n.alloc` 分配，首次触发时懒建）。
+        # 用途 = 全屏 HQ 视图指标卡的「原图」侧统计（亮度均值 / 直方图）；**每触发拷一次、
+        # 不在帧路径上**。随结果槽 `orig_rgb` 交给 `main.py`，由 native `osd.stats` 与
+        # 增强图 `hq_rgb` 同口径统计（抽样步长 = `ui.osd_stats_decimate`）。
+        self._orig_rgb = None
         # ── worker 线程 ────────────────────────────────────────────────
         self._th: Optional[threading.Thread] = None
         self._mtx = threading.Lock()                  # 保护 `_slot` / `_runs` / `_busy`
@@ -598,6 +604,20 @@ class KeyframeInfer:
             rc, out, run_ns = E_NPU, b"", 0
             try:
                 hq_rgb = _n.rga.hq(self.geom)
+                # **（v3.88 界面优化）** 在曲线/色调映射**之前**把内容区拷进常驻缓冲 ⇒
+                # 供全屏 HQ 视图指标卡作「原图」统计。**每触发一次、不在帧路径上**
+                # （960×540×3 ≈ 1.5 MB memcpy，量级同 `_apply_input_curve` 内部那次拷贝）。
+                # 失败**不得影响**链路（统计只是装饰）：异常吞掉、`orig_rgb` 留 None。
+                try:
+                    if self._orig_rgb is None:
+                        self._orig_rgb = _n.alloc(self.hq_w * self.hq_content_h * 3)
+                    _row = self.hq_w * 3
+                    _off = self.hq_pad_top * _row
+                    _full = (hq_rgb.to_bytes() if hasattr(hq_rgb, "to_bytes")
+                             else bytes(hq_rgb))
+                    self._orig_rgb.write(_full[_off:_off + self.hq_content_h * _row])
+                except Exception:
+                    self._orig_rgb = None
                 if self.curve_src is not None:
                     hq_rgb = self._apply_input_curve(hq_rgb)
                 _n.rknn_hq.pack_rgb888_nhwc_f32(hq_rgb, self._in_f32, self.hq_w, self.hq_h)
@@ -627,6 +647,10 @@ class KeyframeInfer:
                         "active_shape": SHAPE_ENUM.get(f"{self.hq_w}x{self.hq_h}", 0),
                         "done_ns": done_ns,
                         "shape": (self.hq_w, self.hq_content_h),
+                        # **（v3.88 界面优化）** 曲线/色调映射**之前**的采集帧内容区
+                        # （常驻缓冲；供全屏 HQ 视图指标卡作「原图」统计）。可能为 None
+                        # （拷贝失败）⇒ 调用方按缺项处理，不阻塞投屏。
+                        "orig_rgb": self._orig_rgb,
                     }
                     self._runs += 1
                     self._last_run_ns = run_ns

@@ -38,14 +38,18 @@ import curve_estim as curve_mod
 # 坐标一律取自 `OsdRenderer` 在构造时解析的几何单源，取值来源 = §10.4 的
 # `display.mipi_canvas` / `ui.osd_metrics_px` / `ui.osd_status_row_px` / `ui.osd_plot_px` /
 # `ui.button_layout`（**键表零增删**）。
-BUTTON_LABELS = {"trigger_hq": "TRIGGER HQ", "reset_exit": "EXIT"}
-#                                            **（v3.86 裁定 O98）第三键标签由 `RESET/EXIT` 改为 `EXIT`**：
-#                                            短按软复位已自演示 UI 移除 ⇒ 只剩长按退出。**键名 `reset_exit` 不变**（§10.4 零改动）。
-# **（v3.86 裁定 O114）** 退出键标签的**中文段**由预渲染位图给出（板端 PSF 无 CJK 字形）：
-# 键名 → 位图记录名；屏上读数 = `BUTTON_LABELS[name]` + `BTN_ZH_GAP` px + 该位图（即「EXIT (长按3秒)」）。
-# 该提示的意义 = 把**长按 3 s** 这个动作要求写在键上（`ui.reset_hold_ms`，§10.6-C）。
-BUTTON_ZH_SUFFIX = {"reset_exit": "btn_exit"}
-BTN_ZH_GAP = 12              # ASCII 段与中文位图之间的间距（px）
+# **（v3.88 界面优化 / 按钮全中文）** 三个按钮的标签改为**全中文**：原 ASCII 标签
+# （`TRIGGER HQ` / 回退文本 `DCM_DEMO` / `EXIT`）与「EXIT + (长按3秒)」两段式方案
+# （v3.86 裁定 O114 的 `BUTTON_ZH_SUFFIX`）**一并作废**——屏上只出现中文位图，
+# 读数 = `BUTTON_ZH` 映射的预渲染位图（`btn_hq` / `btn_dcm` / `btn_exit`，
+# 见 `tools/gen_osd_zh_bitmap.py`）。理由：按钮是演示 UI 的门面，ASCII 与中文混排
+# 风格不齐；板端 PSF 无 CJK 字形 ⇒ 全中文只能走既有预渲染位图方案（运行期零字体依赖）。
+# 按键语义（§3.4）：触发 HQ 路高质量增强 / DCM 演示路特征检测 / 长按 3 秒退出
+# （`ui.reset_hold_ms`，§10.6-C；「长按3秒」要求按 O114 原意保留在键上）。
+# **位图缺失时的回退**：不画任何文字（装饰缺失不阻塞主链路；键区底色/描边仍在，
+# 命中判定只读 config，不受影响）。
+BUTTON_ZH = {"trigger_hq": "btn_hq", "dcm_demo": "btn_dcm", "reset_exit": "btn_exit"}
+BTN_ZH_GAP = 12              # 中文位图与键边缘的最小间距（px）
 
 # 颜色（RGB888）
 C_BG = 0x101010
@@ -70,7 +74,7 @@ C_CAPTION = 0xE0B040
 CURVE_ITERS = 8
 C_CURSOR_CORE = 0x101010     # 十字中心点（与浅色十字形成对比）
 
-# 2 键（§3.4：触发HQ / 复位·退出）的文字标签由 `BUTTON_LABELS` 给出，
+# 3 键（§3.4：触发HQ / DCM演示 / 长按退出）的文字标签 = `BUTTON_ZH` 映射的中文位图，
 # **位置与宽度**取自 `ui.button_layout`（几何单源），不再在此写死。
 
 # ── 图示区两行中文说明（**v3.86 裁定 O101**）──────────────────────────────
@@ -87,7 +91,27 @@ ZH_LABELS = {"curve": "色调映射曲线", "hist": "亮度直方图",
              # **（v3.87 追加 37 / DCM 演示路进度带）** 冻结期居中进度带的三行阶段名 + 第二行
              # 「已用时 X.X 秒」的中文段（X.X 由 PSF 渲染）；资源缺失 ⇒ 进度带回退英文 PSF 文本。
              "stg_enh": "RetinexFormer 网络增强中", "stg_codec": "DCM 特征编解码中",
-             "stg_detect": "特征域目标检测中", "elapsed": "已用时", "sec": "秒"}
+             "stg_detect": "特征域目标检测中", "elapsed": "已用时", "sec": "秒",
+             # **（v3.88 界面优化 / 窗口中文标签）** 上部两窗左上角的中文标签（§3.4 的
+             # 原图窗 / 增强窗）。键名与资源记录名逐字一致；墨迹高 25 px 与两块图名一致。
+             # **（2026-10-14 用户裁定）** 增强窗标签改为「ZDE++实时增强」（点名实时路所用的曲线模型）。
+             "win_orig": "原始图像", "win_enh": "ZDE++实时增强",
+             # **（v3.88 界面优化 / 三键全中文；2026-10-14）** 按钮区标签**全中文**
+             # （原 ASCII「TRIGGER HQ / DCM_DEMO / EXIT」与 O114 的「ASCII 段 + 中文后缀」两段式**作废**）
+             # ⇒ 由 `BUTTON_ZH` 映射注入 `_buttons()`（与 `ZH_LABELS` 分开，因按钮是"整键一条位图"）。
+             "btn_hq": "高质量增强", "btn_dcm": "DCM 特征检测", "btn_exit": "退出（长按3秒）",
+             # **（v3.88 界面优化 / HQ 全屏叠层；2026-10-14）** 左上角标签 + 右下角指标卡三行
+             # （卡片中文 28 → **24 px**；「已用时 / 提升倍数 / 灰度熵 / 清晰度」与底部「处理链」整行
+             # 均已按用户裁定删除 ⇒ 相应记录作废）。
+             "hq_title": "Retinexformer 增强",
+             "hq_mean": "亮度均值", "hq_dark": "暗部占比", "hq_sat": "饱和度",
+             # **（v3.88 界面优化 / DCM 全屏「压缩·带宽」叠层；2026-10-14 四次裁定）**
+             # 底部居中一行（黑底绿字）+ 卡片三行；`dc_title`（左上角标签）与
+             # `dc_feat`（特征FP16）、`dc_det`（检出(解码特征)）均已按用户裁定删除。
+             "dc_foot": "DCM码流重建图",
+             "dc_px": "原图像素", "dc_stream": "DCM码流", "dc_ratio": "压缩/节省",
+             # **（2026-10-14）** HQ 路等待期进度带的阶段 1（多帧时域平均）；阶段 2 复用 `stg_enh`。
+             "stg_mfa": "多帧时域平均中"}
 ZH_BITMAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "osd_zh_labels.bin")
 ZH_CAPTION_PAD = 6      # 说明位图左缩进（与图示区内边距 `pad` 同值）
 ZH_CAPTION_GAP = 6      # 说明位图与图元之间的**最小间距**（px）
@@ -134,6 +158,16 @@ FONT_CANDIDATES = (
     "/usr/share/consolefonts/Lat7-Fixed14.psf.gz",
     "/usr/share/consolefonts/Lat15-VGA16.psf.gz",
     "/usr/share/consolefonts/Uni2-TerminusBold18x10.psf.gz",
+)
+
+# **（2026-10-14 用户裁定）** **小一号**的 PSF 候选，供「HQ 全屏指标卡的数值」专用：
+# 主字体（`Lat7-Terminus18x10`，gh=18）在 `scale=2` 下墨迹 ≈26 px，**高于卡内 24 px 的中文**
+# ⇒ 换用 `gh=16` 的一档（`scale=2` ⇒ 字格 16×32、墨迹 ≈22 px）使其与中文等高。
+# 板上实测该字体存在（`Lat7-Terminus16.psf.gz`，PSF1 gw=8 gh=16）；缺失 ⇒ **回退主字体**。
+FONT_CANDIDATES_SMALL = (
+    "/usr/share/consolefonts/Lat7-Terminus16.psf.gz",
+    "/usr/share/consolefonts/Lat7-Fixed14.psf.gz",
+    "/usr/share/consolefonts/CyrAsia-Terminus16.psf.gz",
 )
 
 
@@ -197,8 +231,8 @@ class Font:
         return self.glyphs[idx]
 
 
-def _find_font() -> Optional[Font]:
-    for p in FONT_CANDIDATES:
+def _find_font(candidates: Sequence[str] = FONT_CANDIDATES) -> Optional[Font]:
+    for p in candidates:
         if os.path.exists(p):
             try:
                 return Font.load(p)
@@ -301,18 +335,57 @@ class OsdRenderer:
         self.btn_keys = tuple(g["button_keys"])
         self.zh = load_zh_labels()          # 图示区中文说明位图（资源缺失则空表 ⇒ 不画）
         self.font = _find_font()
+        # **（2026-10-14 用户裁定）** **小一号**字体（`FONT_CANDIDATES_SMALL`）供指标卡数值专用；
+        # 缺失 ⇒ 留 None，`text_small` 回退主字体（**不阻塞**）。
+        self.font_small = _find_font(FONT_CANDIDATES_SMALL)
         # 字号来自 `ui.osd_font_px`（M2 键；未定稿时用 §3.4 的 36/26 做比例缩放）
         px = cfg.get("ui.osd_font_px")
-        self.scale = self._scale_for(px if isinstance(px, (list, tuple)) else (36, 26))
+        _px = px if isinstance(px, (list, tuple)) else (36, 26)
+        self.scale = self._scale_for(_px)
+        self.scale_small = self._scale_for(_px, self.font_small) if self.font_small else self.scale
         self.decimate = cfg.get("ui.osd_stats_decimate") or 4
         self.stats_hz = cfg.get("ui.osd_stats_hz") or 1
         self.stats = Stats(self.decimate, self.stats_hz)
 
-    def _scale_for(self, px: Sequence[int]) -> int:
-        if not self.font:
+    def _scale_for(self, px: Sequence[int], font: Optional["Font"] = None) -> int:
+        f = font if font is not None else self.font
+        if not f:
             return 1
         want = int(px[0]) if px else 36
-        return max(1, int(round(want / self.font.h)))
+        return max(1, int(round(want / f.h)))
+
+    @staticmethod
+    def _ink_rows(f: "Font", ch: str) -> Tuple[int, int]:
+        """字形**墨迹的上下行号**（含端点，字体自身坐标）；全空 ⇒ `(0, f.h-1)`。"""
+        g = f.glyph(ch)
+        bpr = (f.w + 7) // 8
+        top = bot = None
+        for ry in range(f.h):
+            if any(g[ry * bpr:(ry + 1) * bpr]):
+                if top is None:
+                    top = ry
+                bot = ry
+        return (0, f.h - 1) if top is None else (top, bot)
+
+    def small_metrics(self) -> Tuple[Optional["Font"], int]:
+        """`text_small` 实际使用的 **(字体, scale)**；小字体缺失 ⇒ **回退主字体**（与 `text` 一致）。"""
+        if self.font_small is None:
+            return self.font, self.scale
+        return self.font_small, self.scale_small
+
+    def small_dy(self, ref_ink_h: int) -> int:
+        """小字体文本相对**中文位图**的 y 偏移（使两者**墨迹垂直居中**）。
+
+        中文位图 blit 在 `y` ⇒ 墨迹占 `[y, y+ref_ink_h)`、中点 `y + ref_ink_h/2`；
+        小字体画在 `y+dy` ⇒ 墨迹中点 `y + dy + (t+b+1)·scale_small/2`（`t`/`b` = 字形墨迹上下行）
+        ⇒ `dy = ref_ink_h/2 − (t+b+1)·scale_small/2`（取整）。以数字 `0` 为**代表字形**。
+        调用点：HQ 指标卡（`ref_ink_h=24`）、DCM 进度带「已用时」（`ref_ink_h=28`）。
+        """
+        f, sc = self.small_metrics()
+        if f is None:
+            return 0
+        t, b = self._ink_rows(f, "0")
+        return int(round(ref_ink_h / 2.0 - (t + b + 1) * sc / 2.0))
 
     # ── 文本 ───────────────────────────────────────────────────────────
     def text(self, canvas, x: int, y: int, s: str, rgb: int = C_TEXT, scale: Optional[int] = None) -> int:
@@ -324,6 +397,23 @@ class OsdRenderer:
             _n.osd.blit_glyph(canvas, self.cw, self.ch, cx, y, sc, self.font.glyph(ch),
                               self.font.w, self.font.h, rgb)
             cx += self.font.w * sc
+        return cx
+
+    def text_small(self, canvas, x: int, y: int, s: str, rgb: int = C_TEXT) -> int:
+        """用**小一号**的 PSF 字体渲染文本（**HQ 指标卡数值 / DCM 进度带数字专用**；v3.88）。
+
+        目的 = 让数值的**墨迹高度降一档**（主字体 `scale=2` 下数字墨迹 24 px；小字体 20 px），
+        并与同行的中文位图做**墨迹垂直居中**（偏移见 `small_dy`）。
+        字体缺失 ⇒ **回退主字体**，行为与 `text` 一致。返回结束 x。
+        """
+        f, sc = self.small_metrics()
+        if not f:
+            return -1
+        cx = x
+        for ch in s:
+            _n.osd.blit_glyph(canvas, self.cw, self.ch, cx, y, sc, f.glyph(ch),
+                              f.w, f.h, rgb)
+            cx += f.w * sc
         return cx
 
     def blit_zh(self, canvas, x: int, y: int, name: str, rgb: int = C_TEXT) -> int:
@@ -346,10 +436,26 @@ class OsdRenderer:
         _n.osd.fill_rect(canvas, self.cw, self.ch, 0, self.osd_y, self.cw, self.osd_h, C_BG)
         _n.osd.fill_rect(canvas, self.cw, self.ch, 0, self.btn_y, self.cw, self.btn_h, C_BG)
         self._status_row(canvas, state)
-        # **（v3.86 追加 97）** `status_only` ⇒ 跳过图示区（曲线图 + 直方图 + 图名位图）
+        # **（v3.88 界面优化）** 上部两窗左上角的中文标签（原图窗「原始图像」/ 增强窗「增强图像」）：
+        # 窗口图像由 native `rga_canvas_compose_to` 先合成、OSD 后画在其上（`display_mipi.compose_flip`）
+        # ⇒ 标签画在本方法内即**自动位于图像之上**；HDMI 为画布 1.875× 镜像 ⇒ 两屏同现。
+        # 窗口 rect 取自几何单源（`win_orig` / `win_enh`，`curve_estim.resolve_geometry`）；
+        # 资源缺失 ⇒ 不画（不阻塞主链路）。`status_only` 时同图示区一并跳过。
         if not self.status_only:
             self._plot_area(canvas, state)
+            self._window_labels(canvas)
         self._buttons(canvas)
+
+    def _window_labels(self, canvas) -> None:
+        """两窗左上角中文标签（1bpp 预渲染位图，scale=1；色取图名同款 `C_CAPTION`）。"""
+        for name in ("win_orig", "win_enh"):
+            rec = self.zh.get(name)
+            if not rec:
+                continue
+            wx, wy = self.g[name][0], self.g[name][1]
+            w, h, bits = rec
+            _n.osd.blit_glyph(canvas, self.cw, self.ch,
+                              wx + ZH_CAPTION_PAD, wy + ZH_CAPTION_PAD, 1, bits, w, h, C_CAPTION)
 
     def _zh_status(self, canvas, x: int, y: int, name: str) -> int:
         """把状态行的**中文标签**（1bpp 预渲染位图）blit 到 `(x, y)` 并返回**结束 x**。
@@ -527,29 +633,23 @@ class OsdRenderer:
                 _n.osd.fill_rect(canvas, self.cw, self.ch, px, y0 + h - pad - he, 1, he, C_HIST_ENH)
 
     def _buttons(self, canvas) -> None:
-        """按钮区 2 键：**ASCII 标签 +（可选）预渲染中文位图后缀**。
+        """按钮区三键：**全中文标签**（预渲染 1bpp 位图，v3.88 界面优化）。
 
-        **（v3.86 裁定 O114）** 退出键的「EXIT」是 ASCII、其后的「(长按3秒)」是中文位图
-        （板端 PSF 无 CJK 字形，见 `BUTTON_ZH_SUFFIX`）⇒ 两者按**合计宽度居中**后依次 blit；
-        位图缺失时**只画 ASCII 段**（装饰缺失不阻塞主链路）。
+        每个键按位图**合计宽度居中**（水平居中 + 按钮区垂直居中）；
+        位图缺失时**只画键区底色/描边、不画文字**——装饰缺失不阻塞主链路
+        （命中判定只读 `ui.button_layout`，不受影响）。
         """
         for name, bx, bw in self.btn_keys:
-            label = BUTTON_LABELS.get(name, name.upper())
-            rec = self.zh.get(BUTTON_ZH_SUFFIX.get(name, ""))
             _n.osd.fill_rect(canvas, self.cw, self.ch, bx + 2, self.btn_y + 2,
                              bw - 4, self.btn_h - 4, C_BTN)
             _n.osd.fill_rect(canvas, self.cw, self.ch, bx + 2, self.btn_y + 2, bw - 4, 1, C_BTN_EDGE)
-            if not self.font:
+            rec = self.zh.get(BUTTON_ZH.get(name, ""))
+            if not rec:
                 continue
-            cell_h = self.font.h * self.scale
-            tw = len(label) * self.font.w * self.scale + (BTN_ZH_GAP + rec[0] if rec else 0)
-            x = bx + (bw - tw) // 2
-            y = self.btn_y + (self.btn_h - cell_h) // 2
-            x = self.text(canvas, x, y, label, C_TEXT)
-            if rec:
-                w, h, bits = rec
-                _n.osd.blit_glyph(canvas, self.cw, self.ch, x + BTN_ZH_GAP,
-                                  y + max(0, (cell_h - h) // 2), 1, bits, w, h, C_TEXT)
+            w, h, bits = rec
+            x = bx + (bw - w) // 2
+            y = self.btn_y + (self.btn_h - h) // 2
+            _n.osd.blit_glyph(canvas, self.cw, self.ch, x, y, 1, bits, w, h, C_TEXT)
 
     def draw_cursor(self, canvas, pos) -> None:
         """把指针位置画进画布（**v3.85 裁定 O81：光标每帧画进画布**；镜像下两屏都出现）。
