@@ -220,7 +220,7 @@ def scenario_hq(args):
     if args.capture_mipi and not dump_dir:
         # §13「OSD」行的 `--capture-mipi`：常态 1 张 + HQ 期 1 张（**链路原样**、零色调后处理）。
         # 证据位置落 `reports/`（规则 10-evidence §4；**v3.86 裁定 O102 后 `storage.dir` 已取消**）。
-        dump_dir = os.path.join(repo_root, 'reports', 'hq_path_canvas')
+        dump_dir = os.path.join(repo_root, 'review', 'hq_path_canvas')
 
     d = main_mod.Demo(cfg, logger, frames=int(args.frames),
                       trigger_times=triggers, trigger_interval_s=float(args.trigger_interval_s),
@@ -1056,7 +1056,7 @@ def main():
     p.add_argument('--trigger-interval-s', type=float, default=15.0,
                    help='hq 场景的触发注入间隔（秒；须 ≥ HQ 单次耗时）')
     p.add_argument('--dump-canvas-dir', default='',
-                   help='hq 场景导图目录（链路原样 PNG；缺省 + `--capture-mipi` 时落 reports/hq_path_canvas）')
+                   help='hq 场景导图目录（链路原样 PNG；缺省 + `--capture-mipi` 时落 review/hq_path_canvas）')
     p.add_argument('--breakdown', action='store_true', help='延迟分两段上报（§6.5）')
     # **[验证用钩子] §8.1 ①-2 的子项拆分（v3.86 追加 96）** —— 透传到 `main.py`（**非 config 键**）。
     # 变体约定（`docs/evidence/subsplit-attribution.md`）：
