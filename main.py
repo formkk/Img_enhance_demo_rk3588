@@ -121,10 +121,21 @@ DCM_DEMO_SCORE = 0.50            # 检测置信度阈值（可漏检不可误检
 # `board_detect.fast_rcnn_decode` 里**把该类的分数清零** ⇒ 该类**永不通过阈值**。
 # 动因 = 暗箱场景误检出**不可能存在的类**（板上实测：bed 0.72 / couch 0.94 / potted plant 0.46）。
 # 取值 **59 = bed、57 = couch**（potted plant 0.46 已被 0.50 阈值自然滤除，故未列入）。
+# **（O167，2026-10-20 用户裁定）追加 0 = person**：当前演示场景（背包、无真人）**4 次实采**
+# person **0.92 / 0.94 / 0.85 / 0.96（4/4 复现）**，框落在背包上；参照 10-15 的 10 次触发里
+# person 出现 **7 次**（0.60–0.99）⇒ 与阈值 0.50 的取值理由「**可漏检不可误检**」**相悖**。
+# **已知代价（如实）** = 演示**不再展示「人」类检出**（§13「弱光人脸」场景受影响）。
+# 详见主基准 §15 **O167** / §14 **追加 67** / §3.5 追加 67 补记。
 # ⚠️ 这仍是**黑名单**（打地鼠式）—— 同族「家具类」还有 chair(56) / bench(13) / dining table(60) /
 # toilet(61) 等，日后若冒出仍会误检；要一次压净应改用**白名单**（只保留演示关心的类）。
-DCM_DEMO_DROP_CLASSES = (59, 57)
+DCM_DEMO_DROP_CLASSES = (59, 57, 0)
 DCM_DEMO_PROC_TIMEOUT_S = 90     # 子进程硬超时（秒；超时即杀，防卡死主链）
+# **（2026-10-15 用户指示）DCM 结果屏的无操作兜底超时**：**结果出来后**（视图 = `fullscreen_dcm`）
+# 自动退出改为 **60 s**（原与 HQ 共用 `ui.fullscreen_timeout_ms` = 30 s）。
+# 动因 = DCM 结果屏信息量大（重建图 + 检测框 + 码流/节省数据），30 s 不够讲解；
+# **只放宽结果屏**：HQ 全屏仍 30 s、DCM **处理中**（`dcm_pending`）仍 30 s（避免拉长"卡住"观感）。
+# **机制值、非 config 键**（与同组 `DCM_DEMO_*` 一致，§10.4 零改动）。
+DCM_DEMO_RESULT_TIMEOUT_MS = 60000
 DCM_DEMO_SEQ_BASE = 10 ** 9      # 伪 seq 基址：避开真实 V4L2 seq 空间，
 #   同时避开 `compose_fullscreen` 的「同一 hq_seq 只贴图一次」去重（HQ 图刚用过 hq_seq）
 DCM_DEMO_RAW = "rec_box_960x540.raw"   # 子进程产物：960×540 RGB888 裸字节（供显示）
@@ -904,9 +915,13 @@ class Demo:
             if res is not None:
                 self._enter_fullscreen(res)
         if self.view in ("fullscreen_hq", "fullscreen_dcm", "dcm_pending"):
-            ms = int(self.cfg.require_final("ui.fullscreen_timeout_ms"))
+            # **（2026-10-15 用户指示）** DCM **结果屏**（`fullscreen_dcm`）的兜底超时**单独放宽到 60 s**
+            # （`DCM_DEMO_RESULT_TIMEOUT_MS`，**机制值、非 config 键**）；`fullscreen_hq` 与
+            # `dcm_pending` 仍用 `ui.fullscreen_timeout_ms`（30 s，§3.5）。
+            ms = (DCM_DEMO_RESULT_TIMEOUT_MS if self.view == "fullscreen_dcm"
+                  else int(self.cfg.require_final("ui.fullscreen_timeout_ms")))
             if time.monotonic_ns() - self.fs_enter_ns >= ms * 1_000_000:
-                self._exit_fullscreen(reason="timeout")     # 30 s 兜底（§3.5）
+                self._exit_fullscreen(reason="timeout")     # 兜底（§3.5；HQ/DCM处理中 30 s、DCM结果 60 s）
             # **[DCM 演示路]** 轮询独立进程；产物就绪则贴 REC+框并切 `fullscreen_dcm`
             # （切视图会重置 `fs_enter_ns` ⇒ DCM 视图独享一份超时预算）。
             # `dcm_pending` = **DCM 键路径**（不贴 HQ 图，屏幕保持冻结「处理中」）。
