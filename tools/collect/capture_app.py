@@ -38,11 +38,17 @@ U2（ZDE++ 零参考训练）与 U4（评测）。**不是交付链路**——�
       [--sensor-subdev /dev/v4l-subdev2]   # 调试用；默认运行时解析
 手机/PC 浏览器打开： http://<板地址>:8091/
 
+**MFA 连拍（2026-10-16 新增，用户指示）**：**每次采集固定连拍 8 帧**（**无开关**，取值即部署现役）。
+动机 = 部署侧**检测输入帧** = HQ 增强输出，而 HQ 输入侧含 **N 帧时域平均（MFA）**，其 N 由
+`main.py --hq-mfa-frames` 决定（**现役默认 = 8**）⇒ 要让实拍数据与部署**同处一个域**，
+喂给 HQ 的暗帧须由同一取景的**连续 8 帧**构成。
+形态 = **一次触发连拍 8 帧、各落一份原始文件**（**不做板上平均**；平均留到开发机侧做 ⇒ 可复算 / 换聚合）。
+一次连拍 = **一个帧槽**（成对采集的 dark/gt 仍同号）。
+
 落盘约定（`--outdir` 下，命名见主基准 v3.69 / `docs/design/dataset.md` §5.2.8）：
-  YYMMDD_<场景2位>_<帧序号>_dark.nv12   暗帧（增强链路输入域；**无损裸 NV12**）
-  YYMMDD_<场景2位>_<帧序号>_gt.nv12     亮帧（配对 GT；**无损裸 NV12**）
-  YYMMDD_<场景2位>_<帧序号>_dark.json   该帧的 sidecar（**逐帧一份**，字段分组见
-  YYMMDD_<场景2位>_<帧序号>_gt.json     `docs/design/dataset.md` §6.1）
+  YYMMDD_<场景2位>_<帧序号>_<档位>_n<NN>.nv12   **MFA 连拍**的第 NN 帧（NN = 01…08）
+  YYMMDD_<场景2位>_<帧序号>_<档位>.json         **连拍组共用一份** sidecar（主干不带 `_n<NN>`）
+                                                ⇒ 含 `burst` 块（n=8 / 逐帧名 / 逐帧与组 Y 均值）
   .capture_state.json                   采集进度（下一场景号 / 各场景帧槽），**重启后不丢**
 
 **帧序号语义**：同场景内的帧槽号，从 0001 起；**成对采集时 dark / gt 同号**（构成一对）。
@@ -97,6 +103,19 @@ KINDS = ('dark', 'gt')          # dark = 暗帧（输入域）/ gt = 亮帧（�
 
 # 无损裸 NV12 的几何（由 main() 按 --w/--h/--raw-frame-size 落值）
 RAW = {'stride': 0, 'uv_offset': 0, 'frame_bytes': 0}
+
+# ── **MFA 连拍**（2026-10-16 新增，用户指示）────────────────────────────────
+# **动机**：部署侧**检测输入帧** = HQ 增强输出，而 HQ 输入侧含 **N 帧时域平均（MFA）**
+# ⇒ 要让实拍数据与部署**同处一个域**，喂给 HQ 的暗帧须由**同一取景的连续 8 帧**构成。
+# **N 固定 = 8**（用户 2026-10-16 裁定「8」；**不做可调项**），取值与部署现役一致：
+#   `main.py --hq-mfa-frames` **默认 8**（L1973；help 记「2026-10-09 用户指示加大到默认 8（原默认 6）」），
+#   板上现役进程 `main.py --config … --snapshot-port 8092` **未覆盖** ⇒ 实际即 8。
+# **形态**：一次触发连续取 8 帧、**各落一份原始 NV12**（**不做板上平均**）——
+# 平均须留到开发机侧做，才能复算 / 换聚合方式；板上平均即丢掉该能力。
+# `keep` = 路② 队列保留帧数（= 8 ⇒ 取帧时在锁内取最近 8 帧）。
+MFA_FRAMES = 8
+BURST = {'n': MFA_FRAMES, 'keep': MFA_FRAMES}
+
 
 # gst 命令行（main() 里落值；模块级先置空，避免引用未定义）
 GST_CMD = []
@@ -387,6 +406,7 @@ def lock_guard(vblank_lines, node=None):
 STATE = {
     'jpg': None, 'seq': 0, 'bytes': 0, 'err': '', 'crc': 0, 'dup_run': 0,
     'raw': None, 'raw_seq': 0, 'raw_t': 0, 'raw_err': '',   # 路② 最新一帧裸 NV12
+    'raw_q': [],                                           # 路② 最近若干帧（N6 连拍用；保持到达序）
     'lock': threading.Lock(),
     # 采集侧状态（由 _state_load 初始化）
     'outdir': '', 'batch': '', 'next_scene': 1,
@@ -437,10 +457,16 @@ def reader(proc):
 
 
 def raw_reader(fd):
-    """路②：读**裸 NV12**（定长、无 multipart 分帧），只保留**最新一帧**。
+    """路②：读**裸 NV12**（定长、无 multipart 分帧）。
 
     裸流无帧标记，故按 `RAW['frame_bytes']` 定长切分；不足一帧时继续累积。
-    每收满一帧就整体替换 `STATE['raw']`（旧帧自动丢弃），并记到达时刻用于陈旧判定。
+    收满的帧**整批按到达序入队** `STATE['raw_q']`（保留最近 `BURST['keep']` 帧），
+    `STATE['raw']` 仍指向最新一帧（单帧路径与既有语义不变）。
+
+    **⚠️ 连拍口径（如实）**：裸 NV12 **无帧号/时间戳**，且上行 `queue leaky=downstream
+    max-size-buffers=2` 会在读端跟不上时丢**旧**缓冲 ⇒ 队内 N 帧是「**读端实际连续收到的
+    N 帧**」，**不保证与传感器输出的 N 帧逐帧相邻**。静止取景下二者等价；运动场景须自行判读
+    （sidecar 已记 `burst.n` 与逐帧 Y 均值，供事后核对）。
     """
     n = RAW['frame_bytes']
     if n <= 0:
@@ -454,12 +480,18 @@ def raw_reader(fd):
         buf += chunk
         k = len(buf) // n
         if k:
-            # 流从帧边界开始且逐帧定长 ⇒ 第 k 帧 = buf[(k-1)*n : k*n]。
+            # 流从帧边界开始且逐帧定长 ⇒ 本批 k 帧 = buf[0:n], buf[n:2n], …。
             # **必须按整帧相位取**（不能写 len(buf)-n，管道分块不保证对齐）。
-            start = (k - 1) * n
+            # **整批入队**：旧实现只留最后一帧，会把同一批里的其余帧丢掉 —— 连拍需要它们。
+            frames = [bytes(buf[i * n:(i + 1) * n]) for i in range(k)]
             with STATE['lock']:
-                STATE['raw'] = bytes(buf[start:start + n])
-                STATE['raw_seq'] += 1
+                q = STATE['raw_q']
+                q.extend(frames)
+                keep = BURST['keep']
+                if len(q) > keep:
+                    del q[:len(q) - keep]
+                STATE['raw'] = q[-1]
+                STATE['raw_seq'] += k           # = 累计收到的帧数（整批计）
                 STATE['raw_t'] = time.monotonic_ns()
             del buf[:k * n]                      # 只留不足一帧的尾巴，buf 不会无界增长
     STATE['raw_err'] = 'raw branch exited'
@@ -517,15 +549,25 @@ def _date_tag():
     return datetime.now().strftime('%y%m%d')
 
 
-def frame_name(scene, slot, kind):
-    """`<日期>_<场景2位>_<帧序号4位>_<档位>.nv12`（主基准 v3.69 / dataset.md §5.2.8）。"""
-    return '%s_%s_%04d_%s.nv12' % (_date_tag(), scene, slot, kind)
+def frame_name(scene, slot, kind, n=None):
+    """`<日期>_<场景2位>_<帧序号4位>_<档位>[_n<连拍序号2位>].nv12`（主基准 v3.69 / dataset.md §5.2.8）。
+
+    `n=None` ⇒ 单帧（与原命名**逐字一致**）；`n=1..N` ⇒ **N6 连拍**的第 n 帧（追加 `_n<NN>`）。
+    连拍组共用同一个 `slot`（= 同一帧槽），靠 `_n<NN>` 区分组内序号 ⇒ 组内排序即到达序。
+    """
+    tail = '' if n is None else '_n%02d' % n
+    return '%s_%s_%04d_%s%s.nv12' % (_date_tag(), scene, slot, kind, tail)
 
 
 # ---------------------------------------------------------------- 落盘
 
-def _sidecar(scene, slot, kind, path, raw_bytes, a):
+def _sidecar(scene, slot, kind, path, raw_bytes, a, burst_names=None, y_means=None,
+             group_stem=None):
     """写**该帧**的 sidecar（**逐帧一份**，不再每场景一份 ⇒ 天然消除覆盖）。
+
+    **MFA 连拍（固定 8 帧）**：一组 8 帧**共用一份 sidecar**（主干 = 不带 `_n<NN>` 的名字），
+    含 `burst` 块（`n=8`、逐帧文件名、逐帧与组 Y 均值）；`illuminance.frame_y_mean` 取**组均值**。
+    `burst_names=None` 的**单帧分支为历史保留**（当前调用恒为连拍），其输出与原实现逐字一致。
 
     **只写本应用能确知的字段**；取不到的项一律置 `null` 并列入 `_pending`，
     **不得填占位假值**（规则 `10-evidence.md` §2）。
@@ -542,6 +584,8 @@ def _sidecar(scene, slot, kind, path, raw_bytes, a):
     SENSOR.update(ok=bool(sc), why=sc_why, device=(sc or {}).get('device'),
                   readback=(sc or {}).get('readback', {}))
     ymean, nsamp = _y_mean(raw_bytes, a.w, a.h, RAW['stride'])   # 逐帧相对光照指标（§12.3）
+    if y_means:                                    # N6 连拍：**组均值**（同口径，逐帧值另存 burst 块）
+        ymean = sum(y_means) / len(y_means)
     LIGHT.update(lux_anchor=a.lux_anchor, lux_anchor_note=(a.lux_anchor_note or None),
                  y_mean=round(ymean, 4), type=(a.light_type or None), cct_k=a.light_cct_k,
                  dimming=(a.light_dimming or None), distance_m=a.light_distance_m,
@@ -558,9 +602,11 @@ def _sidecar(scene, slot, kind, path, raw_bytes, a):
         pending.append('sensor_ctrl')                # 回读失败 ⇒ 留在 _pending，不填假值
     if not IQFP['ok']:
         pending.append('isp_fingerprint_static')
-    stem = os.path.splitext(os.path.basename(path))[0]
+    # 连拍：`frame_id` = **组主干**（= sidecar 主干，不带 `_n<NN>`）；组内逐帧名见 `burst.names`。
+    # 单帧：逐字沿用原实现（= 该文件主干）。
+    stem = group_stem or os.path.splitext(os.path.basename(path))[0]
     other = 'gt' if kind == 'dark' else 'dark'
-    return {
+    d = {
         'schema': 'capture/v2',                          # v2 = 逐帧 sidecar + 无损裸 NV12 + 帧槽
         'scene_id': scene,                               # 2 位场景号（= 取景编号）
         'slot': slot,                                    # 同场景内的帧槽号（成对时 dark/gt 同号）
@@ -627,10 +673,27 @@ def _sidecar(scene, slot, kind, path, raw_bytes, a):
         },
         '_pending': pending,
     }
+    if burst_names:                                  # **N6 连拍**：组信息（单帧不写 ⇒ 与原 schema 一致）
+        n = len(burst_names)
+        d['burst'] = {
+            'n': n,
+            'names': list(burst_names),
+            'bytes_each': RAW['frame_bytes'],
+            'bytes_total': n * RAW['frame_bytes'],
+            'y_mean_each': [round(v, 4) for v in (y_means or [])],
+            'y_mean_group': round(ymean, 4),
+            'note': 'N 帧**各落一份文件**（**未做板上平均**）；时域平均须在开发机侧做 ⇒ 可复算 / 可改 N。'
+                    '⚠️ 裸流无帧号 ⇒ 组内为「读端连续收到的 N 帧」，静止取景下与传感器输出等价。',
+        }
+    return d
 
 
 def do_capture(kind, a):
-    """抓当前**无损裸 NV12**帧落盘。返回 (ok, 文案)。"""
+    """抓当前**MFA 连拍**帧落盘（**固定 8 帧**）。返回 (ok, 文案)。
+
+    从路② 队列取**最近 8 帧**、各落一份 `_n01…_n08` 原始 NV12、**共用一个 sidecar**（含 `burst` 块）。
+    **不做板上平均**（平均留到开发机侧）。帧槽语义不变（**一次触发 = 一个帧槽**）⇒ 成对采集 dark/gt 仍同号。
+    """
     # O62 ④(ii) 防呆：**非采集档一律拒采**（fail-closed，防"忘切"静默污染数据集）
     if IQ['guard'] == 'blocked':
         return False, '拒绝采集（O62 ④(ii) IQ 档位防呆）：%s' % IQ['why']
@@ -640,6 +703,7 @@ def do_capture(kind, a):
     with STATE['lock']:
         raw = STATE['raw']
         raw_t = STATE['raw_t']
+        q = list(STATE['raw_q'])
     if raw is None:
         return False, '还没有无损帧（路② 未就绪）：%s' % (STATE['raw_err'] or '检查 gst 是否在跑')
     # 陈旧判定**跟数据源走**：数据取自路② 裸帧，故以"裸帧是否仍在更新"为准。
@@ -648,6 +712,14 @@ def do_capture(kind, a):
     age_ms = (time.monotonic_ns() - raw_t) // 1000000
     if age_ms > 1000:
         return False, '无损帧已陈旧（%.0f ms 未更新），拒绝采集' % age_ms
+
+    # **MFA 连拍（固定 8 帧）**：取队列**最近 8 帧**。不足即**拒采**（fail-closed，与既有防呆同风格）
+    # —— 不拿更早的帧凑数，也不产出"半组"结果。
+    n_fr = BURST['n']
+    if len(q) < n_fr:
+        return False, ('连拍 %d 帧不足：路② 队列现仅 %d 帧（流刚起、或读端跟不上）；稍候重试'
+                       % (n_fr, len(q)))
+    frames = q[-n_fr:]
 
     scene = scene_id()
     st = STATE['counts'].setdefault(
@@ -658,20 +730,30 @@ def do_capture(kind, a):
         st['has'] = {'dark': False, 'gt': False}
     slot = st['slot']
 
-    name = frame_name(scene, slot, kind)
-    path = os.path.join(STATE['outdir'], name)
-    existed = os.path.exists(path)
-    with open(path, 'wb') as f:                     # 裸 NV12，定长、无容器
-        f.write(raw)
-    # sidecar **逐帧一份**（与图像同名同主干）⇒ 后采的档位不再覆盖前一份
-    with open(os.path.join(STATE['outdir'], os.path.splitext(name)[0] + '.json'), 'w') as f:
-        json.dump(_sidecar(scene, slot, kind, path, raw, a), f, indent=2, ensure_ascii=False)
+    names, ymeans, existed = [], [], False
+    for i, fr in enumerate(frames, 1):
+        nm = frame_name(scene, slot, kind, i)
+        p = os.path.join(STATE['outdir'], nm)
+        existed = existed or os.path.exists(p)
+        with open(p, 'wb') as f:                    # 裸 NV12，定长、无容器
+            f.write(fr)
+        names.append(nm)
+        ymeans.append(_y_mean(fr, a.w, a.h, RAW['stride'])[0])
+    # sidecar：**一组一份**，主干**不带** `_n<NN>`
+    side_stem = os.path.splitext(frame_name(scene, slot, kind))[0]
+    with open(os.path.join(STATE['outdir'], side_stem + '.json'), 'w') as f:
+        json.dump(_sidecar(scene, slot, kind, os.path.join(STATE['outdir'], names[0]),
+                           frames[0], a, burst_names=names, y_means=ymeans,
+                           group_stem=side_stem),
+                  f, indent=2, ensure_ascii=False)
 
     st['has'][kind] = True
     st['n'][kind] += 1
     _state_save()
-    msg = '%s 已保存（无损 NV12, %d KB；场景 %s 帧槽 %04d）%s' % (
-        name, len(raw) // 1024, scene, slot, '［覆盖原有文件］' if existed else '')
+    msg = ('%s 已保存（**MFA 连拍 %d 帧**，无损 NV12 各 %d KB，共 %d KB；场景 %s 帧槽 %04d）%s'
+           % (side_stem, len(names), RAW['frame_bytes'] // 1024,
+              sum(len(x) for x in frames) // 1024, scene, slot,
+              '［覆盖原有文件］' if existed else ''))
     STATE['last'] = msg
     return True, msg
 
@@ -737,8 +819,9 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
  <button class="gt" id="bgt">采集亮帧 GT</button>
  <button id="bdk">采集暗帧</button>
  <button class="nx" id="bnx">更换场景</button>
+ <span id="bq" class="st" style="color:#9cf"></span>
 </div>
-<div class="msg" id="msg">就绪。成对采集：摆取景 → 调亮光源 →【采集亮帧 GT】→ 调暗光源 →【采集暗帧】→【更换场景】。U1 单边图：全程只按【采集暗帧】，同一取景内改光照后再按一次（帧槽 +1）。落盘为无损裸 NV12。</div>
+<div class="msg" id="msg">就绪。成对采集：摆取景 → 调亮光源 →【采集亮帧 GT】→ 调暗光源 →【采集暗帧】→【更换场景】。U1 单边图：全程只按【采集暗帧】，同一取景内改光照后再按一次（帧槽 +1）。<b>每次采集 = MFA 连拍 8 帧</b>（各落一份 <code>_n01…_n08</code> 原始 NV12 + 一份组 sidecar），用于对齐部署 HQ 输入侧的 N 帧时域平均（N=8）⇒ 检测输入图同域。</div>
 <div class="wrap">
  <div class="pane"><div>全幅</div><canvas id="c1" width="960" height="540"></canvas></div>
  <div class="pane"><div>中心 4× 放大（对焦核对）</div><canvas id="c2" width="1920" height="1080"></canvas></div>
@@ -752,7 +835,8 @@ const im=document.getElementById('im'),c1=document.getElementById('c1'),c2=docum
       d=document.getElementById('d'),sc=document.getElementById('sc'),dk=document.getElementById('dk'),
       gt=document.getElementById('gt'),ba=document.getElementById('ba'),msg=document.getElementById('msg'),
       sl=document.getElementById('sl'),rq=document.getElementById('rq'),iq=document.getElementById('iq'),
-      lk=document.getElementById('lk'),fp=document.getElementById('fp'),lg=document.getElementById('lg');
+      lk=document.getElementById('lk'),fp=document.getElementById('fp'),lg=document.getElementById('lg'),
+      bq=document.getElementById('bq');
 let best=0,n=0,t0=performance.now();
 
 function mark(el,on){ el.textContent = on?'已采':'未采'; el.className = on?'ok':'no'; }
@@ -793,6 +877,11 @@ async function loop(){
     d.textContent=j.dup_run;
     sc.textContent=j.scene_id; sl.textContent=('0000'+j.slot).slice(-4); ba.textContent=j.batch;
     mark(dk, j.cur.dark); mark(gt, j.cur.gt);
+    if(j.burst){
+      const need=j.burst.n, rdy=j.burst.ready;          // MFA 连拍固定 8 帧（非可调项）
+      bq.className='st '+(rdy>=need?'ok':'no');
+      bq.textContent='MFA 连拍就绪 '+rdy+'/'+need+(rdy<need?'（不足 ⇒ 会被拒采，稍候）':'');
+    }
     if(j.iq){
       iq.style.display='block';
       iq.className='iq'+(j.iq.guard==='ok'?' ok':'');
@@ -880,6 +969,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         'raw_err': STATE['raw_err'],
                         'scene_id': scene, 'slot': st.get('slot', 1),
                         'batch': STATE['batch'],
+                        # **N6 连拍**（2026-10-16）：n = 当前设定帧数；keep = 队列保留上限；
+                        # ready = 队列现有帧数（< n 即此刻连拍会被拒采）
+                        'burst': {'n': BURST['n'], 'keep': BURST['keep'],
+                                  'ready': len(STATE['raw_q'])},
                         'cur': {'dark': bool(has.get('dark')), 'gt': bool(has.get('gt'))},
                         'iq': {'set': IQ['tag'], 'guard': IQ['guard'],
                                'file': IQ['file'], 'sha256': IQ['sha256'], 'why': IQ['why']},
@@ -904,7 +997,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if kind not in KINDS:
                 self._json({'ok': False, 'msg': 'kind 非法：%s' % kind}, 400)
                 return
-            ok, m = do_capture(kind, self.ARGS)
+            ok, m = do_capture(kind, self.ARGS)      # **MFA 连拍：固定 8 帧**（不做可调项）
             self._json({'ok': ok, 'msg': m}, 200 if ok else 409)
         elif u.path == '/nextscene':
             ok, m = do_nextscene()
@@ -1052,6 +1145,10 @@ def main():
           '[capture] 无损裸 NV12: stride=%d uv_offset=%d frame_bytes=%d（路② fd=%d）'
           % (a.port, a.device, a.w, a.h, a.outdir, STATE['batch'], scene_id(),
              RAW['stride'], RAW['uv_offset'], RAW['frame_bytes'], r_raw))
+    print('[capture] MFA 连拍：**固定 %d 帧**（无开关 / 无页面可调；= 部署 `--hq-mfa-frames` 现役默认 %d）'
+          '｜路② 队列保留 %d 帧（≈%.0f MB）'
+          % (BURST['n'], MFA_FRAMES, BURST['keep'],
+             BURST['keep'] * RAW['frame_bytes'] / 1048576.0))
     sys.stdout.flush()
 
     def stop(*_):

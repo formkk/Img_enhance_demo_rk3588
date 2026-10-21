@@ -92,10 +92,22 @@ def build(pth, device, arch="retinexformer", stage=1):
     return model.to(device).eval()
 
 
+def resize_rgb(rgb, W, CH):
+    """整幅等比缩至 W×CH（= 部署 RGA 那一步的离线等价；INTER_AREA）。
+
+    **拆出本函数的原因（2026-10-16）**：部署的 MFA 是「**先缩放、后平均**」
+    （`main.py` L214-215），故离线批处理若要复刻同一口径，必须把平均插在
+    **缩放之后、送网络之前** ⇒ 需要单独可调用的缩放步。
+    """
+    return cv2.resize(rgb, (W, CH), interpolation=cv2.INTER_AREA)
+
+
 @torch.inference_mode()
-def infer(model, rgb, W, CH, PAD, device):
-    """rgb: HxWx3 uint8 (RGB) → 输出 (CH,W,3) uint8；口径见模块 docstring。"""
-    lo = cv2.resize(rgb, (W, CH), interpolation=cv2.INTER_AREA)
+def forward(model, lo, W, CH, PAD, device):
+    """lo: (CH,W,3) uint8（**已缩放到 HQ 目标几何**的 RGB）→ 输出 (CH,W,3) uint8。
+
+    即 `infer` 中「缩放之后」的那一半（/255 → 上下 PAD → 推理 → 裁回）。
+    """
     a = lo.astype(np.float32)[None] / 255.
     if PAD:
         z = np.zeros((1, PAD, W, 3), np.float32)
@@ -103,6 +115,15 @@ def infer(model, rgb, W, CH, PAD, device):
     x = torch.from_numpy(a.transpose(0, 3, 1, 2)).to(device)
     y = model(x)[0, :, PAD:PAD + CH]
     return np.clip(y.permute(1, 2, 0).float().cpu().numpy() * 255., 0, 255).round().astype(np.uint8)
+
+
+@torch.inference_mode()
+def infer(model, rgb, W, CH, PAD, device):
+    """rgb: HxWx3 uint8 (RGB) → 输出 (CH,W,3) uint8；口径见模块 docstring。
+
+    = `forward(model, resize_rgb(rgb, W, CH), …)`（**拆步后行为逐位不变**）。
+    """
+    return forward(model, resize_rgb(rgb, W, CH), W, CH, PAD, device)
 
 
 def to_buf(rgb):
