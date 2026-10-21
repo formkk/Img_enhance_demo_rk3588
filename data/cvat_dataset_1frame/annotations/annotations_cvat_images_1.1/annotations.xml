@@ -1,0 +1,674 @@
+<?xml version="1.0" encoding="utf-8"?>
+<annotations>
+  <version>1.1</version>
+  <meta>
+    <task>
+      <id>5</id>
+      <name>1frame</name>
+      <size>79</size>
+      <mode>annotation</mode>
+      <overlap>0</overlap>
+      <bugtracker></bugtracker>
+      <created>2026-10-16 08:58:14.422703+00:00</created>
+      <updated>2026-10-16 19:40:00.000000+00:00</updated>
+      <subset>default</subset>
+      <start_frame>0</start_frame>
+      <stop_frame>78</stop_frame>
+      <frame_filter></frame_filter>
+      <owner>
+        <username>admin</username>
+        <email>admin@example.com</email>
+      </owner>
+      <labels>
+        <label>
+          <name>person</name>
+          <color>#f23d3d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>bicycle</name>
+          <color>#3d72f2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>car</name>
+          <color>#a7f23d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>motorcycle</name>
+          <color>#f23ddc</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>bird</name>
+          <color>#3df2d4</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>cat</name>
+          <color>#f29f3d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>dog</name>
+          <color>#6a3df2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>backpack</name>
+          <color>#44f23d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>umbrella</name>
+          <color>#f23d79</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>handbag</name>
+          <color>#3daef2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>suitcase</name>
+          <color>#e3f23d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>sports ball</name>
+          <color>#cc3df2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>baseball bat</name>
+          <color>#3df297</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>bottle</name>
+          <color>#f2623d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>wine glass</name>
+          <color>#3d4cf2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>cup</name>
+          <color>#81f23d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>fork</name>
+          <color>#f23db6</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>knife</name>
+          <color>#3debf2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>spoon</name>
+          <color>#f2c43d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>bowl</name>
+          <color>#8f3df2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>banana</name>
+          <color>#3df25a</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>apple</name>
+          <color>#f23d54</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>orange</name>
+          <color>#3d89f2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>cake</name>
+          <color>#bef23d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>chair</name>
+          <color>#f23df2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>potted plant</name>
+          <color>#3df2bd</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>dining table</name>
+          <color>#f2883d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>tv</name>
+          <color>#533df2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>laptop</name>
+          <color>#5cf23d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>mouse</name>
+          <color>#f23d91</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>remote</name>
+          <color>#3dc6f2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>keyboard</name>
+          <color>#f2ea3d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>cell phone</name>
+          <color>#b53df2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>microwave</name>
+          <color>#3df280</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>book</name>
+          <color>#f24b3d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>clock</name>
+          <color>#3d63f2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>vase</name>
+          <color>#98f23d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>scissors</name>
+          <color>#f23dcd</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>hair drier</name>
+          <color>#3df2e2</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>toothbrush</name>
+          <color>#f2ad3d</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+      </labels>
+    </task>
+  </meta>
+  <image id="0" name="hq60_260929_02_0001_hqE.png" width="960" height="540">
+    <box label="dining table" source="manual" occluded="0" xtl="1.3" ytl="94.35" xbr="254.1" ybr="306.19" z_order="0">
+    </box>
+    <box label="backpack" source="manual" occluded="0" xtl="772.31" ytl="1.16" xbr="958.68" ybr="239.15" z_order="0">
+    </box>
+    <box label="handbag" source="manual" occluded="0" xtl="460.15" ytl="1.58" xbr="784.85" ybr="213.08" z_order="0">
+    </box>
+  </image>
+  <image id="1" name="hq60_260929_03_0001_hqE.png" width="960" height="540">
+    <box label="dining table" source="manual" occluded="0" xtl="279.01" ytl="228.81" xbr="957.68" ybr="533.02" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="843.96" ytl="101.04" xbr="908.08" ybr="295.33" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="347.78" ytl="159.22" xbr="437.64" ybr="319.33" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="776.18" ytl="72.21" xbr="835.69" ybr="233.98" z_order="0">
+    </box>
+    <box label="cup" source="manual" occluded="0" xtl="514.4" ytl="213.5" xbr="593.45" ybr="311.27" z_order="0">
+    </box>
+  </image>
+  <image id="2" name="hq60_260929_04_0001_hqE.png" width="960" height="540">
+    <box label="umbrella" source="manual" occluded="0" xtl="3.98" ytl="304.18" xbr="50.3" ybr="509.32" z_order="0">
+    </box>
+  </image>
+  <image id="3" name="hq60_260929_05_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="4" name="hq60_260929_06_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="156.16" ytl="0.0" xbr="226.61" ybr="95.69" z_order="0">
+    </box>
+  </image>
+  <image id="5" name="hq60_260929_08_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="6" name="hq60_260929b_03_0001_hqE.png" width="960" height="540">
+    <box label="suitcase" source="manual" occluded="0" xtl="536.42" ytl="360.26" xbr="892.0" ybr="534.18" z_order="0">
+    </box>
+    <box label="dining table" source="manual" occluded="0" xtl="-0.0" ytl="2.5" xbr="939.24" ybr="540.0" z_order="0">
+    </box>
+    <box label="cup" source="manual" occluded="0" xtl="600.69" ytl="0.0" xbr="670.41" ybr="32.0" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="1.3" ytl="28.65" xbr="53.65" ybr="201.61" z_order="0">
+    </box>
+  </image>
+  <image id="7" name="hq60_260929b_04_0001_hqE.png" width="960" height="540">
+    <box label="dining table" source="manual" occluded="0" xtl="575.22" ytl="0.49" xbr="959.35" ybr="540.0" z_order="0">
+    </box>
+  </image>
+  <image id="8" name="hq60_260929b_05_0001_hqE.png" width="960" height="540">
+    <box label="umbrella" source="manual" occluded="0" xtl="241.36" ytl="304.18" xbr="299.69" ybr="518.7" z_order="0">
+    </box>
+  </image>
+  <image id="9" name="hq60_260929b_06_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="10" name="hq60_260929b_07_0001_hqE.png" width="960" height="540">
+    <box label="tv" source="manual" occluded="0" xtl="584.6" ytl="99.04" xbr="958.68" ybr="496.58" z_order="0">
+    </box>
+  </image>
+  <image id="11" name="hq60_261002_04_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="12" name="hq60_261002_05_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="13" name="hq60_261002_06_0001_hqE.png" width="960" height="540">
+    <box label="umbrella" source="manual" occluded="0" xtl="495.37" ytl="0.49" xbr="572.54" ybr="286.08" z_order="0">
+    </box>
+  </image>
+  <image id="14" name="hq60_261002_08_0001_hqE.png" width="960" height="540">
+    <box label="bowl" source="manual" occluded="0" xtl="548.64" ytl="448.56" xbr="609.63" ybr="490.39" z_order="0">
+    </box>
+  </image>
+  <image id="15" name="hq60_261002_09_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="16" name="hq60_261002b_01_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="17" name="hq60_261002b_02_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="18" name="hq60_261002b_04_0001_hqE.png" width="960" height="540">
+    <box label="backpack" source="manual" occluded="0" xtl="707.28" ytl="133.9" xbr="959.35" ybr="540.0" z_order="0">
+    </box>
+  </image>
+  <image id="19" name="hq60_261002b_05_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="20" name="hq60_261002b_06_0001_hqE.png" width="960" height="540">
+    <box label="tv" source="manual" occluded="0" xtl="0.63" ytl="261.94" xbr="422.37" ybr="539.49" z_order="0">
+    </box>
+  </image>
+  <image id="21" name="hq60_261002b_08_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="22" name="hq60_261002b_09_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="23" name="hq60_261002b_11_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="24" name="hq60_261002b_12_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="715.22" ytl="343.39" xbr="839.14" ybr="534.48" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="112.0" ytl="431.3" xbr="267.64" ybr="538.94" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="820.1" ytl="463.32" xbr="907.69" ybr="539.84" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="464.77" ytl="436.79" xbr="569.22" ybr="538.28" z_order="0">
+    </box>
+    <box label="tv" source="manual" occluded="0" xtl="0.0" ytl="0.0" xbr="767.62" ybr="333.68" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="666.63" ytl="433.56" xbr="766.92" ybr="539.47" z_order="0">
+    </box>
+  </image>
+  <image id="25" name="hq60_261002b_13_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="39.92" ytl="265.04" xbr="182.22" ybr="520.74" z_order="0">
+    </box>
+    <box label="backpack" source="manual" occluded="0" xtl="850.75" ytl="171.44" xbr="959.35" ybr="540.0" z_order="0">
+    </box>
+    <box label="tv" source="manual" occluded="0" xtl="0.0" ytl="0.49" xbr="70.41" ybr="129.21" z_order="0">
+    </box>
+    <box label="cup" source="manual" occluded="0" xtl="177.87" ytl="434.23" xbr="284.49" ybr="537.84" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="0.0" ytl="139.34" xbr="121.04" ybr="322.7" z_order="0">
+    </box>
+  </image>
+  <image id="26" name="hq60_261002b_14_0001_hqE.png" width="960" height="540">
+    <box label="backpack" source="manual" occluded="0" xtl="130.75" ytl="0.49" xbr="508.85" ybr="322.95" z_order="0">
+    </box>
+    <box label="handbag" source="manual" occluded="0" xtl="172.25" ytl="196.92" xbr="602.03" ybr="489.21" z_order="0">
+    </box>
+    <box label="backpack" source="manual" occluded="0" xtl="767.65" ytl="68.86" xbr="959.55" ybr="477.98" z_order="0">
+    </box>
+  </image>
+  <image id="27" name="hq60_261002b_15_0001_hqE.png" width="960" height="540">
+    <box label="backpack" source="manual" occluded="0" xtl="140.13" ytl="0.49" xbr="552.42" ybr="80.94" z_order="0">
+    </box>
+  </image>
+  <image id="28" name="hq60_261002b_16_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="29" name="hq60_261002b_17_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="30" name="hq60_261002b_18_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="31" name="hq60_261002b_19_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="32" name="hq60_261002b_20_0001_hqE.png" width="960" height="540">
+    <box label="suitcase" source="manual" occluded="0" xtl="0.38" ytl="122.85" xbr="322.43" ybr="530.19" z_order="0">
+    </box>
+  </image>
+  <image id="33" name="hq60_261002b_22_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="34" name="hq60_261002b_23_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="35" name="hq60_261002b_24_0001_hqE.png" width="960" height="540">
+    <box label="umbrella" source="manual" occluded="0" xtl="86.5" ytl="371.89" xbr="164.94" ybr="540.0" z_order="0">
+    </box>
+    <box label="umbrella" source="manual" occluded="0" xtl="215.89" ytl="322.95" xbr="412.31" ybr="540.0" z_order="0">
+    </box>
+    <box label="umbrella" source="manual" occluded="0" xtl="162.93" ytl="379.93" xbr="239.35" ybr="540.0" z_order="0">
+    </box>
+  </image>
+  <image id="36" name="hq60_261002b_26_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="161.6" ytl="12.08" xbr="306.89" ybr="251.37" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="23.21" ytl="1.43" xbr="142.86" ybr="265.72" z_order="0">
+    </box>
+    <box label="dining table" source="manual" occluded="0" xtl="0.63" ytl="180.16" xbr="959.35" ybr="540.0" z_order="0">
+    </box>
+    <box label="cup" source="manual" occluded="0" xtl="299.91" ytl="138.6" xbr="416.2" ybr="280.16" z_order="0">
+    </box>
+  </image>
+  <image id="37" name="hq60_261002c_02_0001_hqE.png" width="960" height="540">
+    <box label="backpack" source="manual" occluded="0" xtl="453.88" ytl="282.73" xbr="772.31" ybr="540.0" z_order="0">
+    </box>
+  </image>
+  <image id="38" name="hq60_261002c_03_0001_hqE.png" width="960" height="540">
+    <box label="backpack" source="manual" occluded="0" xtl="1.3" ytl="363.17" xbr="101.92" ybr="540.0" z_order="0">
+    </box>
+    <box label="backpack" source="manual" occluded="0" xtl="264.09" ytl="442.95" xbr="488.07" ybr="540.0" z_order="0">
+    </box>
+  </image>
+  <image id="39" name="hq60_261002c_04_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="40" name="hq60_261002c_06_0001_hqE.png" width="960" height="540">
+    <box label="backpack" source="manual" occluded="0" xtl="457.23" ytl="14.57" xbr="739.46" ybr="529.43" z_order="0">
+    </box>
+  </image>
+  <image id="41" name="hq60_261002c_09_0001_hqE.png" width="960" height="540">
+    <box label="umbrella" source="manual" occluded="0" xtl="524.65" ytl="275.3" xbr="575.4" ybr="477.17" z_order="0">
+    </box>
+  </image>
+  <image id="42" name="hq60_261002c_10_0001_hqE.png" width="960" height="540">
+    <box label="umbrella" source="manual" occluded="0" xtl="86.5" ytl="318.93" xbr="134.77" ybr="518.03" z_order="0">
+    </box>
+  </image>
+  <image id="43" name="hq60_261002c_11_0001_hqE.png" width="960" height="540">
+    <box label="dining table" source="manual" occluded="0" xtl="359.25" ytl="5.63" xbr="958.14" ybr="540.0" z_order="0">
+    </box>
+  </image>
+  <image id="44" name="hq60_261002c_13_0001_hqE.png" width="960" height="540">
+    <box label="handbag" source="manual" occluded="0" xtl="420.17" ytl="2.09" xbr="744.11" ybr="334.41" z_order="0">
+    </box>
+    <box label="handbag" source="manual" occluded="0" xtl="-0.0" ytl="2.58" xbr="272.18" ybr="197.23" z_order="0">
+    </box>
+    <box label="handbag" source="manual" occluded="0" xtl="3.5" ytl="88.32" xbr="359.58" ybr="334.29" z_order="0">
+    </box>
+    <box label="backpack" source="manual" occluded="0" xtl="0.16" ytl="2.12" xbr="273.96" ybr="197.37" z_order="0">
+    </box>
+    <box label="backpack" source="manual" occluded="0" xtl="419.44" ytl="2.25" xbr="744.24" ybr="335.43" z_order="0">
+    </box>
+  </image>
+  <image id="45" name="hq60_261002c_14_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="46" name="hq60_261002c_15_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="393.88" ytl="177.77" xbr="468.13" ybr="375.52" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="439.61" ytl="125.91" xbr="525.8" ybr="374.28" z_order="0">
+    </box>
+  </image>
+  <image id="47" name="hq60_261002c_17_0001_hqE.png" width="960" height="540">
+    <box label="umbrella" source="manual" occluded="0" xtl="242.8" ytl="243.6" xbr="304.5" ybr="459.4" z_order="0">
+    </box>
+  </image>
+  <image id="48" name="hq60_261002c_18_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="49" name="hq60_261002c_20_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="50" name="hq60_261002c_21_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="51" name="hq60_261002c_22_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="52" name="hq60_261002c_24_0001_hqE.png" width="960" height="540">
+    <box label="backpack" source="manual" occluded="0" xtl="-0.0" ytl="50.77" xbr="144.83" ybr="464.4" z_order="0">
+    </box>
+    <box label="hair drier" source="manual" occluded="0" xtl="485.39" ytl="186.86" xbr="675.78" ybr="299.49" z_order="0">
+    </box>
+  </image>
+  <image id="53" name="hq60_261002c_25_0001_hqE.png" width="960" height="540">
+    <box label="backpack" source="manual" occluded="0" xtl="151.1" ytl="49.3" xbr="608.5" ybr="534.9" z_order="0">
+    </box>
+  </image>
+  <image id="54" name="hq60_261002c_26_0001_hqE.png" width="960" height="540">
+    <box label="handbag" source="manual" occluded="0" xtl="464.68" ytl="125.13" xbr="959.47" ybr="453.11" z_order="0">
+    </box>
+    <box label="backpack" source="manual" occluded="0" xtl="469.21" ytl="1.67" xbr="925.6" ybr="244.77" z_order="0">
+    </box>
+    <box label="dining table" source="manual" occluded="0" xtl="1.97" ytl="184.18" xbr="359.35" ybr="507.31" z_order="0">
+    </box>
+  </image>
+  <image id="55" name="hq60_261002c_28_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="848.25" ytl="60.7" xbr="959.55" ybr="379.42" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="382.57" ytl="165.22" xbr="464.34" ybr="480.68" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="177.01" ytl="154.43" xbr="404.96" ybr="498.72" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="447.12" ytl="68.31" xbr="610.08" ybr="489.8" z_order="0">
+    </box>
+  </image>
+  <image id="56" name="hq60_261002c_29_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="57" name="hq60_261002c_31_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="34.36" ytl="458.03" xbr="91.54" ybr="539.76" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="170.3" ytl="493.23" xbr="213.21" ybr="540.0" z_order="0">
+    </box>
+  </image>
+  <image id="58" name="hq60_261002c_32_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="144.58" ytl="149.78" xbr="222.21" ybr="340.72" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="286.65" ytl="167.14" xbr="354.87" ybr="324.3" z_order="0">
+    </box>
+  </image>
+  <image id="59" name="hq60_261002c_33_0001_hqE.png" width="960" height="540">
+    <box label="tv" source="manual" occluded="0" xtl="278.9" ytl="0.49" xbr="956.67" ybr="520.72" z_order="0">
+    </box>
+  </image>
+  <image id="60" name="pub17_260929_01_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="411.49" ytl="73.77" xbr="487.14" ybr="238.51" z_order="0">
+    </box>
+    <box label="dining table" source="manual" occluded="0" xtl="0.63" ytl="156.69" xbr="889.63" ybr="446.3" z_order="0">
+    </box>
+    <box label="cup" source="manual" occluded="0" xtl="91.52" ytl="223.69" xbr="175.34" ybr="324.82" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="345.47" ytl="53.83" xbr="409.33" ybr="225.85" z_order="0">
+    </box>
+  </image>
+  <image id="61" name="pub17_260929b_02_0001_hqE.png" width="960" height="540">
+    <box label="cup" source="manual" occluded="0" xtl="60.29" ytl="-0.0" xbr="146.17" ybr="91.66" z_order="0">
+    </box>
+    <box label="handbag" source="manual" occluded="0" xtl="654.32" ytl="0.0" xbr="956.0" ybr="133.23" z_order="0">
+    </box>
+    <box label="dining table" source="manual" occluded="0" xtl="0.0" ytl="2.5" xbr="507.51" ybr="539.49" z_order="0">
+    </box>
+  </image>
+  <image id="62" name="pub17_261002_01_0001_hqE.png" width="960" height="540">
+    <box label="backpack" source="manual" occluded="0" xtl="0.23" ytl="124.3" xbr="439.1" ybr="540.0" z_order="0">
+    </box>
+  </image>
+  <image id="63" name="pub17_261002b_03_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="64" name="pub17_261002b_10_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="238.68" ytl="29.99" xbr="312.42" ybr="217.03" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="370.08" ytl="52.78" xbr="428.4" ybr="203.62" z_order="0">
+    </box>
+  </image>
+  <image id="65" name="pub17_261002b_21_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="66" name="pub17_261002b_25_0001_hqE.png" width="960" height="540">
+    <box label="dining table" source="manual" occluded="0" xtl="112.65" ytl="148.65" xbr="959.35" ybr="540.0" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="402.93" ytl="-0.0" xbr="568.51" ybr="227.08" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="145.5" ytl="-0.0" xbr="381.47" ybr="267.31" z_order="0">
+    </box>
+  </image>
+  <image id="67" name="pub17_261002c_01_0001_hqE.png" width="960" height="540">
+    <box label="tv" source="manual" occluded="0" xtl="205.8" ytl="0.0" xbr="781.03" ybr="404.07" z_order="0">
+    </box>
+  </image>
+  <image id="68" name="pub17_261002c_05_0001_hqE.png" width="960" height="540">
+    <box label="hair drier" source="manual" occluded="0" xtl="435.11" ytl="31.33" xbr="596.0" ybr="172.78" z_order="0">
+    </box>
+    <box label="backpack" source="manual" occluded="0" xtl="1.97" ytl="225.07" xbr="111.98" ybr="540.0" z_order="0">
+    </box>
+  </image>
+  <image id="69" name="pub17_261002c_08_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="191.75" ytl="351.78" xbr="242.7" ybr="522.06" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="112.65" ytl="333.01" xbr="175.66" ybr="515.35" z_order="0">
+    </box>
+  </image>
+  <image id="70" name="pub17_261002c_12_0001_hqE.png" width="960" height="540">
+    <box label="cup" source="manual" occluded="0" xtl="217.9" ytl="9.88" xbr="293.65" ybr="103.73" z_order="0">
+    </box>
+    <box label="handbag" source="manual" occluded="0" xtl="764.0" ytl="2.33" xbr="959.5" ybr="180.98" z_order="0">
+    </box>
+  </image>
+  <image id="71" name="pub17_261002c_16_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="72" name="pub17_261002c_19_0001_hqE.png" width="960" height="540">
+  </image>
+  <image id="73" name="pub17_261002c_23_0001_hqE.png" width="960" height="540">
+    <box label="hair drier" source="manual" occluded="0" xtl="183.04" ytl="1.83" xbr="287.62" ybr="49.43" z_order="0">
+    </box>
+  </image>
+  <image id="74" name="pub17_261002c_27_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="365.8" ytl="-0.0" xbr="482.09" ybr="271.25" z_order="0">
+    </box>
+    <box label="cup" source="manual" occluded="0" xtl="633.31" ytl="178.31" xbr="745.33" ybr="327.93" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="511.3" ytl="2.53" xbr="638.04" ybr="308.52" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="109.9" ytl="0.0" xbr="237.34" ybr="276.02" z_order="0">
+    </box>
+  </image>
+  <image id="75" name="pub17_261002c_30_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="122.7" ytl="0.49" xbr="198.46" ybr="198.26" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="269.52" ytl="27.98" xbr="331.2" ybr="194.23" z_order="0">
+    </box>
+  </image>
+  <image id="76" name="pub17_261002c_34_0001_hqE.png" width="960" height="540">
+    <box label="tv" source="manual" occluded="0" xtl="0.63" ytl="0.49" xbr="313.09" ybr="312.22" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="146.17" ytl="419.49" xbr="250.75" ybr="540.0" z_order="0">
+    </box>
+    <box label="bottle" source="manual" occluded="0" xtl="286.28" ytl="450.99" xbr="399.58" ybr="539.49" z_order="0">
+    </box>
+  </image>
+  <image id="77" name="u3_38_261002_07_0001_hqE.png" width="960" height="540">
+    <box label="bottle" source="manual" occluded="0" xtl="405.82" ytl="260.16" xbr="500.89" ybr="379.24" z_order="0">
+    </box>
+  </image>
+  <image id="78" name="u4b_261002_07_0001_hqE.png" width="960" height="540">
+  </image>
+</annotations>

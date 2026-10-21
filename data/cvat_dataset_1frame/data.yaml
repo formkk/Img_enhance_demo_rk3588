@@ -1,0 +1,44 @@
+# Ultralytics YOLO 数据集配置（path 指向本包根目录）
+path: .
+train: train.txt
+names:
+  0: person
+  1: bicycle
+  2: car
+  3: motorcycle
+  4: bird
+  5: cat
+  6: dog
+  7: backpack
+  8: umbrella
+  9: handbag
+  10: suitcase
+  11: sports ball
+  12: baseball bat
+  13: bottle
+  14: wine glass
+  15: cup
+  16: fork
+  17: knife
+  18: spoon
+  19: bowl
+  20: banana
+  21: apple
+  22: orange
+  23: cake
+  24: chair
+  25: potted plant
+  26: dining table
+  27: tv
+  28: laptop
+  29: mouse
+  30: remote
+  31: keyboard
+  32: cell phone
+  33: microwave
+  34: book
+  35: clock
+  36: vase
+  37: scissors
+  38: hair drier
+  39: toothbrush

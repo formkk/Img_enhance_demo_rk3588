@@ -1,0 +1,242 @@
+[
+  {
+    "name": "person",
+    "color": "#f23d3d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "bicycle",
+    "color": "#3d72f2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "car",
+    "color": "#a7f23d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "motorcycle",
+    "color": "#f23ddc",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "bird",
+    "color": "#3df2d4",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "cat",
+    "color": "#f29f3d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "dog",
+    "color": "#6a3df2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "backpack",
+    "color": "#44f23d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "umbrella",
+    "color": "#f23d79",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "handbag",
+    "color": "#3daef2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "suitcase",
+    "color": "#e3f23d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "sports ball",
+    "color": "#cc3df2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "baseball bat",
+    "color": "#3df297",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "bottle",
+    "color": "#f2623d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "wine glass",
+    "color": "#3d4cf2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "cup",
+    "color": "#81f23d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "fork",
+    "color": "#f23db6",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "knife",
+    "color": "#3debf2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "spoon",
+    "color": "#f2c43d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "bowl",
+    "color": "#8f3df2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "banana",
+    "color": "#3df25a",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "apple",
+    "color": "#f23d54",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "orange",
+    "color": "#3d89f2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "cake",
+    "color": "#bef23d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "chair",
+    "color": "#f23df2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "potted plant",
+    "color": "#3df2bd",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "dining table",
+    "color": "#f2883d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "tv",
+    "color": "#533df2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "laptop",
+    "color": "#5cf23d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "mouse",
+    "color": "#f23d91",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "remote",
+    "color": "#3dc6f2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "keyboard",
+    "color": "#f2ea3d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "cell phone",
+    "color": "#b53df2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "microwave",
+    "color": "#3df280",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "book",
+    "color": "#f24b3d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "clock",
+    "color": "#3d63f2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "vase",
+    "color": "#98f23d",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "scissors",
+    "color": "#f23dcd",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "hair drier",
+    "color": "#3df2e2",
+    "type": "rectangle",
+    "attributes": []
+  },
+  {
+    "name": "toothbrush",
+    "color": "#f2ad3d",
+    "type": "rectangle",
+    "attributes": []
+  }
+]
